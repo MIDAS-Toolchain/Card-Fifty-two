@@ -1,0 +1,48 @@
+# Build artifacts
+build/
+bin/
+
+# Object files
+*.o
+*.obj
+
+# Libraries
+*.a
+*.lib
+*.so
+*.dylib
+
+# Executables
+*.exe
+*.out
+card-fifty-two
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Emscripten
+*.wasm
+*.js.mem
+
+# Profiling
+gmon.out
+perf.data*
+callgrind.out.*
+
+# Cache
+.cache/
+*.cache
+
+# Logs
+*.log
