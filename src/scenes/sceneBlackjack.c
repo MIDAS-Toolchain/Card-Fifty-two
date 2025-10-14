@@ -106,10 +106,10 @@ static void InitializeLayout(void) {
     g_dealer_section = CreateDealerSection();
 
     // Create deck/discard view buttons FIRST (needed for PlayerSection)
-    const char* deck_count_labels[] = {"Draw: 52", "Discard: 0"};
+    // Count text is now passed dynamically during render, not stored
     const char* deck_hotkeys[] = {"[V]", "[C]"};
     for (int i = 0; i < NUM_DECK_BUTTONS; i++) {
-        deck_buttons[i] = CreateDeckButton(0, 0, deck_count_labels[i], deck_hotkeys[i]);
+        deck_buttons[i] = CreateDeckButton(0, 0, deck_hotkeys[i]);
     }
 
     // Create player section with deck buttons

@@ -21,7 +21,7 @@ extern SDL_Texture* g_card_back_texture;
 // LIFECYCLE
 // ============================================================================
 
-DeckButton_t* CreateDeckButton(int x, int y, const char* count_text, const char* hotkey) {
+DeckButton_t* CreateDeckButton(int x, int y, const char* hotkey) {
     DeckButton_t* button = malloc(sizeof(DeckButton_t));
     if (!button) {
         d_LogError("Failed to allocate DeckButton");
@@ -36,24 +36,9 @@ DeckButton_t* CreateDeckButton(int x, int y, const char* count_text, const char*
     button->was_pressed = false;
     button->user_data = NULL;
 
-    // Constitutional: dString_t for count text
-    button->count_text = d_InitString();
-    if (!button->count_text) {
-        free(button);
-        d_LogError("Failed to allocate DeckButton count_text");
-        return NULL;
-    }
-    d_SetString(button->count_text, count_text ? count_text : "", 0);
-
-    // Constitutional: dString_t for hotkey hint
-    button->hotkey_hint = d_InitString();
-    if (!button->hotkey_hint) {
-        d_DestroyString(button->count_text);
-        free(button);
-        d_LogError("Failed to allocate DeckButton hotkey_hint");
-        return NULL;
-    }
-    d_SetString(button->hotkey_hint, hotkey ? hotkey : "", 0);
+    // Set hotkey using strncpy (static storage pattern)
+    strncpy(button->hotkey_hint, hotkey ? hotkey : "", sizeof(button->hotkey_hint) - 1);
+    button->hotkey_hint[sizeof(button->hotkey_hint) - 1] = '\0';
 
     return button;
 }
@@ -63,13 +48,7 @@ void DestroyDeckButton(DeckButton_t** button) {
 
     DeckButton_t* btn = *button;
 
-    // Cleanup dString_t members
-    if (btn->count_text) {
-        d_DestroyString(btn->count_text);
-    }
-    if (btn->hotkey_hint) {
-        d_DestroyString(btn->hotkey_hint);
-    }
+    // No string cleanup needed - using fixed buffer!
 
     free(btn);
     *button = NULL;
@@ -79,14 +58,10 @@ void DestroyDeckButton(DeckButton_t** button) {
 // CONFIGURATION
 // ============================================================================
 
-void SetDeckButtonCountText(DeckButton_t* button, const char* count_text) {
-    if (!button || !button->count_text) return;
-    d_SetString(button->count_text, count_text ? count_text : "", 0);
-}
-
 void SetDeckButtonHotkey(DeckButton_t* button, const char* hotkey) {
-    if (!button || !button->hotkey_hint) return;
-    d_SetString(button->hotkey_hint, hotkey ? hotkey : "", 0);
+    if (!button) return;
+    strncpy(button->hotkey_hint, hotkey ? hotkey : "", sizeof(button->hotkey_hint) - 1);
+    button->hotkey_hint[sizeof(button->hotkey_hint) - 1] = '\0';
 }
 
 void SetDeckButtonEnabled(DeckButton_t* button, bool enabled) {
@@ -149,7 +124,7 @@ bool IsDeckButtonHovered(const DeckButton_t* button) {
 // RENDERING
 // ============================================================================
 
-void RenderDeckButton(const DeckButton_t* button) {
+void RenderDeckButton(const DeckButton_t* button, const char* count_text) {
     if (!button) return;
 
     // Draw card back texture (face-down card)
@@ -171,27 +146,23 @@ void RenderDeckButton(const DeckButton_t* button) {
         }
     }
 
-    // Draw count text above card (centered)
-    if (button->count_text) {
-        const char* count_str = d_PeekString(button->count_text);
-        if (count_str && count_str[0] != '\0') {
-            int count_x = button->x + button->w / 2;
-            int count_y = button->y - DECK_BUTTON_COUNT_OFFSET;
-            a_DrawText((char*)count_str, count_x, count_y,
-                       COLOR_COUNT_TEXT.r, COLOR_COUNT_TEXT.g, COLOR_COUNT_TEXT.b,
-                       FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
-        }
+    // Draw count text above card (centered) - passed as parameter
+    if (count_text && count_text[0] != '\0') {
+        int count_x = button->x + button->w / 2;
+        int count_y = button->y - DECK_BUTTON_COUNT_OFFSET;
+        // Cast safe: a_DrawText is read-only, count_text is temporary from caller
+        a_DrawText((char*)count_text, count_x, count_y,
+                   COLOR_COUNT_TEXT.r, COLOR_COUNT_TEXT.g, COLOR_COUNT_TEXT.b,
+                   FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
     }
 
-    // Draw hotkey below card (centered)
-    if (button->hotkey_hint) {
-        const char* hotkey_str = d_PeekString(button->hotkey_hint);
-        if (hotkey_str && hotkey_str[0] != '\0') {
-            int hotkey_x = button->x + button->w / 2;
-            int hotkey_y = button->y + button->h + DECK_BUTTON_HOTKEY_OFFSET;
-            a_DrawText((char*)hotkey_str, hotkey_x, hotkey_y,
-                       COLOR_HOTKEY_TEXT.r, COLOR_HOTKEY_TEXT.g, COLOR_HOTKEY_TEXT.b,
-                       FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
-        }
+    // Draw hotkey below card (centered) - using fixed char buffer
+    if (button->hotkey_hint[0] != '\0') {
+        int hotkey_x = button->x + button->w / 2;
+        int hotkey_y = button->y + button->h + DECK_BUTTON_HOTKEY_OFFSET;
+        // Cast safe: a_DrawText is read-only, using fixed char buffer
+        a_DrawText((char*)button->hotkey_hint, hotkey_x, hotkey_y,
+                   COLOR_HOTKEY_TEXT.r, COLOR_HOTKEY_TEXT.g, COLOR_HOTKEY_TEXT.b,
+                   FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
     }
 }

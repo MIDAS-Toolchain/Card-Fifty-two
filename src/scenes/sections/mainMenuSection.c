@@ -52,7 +52,7 @@ MainMenuSection_t* CreateMainMenuSection(MenuItem_t** menu_items, int item_count
     strncpy(section->title, "CARD FIFTY-TWO", sizeof(section->title) - 1);
     section->title[sizeof(section->title) - 1] = '\0';
 
-    strncpy(section->subtitle, "A Blackjack Demo for shit heads", sizeof(section->subtitle) - 1);
+    strncpy(section->subtitle, "A Blackjack Demo for MIDAS", sizeof(section->subtitle) - 1);
     section->subtitle[sizeof(section->subtitle) - 1] = '\0';
 
     strncpy(section->instructions,

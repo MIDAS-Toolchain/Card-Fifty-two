@@ -1,233 +1,225 @@
 # Card Fifty-Two
 
-A comprehensive card game framework built with **Archimedes** (SDL2 game framework) and **Daedalus** (data structures library). Features a 52-card deck engine supporting Blackjack, Poker, and other classic card games.
+**A Blackjack game demonstrating clean Scene → Section → Component architecture in C.**
 
-## 🎮 Features
-
-- **Standard 52-card deck** with smart shuffling and dealing
-- **Blackjack implementation** with dealer AI and basic strategy
-- **Extensible architecture** - Add new card games easily
-- **Cross-platform** - Native (Linux/macOS/Windows) and Web (Emscripten)
-- **"Everything's a table or array"** - No raw pointers, memory-safe design
-- **Visual card rendering** with texture caching
-- **Smooth animations** for card dealing and movements
-
-## 🏗️ Architecture Highlights
-
-- **Deck**: `dArray_t` of 52 `Card_t` structs (value types)
-- **Player Hands**: Each player has `dArray_t` for cards
-- **Players**: `dTable_t` hash table keyed by player ID
-- **Textures**: `dTable_t` cache mapping card IDs to SDL textures
-- **Game State**: `dTable_t` for dynamic state variables
-
-**Zero naked pointers. Zero manual `malloc` for game data.**
-
-## 📋 Prerequisites
-
-### Required Libraries
-
-- **Archimedes** - SDL2-based game framework
-  - SDL2, SDL2_image, SDL2_ttf, SDL2_mixer, cJSON
-
-- **Daedalus** - Data structures and utilities library
-  - No external dependencies
-
-### System Requirements
-
-```bash
-# Debian/Ubuntu
-sudo apt-get install build-essential libsdl2-dev libsdl2-image-dev \
-    libsdl2-ttf-dev libsdl2-mixer-dev libcjson-dev
-
-# Arch Linux
-sudo pacman -S base-devel sdl2 sdl2_image sdl2_ttf sdl2_mixer cjson
-
-# macOS
-brew install sdl2 sdl2_image sdl2_ttf sdl2_mixer cjson
-```
-
-## 🚀 Installation
-
-### 1. Install Archimedes
-```bash
-git clone https://github.com/McCoy1701/Archimedes.git
-cd Archimedes
-make shared
-sudo make install
-cd ..
-```
-
-### 2. Install Daedalus
-```bash
-git clone https://github.com/McCoy1701/Daedalus.git
-cd Daedalus
-make shared
-sudo make install
-cd ..
-```
-
-### 3. Build Card-Fifty-Two
-```bash
-git clone <this-repo-url>
-cd card-fifty-two
-make
-```
-
-## 🎲 Running the Game
-
-### Native (Desktop)
-```bash
-make run
-# or
-./bin/card-fifty-two
-```
-
-### Web (Emscripten)
-```bash
-make web
-python3 -m http.server 8000
-# Visit http://localhost:8000/bin/index.html
-```
-
-## 🎯 How to Play (Blackjack)
-
-1. **Place Bet** - Click bet amount (10, 25, 50, 100) or use number keys
-2. **Initial Deal** - Receive 2 cards, dealer shows 1 card
-3. **Player Turn** - Choose actions:
-   - **Hit (H)** - Take another card
-   - **Stand (S)** - End your turn
-   - **Double (D)** - Double bet, take 1 card, end turn
-4. **Dealer Turn** - Dealer reveals hidden card and plays (hits on 16, stands on 17)
-5. **Showdown** - Compare hands, payouts:
-   - Blackjack: 3:2 (bet × 2.5)
-   - Win: 1:1 (bet × 2.0)
-   - Push: Return bet
-
-### Controls
-
-| Input | Action |
-|-------|--------|
-| **ESC** | Back to menu / Quit |
-| **H** | Hit |
-| **S** | Stand |
-| **D** | Double down |
-| **Mouse** | Click buttons/cards |
-
-## 📂 Project Structure
-
-```
-card-fifty-two/
-├── __architecture/        # Architecture documentation
-│   └── baseline/
-│       ├── 00_project_setup.md
-│       ├── 01_data_structures.md
-│       ├── 02_rendering_pipeline.md
-│       ├── 03_module_boundaries.md
-│       └── 04_memory_strategy.md
-├── __design/             # Design documentation
-│   └── baseline/
-│       ├── 00_game_core.md
-│       ├── 01_card_system.md
-│       ├── 02_deck_management.md
-│       ├── 03_player_system.md
-│       ├── 04_game_state_machine.md
-│       ├── 05_blackjack_rules.md
-│       ├── 06_rendering_strategy.md
-│       └── 07_input_handling.md
-├── include/              # Header files (to be created)
-├── src/                  # Source files (to be created)
-├── resources/            # Assets (fonts, textures, audio)
-├── Makefile
-└── README.md
-```
-
-## 🛠️ Development
-
-### Build Modes
-
-```bash
-# Debug build
-make CFLAGS="-g -O0 -DDEBUG"
-
-# Release build
-make CFLAGS="-O3 -DNDEBUG"
-
-# Clean build
-make clean
-```
-
-### Testing
-
-```bash
-# Run with Valgrind (memory leak detection)
-valgrind --leak-check=full ./bin/card-fifty-two
-
-# Run with Address Sanitizer
-make CFLAGS="-fsanitize=address -g"
-./bin/card-fifty-two
-```
-
-## 📚 Documentation
-
-Comprehensive documentation available in `__architecture/` and `__design/` directories:
-
-- **Architecture**: Build system, data structures, rendering, modules, memory management
-- **Design**: Game core, card system, deck, players, state machine, rules, rendering, input
-
-## 🎨 Extensibility
-
-The architecture supports adding new card games:
-
-### Poker (Future)
-- **5-card hands** - Use same `Hand_t` structure
-- **Hand ranking** - Add `PokerHandType_t` enum
-- **Community cards** - Add `dArray_t* community_cards`
-- **Betting rounds** - New states: PREFLOP, FLOP, TURN, RIVER
-
-### Hearts (Future)
-- **Passing cards** - Add `STATE_PASSING`
-- **Trick tracking** - Add `dArray_t* current_trick`
-- **Scoring** - Store per-round scores in `state_data` table
-
-**All games share the same data structures - only rules change!**
-
-## 🔧 Technical Stack
-
-- **Language**: C (C11 standard)
-- **Graphics**: SDL2 via Archimedes framework
-- **Data Structures**: Daedalus (dArray, dTable, dString)
-- **Build System**: Make
-- **Cross-Platform**: Native + Emscripten/WebAssembly
-
-## 📝 Design Philosophy
-
-> **"Everything's a table or array"** - Daedalus ideology
-
-- All dynamic collections use `dArray_t` or `dTable_t`
-- Cards are value types (no heap allocation)
-- Global texture cache for O(1) lookups
-- Clear ownership model prevents memory leaks
-- No raw pointers in game data
-
-## 🤝 Contributing
-
-This is a tech demo for the **MIDAS Toolchain**:
-- **Metis**: C linter
-- **Ixion**: Memory safety tools
-- **Daedalus**: Core library (this project)
-- **Archimedes**: UI framework (this project)
-- **Sisyphus**: Testing framework
-
-## 📄 License
-
-[Specify license - GPL-2.0 like Archimedes/Daedalus?]
-
-## 🙏 Acknowledgments
-
-Built with:
-- [Archimedes](https://github.com/McCoy1701/Archimedes) - SDL2 game framework
-- [Daedalus](https://github.com/McCoy1701/Daedalus) - Data structures library
+Tech demo for [Archimedes](https://github.com/McCoy1701/Archimedes) (SDL2 framework) + [Daedalus](https://github.com/McCoy1701/Daedalus) (data structures). Shows how to build maintainable game UIs without raw pointers or manual memory chaos.
 
 ---
 
-**Ready to play? Run `make && make run` to start!** 🎴
+## 🎯 Tech Demo Highlights
+
+- **Scene → Section → Component** architecture with clear boundaries
+- **String handling patterns**: Static storage (`char[]`) vs dynamic building (`dString_t*`)
+- **Memory safety**: Everything's a table or array - zero naked pointers
+- **Reusable components**: Button, MenuItem, CardGridModal used across multiple scenes
+- **Tutorial system**: Step-by-step overlay with spotlight and event listeners
+
+---
+
+## 🏗️ Architecture in Action
+
+### Scene → Section → Component Hierarchy
+
+| Layer | File | Responsibility | Example |
+|-------|------|----------------|---------|
+| **Scene** | [`sceneBlackjack.c`](src/scenes/sceneBlackjack.c) | Game loop, state machine, input routing | Blackjack game |
+| **Section** | [`playerSection.c`](src/scenes/sections/playerSection.c) | Layout group (title, cards, chips) | Player's hand area |
+| **Component** | [`button.c`](src/scenes/components/button.c) | Reusable UI element | Hit/Stand/Double buttons |
+
+### Real Implementation Examples
+
+**Button Component** (Pattern 1: Static Storage)
+```c
+// include/scenes/components/button.h
+typedef struct Button {
+    char label[256];           // Fixed buffer - set once, rarely changes
+    char hotkey_hint[64];      // Static storage with strncpy()
+    int x, y, w, h;
+    bool enabled;
+} Button_t;
+```
+[→ button.h](include/scenes/components/button.h) | [→ button.c](src/scenes/components/button.c)
+
+**PlayerSection** (Pattern 2: Dynamic Building)
+```c
+// src/scenes/sections/playerSection.c
+dString_t* info = d_InitString();
+d_FormatString(info, "%s: %d%s", player->name, player->score,
+               player->is_bust ? " (BUST)" : "");
+a_DrawText((char*)d_PeekString(info), x, y, ...);
+d_DestroyString(info);  // Temporary string for this frame
+```
+[→ playerSection.c](src/scenes/sections/playerSection.c)
+
+**Component Reuse**
+- `Button_t` used in: ActionPanel (betting/actions), TopBarSection (settings), PauseMenuSection (resume/quit)
+- `MenuItem_t` used in: MainMenuSection, PauseMenuSection, SettingsScene
+- `CardGridModal_t` used in: DrawPileModal, DiscardPileModal
+
+[→ All Components](src/scenes/components/) | [→ All Sections](src/scenes/sections/)
+
+---
+
+## 🔑 Key Design Patterns
+
+### 1. String Handling Decision Guide
+
+**Use `char[]` for static storage:**
+```c
+// Labels that rarely change
+char label[256];
+strncpy(button->label, "Hit", sizeof(button->label) - 1);
+```
+Examples: [button.c:43](src/scenes/components/button.c#L43), [menuItem.c:43](src/scenes/components/menuItem.c#L43), [actionPanel.h:20](include/scenes/sections/actionPanel.h#L20)
+
+**Use `dString_t*` for dynamic building:**
+```c
+// Formatting with variables (created/destroyed each frame)
+dString_t* str = d_InitString();
+d_FormatString(str, "Score: %d | Bet: %d", score, bet);
+a_DrawText((char*)d_PeekString(str), x, y, ...);
+d_DestroyString(str);
+```
+Examples: [playerSection.c:113](src/scenes/sections/playerSection.c#L113), [dealerSection.c:109](src/scenes/sections/dealerSection.c#L109), [deckViewPanel.c:94](src/scenes/sections/deckViewPanel.c#L94)
+
+### 2. Memory Ownership
+
+**Stack-allocated singletons** (scene-scoped):
+```c
+static Deck_t g_test_deck;        // Scene singleton
+static GameContext_t g_game;      // Scene singleton
+InitDeck(&g_test_deck, 1);        // Init/Cleanup pattern
+```
+[→ sceneBlackjack.c:47-48](src/scenes/sceneBlackjack.c#L47-L48)
+
+**Heap-allocated components** (created/destroyed):
+```c
+Button_t* btn = CreateButton(x, y, w, h, "Hit");
+// ... use button ...
+DestroyButton(&btn);  // Frees memory, sets pointer to NULL
+```
+[→ button.c:18](src/scenes/components/button.c#L18)
+
+### 3. Data Flow Example: Button Click
+
+1. **User clicks** → `app.mouse.pressed` set by `a_DoInput()` (Archimedes)
+2. **Button detects** → `IsButtonClicked(button)` checks mouse bounds ([button.c:85](src/scenes/components/button.c#L85))
+3. **Scene handles** → `HandleBettingInput()` processes click ([sceneBlackjack.c:431](src/scenes/sceneBlackjack.c#L431))
+4. **Game logic** → `ProcessBettingInput()` validates and updates state ([game.c](src/game.c))
+5. **Render reflects** → `RenderButton()` shows updated state ([button.c:130](src/scenes/components/button.c#L130))
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+```bash
+# Ubuntu/Debian
+sudo apt-get install build-essential libsdl2-dev libsdl2-image-dev \
+    libsdl2-ttf-dev libsdl2-mixer-dev libcjson-dev
+
+# Install Archimedes + Daedalus (see their repos for instructions)
+```
+
+### Build & Run
+```bash
+git clone <this-repo>
+cd card-fifty-two
+make
+./bin/card-fifty-two
+```
+
+### Controls
+| Key | Action |
+|-----|--------|
+| **ESC** | Pause / Menu |
+| **H** | Hit (draw card) |
+| **S** | Stand (end turn) |
+| **D** | Double down |
+| **1-3** | Place bet (10/50/100) |
+| **V** | View draw pile |
+| **C** | View discard pile |
+
+---
+
+## 📚 For Developers
+
+**Architecture Documentation:**
+- [Data Structures](__architecture/baseline/01_data_structures.md) - Deck, Hand, Player, string patterns
+- [Components](__architecture/rendering/02_components.md) - Button, MenuItem, CardGridModal
+- [Scenes](__architecture/rendering/01_scenes.md) - Scene structure, FlexBox layout
+
+**Design Documentation:**
+- [Game State Machine](__design/baseline/04_game_state_machine.md) - State transitions, input flow
+- [Blackjack Rules](__design/baseline/01_blackjack_core.md) - Game logic, scoring, dealer AI
+
+**Key Files:**
+- [`CLAUDE.md`](CLAUDE.md) - Constitutional patterns for AI collaboration (explains "Everything's a table or array")
+- [`common.h`](include/common.h) - Global includes, constants, color palette
+- [`Makefile`](Makefile) - Build system with native + web targets
+
+---
+
+## 🛠️ Technical Stack
+
+- **Language**: C11
+- **Graphics**: SDL2 via Archimedes
+- **Data Structures**: Daedalus (`dArray_t`, `dTable_t`, `dString_t`)
+- **Build**: Make + Emscripten (web)
+- **Platforms**: Linux, macOS, Windows, Web
+
+---
+
+## 🎨 Design Philosophy
+
+> **"Everything's a table or array"** - No raw pointers, no manual `malloc` for collections.
+
+**Constitutional Patterns** (from [`CLAUDE.md`](CLAUDE.md)):
+1. All collections use `dArray_t` or `dTable_t` (never raw arrays)
+2. Cards are value types (48 bytes, copied by value)
+3. Players/components are pointer types (heap allocated)
+4. Scenes use Archimedes delegate pattern (`app.delegate.logic`, `app.delegate.draw`)
+5. String handling: `char[]` for static, `dString_t*` for dynamic
+
+**Benefits:**
+- ✅ Memory safety (Daedalus handles allocations)
+- ✅ Clear ownership model (who frees what)
+- ✅ Testable (mockable tables, clear data flow)
+- ✅ Portable (pure C, works on web via Emscripten)
+
+---
+
+## 🤝 Contributing
+
+This is a **reference implementation** demonstrating:
+- Clean C architecture without OOP
+- Scene/Section/Component separation
+- Memory-safe data structures
+- String handling best practices
+- Tutorial system implementation
+
+Pull requests welcome for:
+- Bug fixes
+- New card games (Poker, Hearts)
+- Component improvements
+- Documentation clarity
+
+---
+
+## 📄 License
+
+[To be determined - likely GPL-2.0 to match Archimedes/Daedalus]
+
+---
+
+## 🙏 Credits
+
+Built with:
+- [Archimedes](https://github.com/McCoy1701/Archimedes) by McCoy1701
+- [Daedalus](https://github.com/McCoy1701/Daedalus) by McCoy1701
+
+Part of the **MIDAS Toolchain** ecosystem.
+
+---
+
+**Ready to explore?** Start with [`sceneBlackjack.c`](src/scenes/sceneBlackjack.c) → [`playerSection.c`](src/scenes/sections/playerSection.c) → [`button.c`](src/scenes/components/button.c) 🎴

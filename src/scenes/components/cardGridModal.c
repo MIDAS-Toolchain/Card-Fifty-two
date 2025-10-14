@@ -44,13 +44,9 @@ CardGridModal_t* CreateCardGridModal(const char* title, dArray_t* cards, bool sh
         return NULL;
     }
 
-    modal->title = d_InitString();
-    if (!modal->title) {
-        free(modal);
-        d_LogError("Failed to allocate CardGridModal title");
-        return NULL;
-    }
-    d_SetString(modal->title, title ? title : "Cards", 0);
+    // Set title using strncpy (static storage pattern)
+    strncpy(modal->title, title ? title : "Cards", sizeof(modal->title) - 1);
+    modal->title[sizeof(modal->title) - 1] = '\0';
 
     modal->cards = cards;  // NOT owned - just a pointer
     modal->is_visible = false;
@@ -71,9 +67,7 @@ void DestroyCardGridModal(CardGridModal_t** modal) {
 
     CardGridModal_t* m = *modal;
 
-    if (m->title) {
-        d_DestroyString(m->title);
-    }
+    // No string cleanup needed - using fixed buffer!
 
     if (m->shuffled_indices) {
         free(m->shuffled_indices);
@@ -248,8 +242,8 @@ void RenderCardGridModal(CardGridModal_t* modal) {
                COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, COLOR_HEADER_BORDER.a);
 
     // Draw title
-    const char* title_str = d_PeekString(modal->title);
-    a_DrawText((char*)title_str, SCREEN_WIDTH / 2, modal_y + 12,
+    // Cast safe: a_DrawText is read-only, using fixed char buffer
+    a_DrawText((char*)modal->title, SCREEN_WIDTH / 2, modal_y + 12,
                COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b,
                FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
 

@@ -23,7 +23,7 @@
 #define SCROLLBAR_MIN_HANDLE_HEIGHT  40
 
 typedef struct CardGridModal {
-    dString_t* title;               // Modal title (e.g., "Draw Pile (Randomized)")
+    char title[256];                // Static modal title (e.g., "Draw Pile (Randomized)")
     dArray_t* cards;                // Pointer to card array (NOT owned - points to deck->cards or deck->discard_pile)
     bool is_visible;                // Whether modal is displayed
     bool should_shuffle_display;    // If true, display cards in random order (for draw pile)

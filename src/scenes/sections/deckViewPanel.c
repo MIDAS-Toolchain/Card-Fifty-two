@@ -84,23 +84,22 @@ void RenderDeckViewPanel(DeckViewPanel_t* panel, int y) {
     // Update button positions from FlexBox
     UpdateDeckViewPanelButtons(panel);
 
-    // Update count text for each button and render
+    // Render each button with dynamically calculated count text
     for (int i = 0; i < panel->button_count; i++) {
         if (!panel->buttons[i]) continue;
 
         DeckButton_t* btn = panel->buttons[i];
 
-        // Update count text based on deck state
+        // Build count text dynamically (temporary string for this frame)
         dString_t* count_text = d_InitString();
         if (i == 0) {
             d_FormatString(count_text, "Draw: %zu", GetDeckSize(panel->deck));
         } else {
             d_FormatString(count_text, "Discard: %zu", GetDiscardSize(panel->deck));
         }
-        SetDeckButtonCountText(btn, d_PeekString(count_text));
-        d_DestroyString(count_text);
 
-        // Render button (includes count above and hotkey below)
-        RenderDeckButton(btn);
+        // Render button with count text (includes count above and hotkey below)
+        RenderDeckButton(btn, d_PeekString(count_text));
+        d_DestroyString(count_text);
     }
 }
