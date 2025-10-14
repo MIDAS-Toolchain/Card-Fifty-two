@@ -22,9 +22,9 @@ ActionPanel_t* CreateActionPanel(const char* instruction, Button_t** buttons, in
         return NULL;
     }
 
-    // Initialize instruction text (dString_t, not char[])
-    panel->instruction_text = d_InitString();
-    d_SetString(panel->instruction_text, instruction, 0);
+    // Set instruction text using strncpy (static storage pattern)
+    strncpy(panel->instruction_text, instruction, sizeof(panel->instruction_text) - 1);
+    panel->instruction_text[sizeof(panel->instruction_text) - 1] = '\0';
 
     // Store button references (panel does NOT own them)
     panel->buttons = buttons;
@@ -56,10 +56,7 @@ ActionPanel_t* CreateActionPanel(const char* instruction, Button_t** buttons, in
 void DestroyActionPanel(ActionPanel_t** panel) {
     if (!panel || !*panel) return;
 
-    // Destroy instruction text
-    if ((*panel)->instruction_text) {
-        d_DestroyString((*panel)->instruction_text);
-    }
+    // No string cleanup needed - using fixed buffer!
 
     // Destroy FlexBox (but NOT buttons - caller owns them)
     if ((*panel)->button_row) {
@@ -105,7 +102,8 @@ void RenderActionPanel(ActionPanel_t* panel, int y) {
     int button_y = a_FlexGetItemY(panel->button_row, 0);
 
     // Instruction text centered above buttons
-    a_DrawText((char*)d_PeekString(panel->instruction_text), SCREEN_WIDTH / 2, button_y - TEXT_BUTTON_GAP,
+    // Cast safe: a_DrawText is read-only, using fixed char buffer
+    a_DrawText((char*)panel->instruction_text, SCREEN_WIDTH / 2, button_y - TEXT_BUTTON_GAP,
                255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
 
     // Render all buttons

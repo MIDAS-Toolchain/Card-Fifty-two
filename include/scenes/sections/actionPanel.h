@@ -17,7 +17,7 @@
 
 typedef struct ActionPanel {
     FlexBox_t* button_row;         // Horizontal FlexBox for buttons
-    dString_t* instruction_text;   // Text above buttons (e.g., "Place Your Bet:")
+    char instruction_text[256];    // Static instruction text (e.g., "Place Your Bet:")
     Button_t** buttons;            // Array of button pointers (NOT owned by panel)
     int button_count;
 } ActionPanel_t;

@@ -10,26 +10,75 @@ Following Daedalus design principles, **all game data is stored in dynamic array
 - **`dString_t`** - Dynamic strings (replaces char[], snprintf, manual buffers)
 
 ### String Handling Pattern
-**NO raw char arrays, NO snprintf - use `dString_t` for ALL string operations:**
+
+**Two patterns based on use case:**
+
+#### Pattern 1: Static Storage (labels, names that rarely change)
+Use `char[]` buffers with `strncpy()`:
 
 ```c
-// ❌ WRONG - Manual buffer management
-char buffer[128];
-snprintf(buffer, sizeof(buffer), "Deck: %d cards", count);
+// ✅ CORRECT - Static label storage
+typedef struct Button {
+    char label[256];       // Fixed buffer
+    char hotkey[64];       // Fixed buffer
+} Button_t;
 
-// ✅ CORRECT - Daedalus dString_t
-dString_t* str = d_InitString();
-d_FormatString(str, "Deck: %d cards", count);
-const char* result = d_PeekString(str);  // Get const char* for APIs
-d_DestroyString(str);
+// Set label safely
+strncpy(button->label, "Hit", sizeof(button->label) - 1);
+button->label[sizeof(button->label) - 1] = '\0';
 ```
 
-**Why dString_t?**
-- No buffer overflow risks
-- Automatic memory management
-- Dynamic resizing
+**When to use `char[]`:**
+- Component labels (Button, MenuItem, MenuItemRow)
+- Section titles (static UI text)
+- Config strings that change rarely
+- Player names (set once, rarely changed)
+
+**Why `char[]` for static storage?**
+- Simple: no allocation/deallocation
+- Fast: no heap operations
+- Safe: fixed maximum length with proper bounds checking
+- Clean lifecycle: no `d_DestroyString()` calls needed
+
+#### Pattern 2: Dynamic Building (formatted strings with variables)
+Use `dString_t` for constructing/formatting:
+
+```c
+// ✅ CORRECT - Dynamic string formatting
+dString_t* score = d_InitString();
+d_FormatString(score, "Score: %d | Bet: %d", player->score, player->bet);
+// Cast safe: a_DrawText is read-only
+a_DrawText((char*)d_PeekString(score), x, y, ...);
+d_DestroyString(score);
+```
+
+**When to use `dString_t`:**
+- Formatting with variables (score displays, status messages)
+- Building strings with concatenation
+- Temporary strings in rendering functions
+- File path construction with dynamic values
+
+**Why `dString_t` for dynamic building?**
+- No buffer overflow risks (automatic resizing)
+- Complex formatting with `d_FormatString()`
+- Dynamic concatenation with `d_AppendToString()`
 - Thread-safe (no static buffers)
-- Consistent with "everything's a table or array" philosophy
+
+#### Anti-Pattern: DO NOT use `dString_t` for static labels
+```c
+// ❌ WRONG - Over-engineering static storage
+typedef struct Button {
+    dString_t* label;  // Don't do this!
+} Button_t;
+
+Button_t* btn = CreateButton(...);
+btn->label = d_InitString();        // Unnecessary allocation
+d_SetString(btn->label, "Hit", 0);  // Just storing static string
+// ... later ...
+d_DestroyString(btn->label);        // Unnecessary cleanup
+```
+
+**Problem:** `dString_t` is for **building** strings, not **storing** them!
 
 ## Primary Data Structures
 
@@ -120,11 +169,11 @@ typedef struct {
 
 ### 4. Player - Hash Table Entry
 
-**Constitutional Pattern: dString_t for name, Hand_t embedded as value**
+**Pattern: char[] for name (static storage), Hand_t embedded as value**
 
 ```c
 typedef struct {
-    dString_t* name;       // Player name (Constitutional: dString_t, not char[])
+    char name[128];        // Player name (static storage - rarely changes)
     int player_id;         // Unique ID
     Hand_t hand;           // Current hand (VALUE TYPE - embedded, not pointer)
     int chips;             // Currency/score
@@ -134,6 +183,11 @@ typedef struct {
     PlayerState_t state;   // WAITING, PLAYING, BUST, etc.
 } Player_t;
 ```
+
+**Rationale:**
+- Player names are static storage (set once at creation, rarely changed)
+- Using `char[]` avoids unnecessary heap allocation for simple strings
+- Consistent with Button/MenuItem pattern (static labels use `char[]`)
 
 **Storage:** Hash table keyed by `player_id` (int)
 ```c
@@ -172,7 +226,7 @@ SDL_Texture* LoadCardTexture(int card_id) {
     SDL_Texture** cached = (SDL_Texture**)d_GetDataFromTable(g_card_textures, &card_id);
     if (cached) return *cached;
 
-    // Constitutional pattern: dString_t, not char[]
+    // ✅ CORRECT: dString_t for dynamic path building
     dString_t* path = d_InitString();
     d_FormatString(path, "resources/textures/cards/%d.png", card_id);
     SDL_Texture* tex = a_LoadTexture(d_PeekString(path));
