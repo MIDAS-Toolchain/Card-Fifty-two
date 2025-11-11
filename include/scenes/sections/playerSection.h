@@ -1,6 +1,6 @@
 /*
  * Player Section
- * FlexBox section for player name, score, chips, bet, and card display
+ * FlexBox section for player name, score, and card display
  * Constitutional pattern: Stack-allocated struct, proper lifecycle
  */
 
@@ -9,23 +9,28 @@
 
 #include "../../common.h"
 #include "../../player.h"
-#include "deckViewPanel.h"
+#include "../../deck.h"
+
+// Forward declaration to avoid circular dependency
+typedef struct DeckButton DeckButton_t;
 
 // ============================================================================
 // PLAYER SECTION
 // ============================================================================
 
 typedef struct PlayerSection {
-    FlexBox_t* layout;          // Internal vertical FlexBox (optional, for future expansion)
-    DeckViewPanel_t* deck_panel; // Deck/Discard button panel
+    FlexBox_t* layout;               // Internal vertical FlexBox (optional, for future expansion)
+    CardHoverState_t hover_state;    // Card hover animation state
 } PlayerSection_t;
 
 /**
  * CreatePlayerSection - Initialize player section
  *
- * @param deck_buttons - Array of 2 DeckButtons [View Deck, View Discard] (NOT owned)
- * @param deck - Pointer to game deck for counts
+ * @param deck_buttons - DEPRECATED: Pass NULL
+ * @param deck - DEPRECATED: Pass NULL
  * @return PlayerSection_t* - Heap-allocated section (caller must destroy)
+ *
+ * NOTE: Deck buttons moved to LeftSidebarSection
  */
 PlayerSection_t* CreatePlayerSection(DeckButton_t** deck_buttons, Deck_t* deck);
 
@@ -37,7 +42,7 @@ PlayerSection_t* CreatePlayerSection(DeckButton_t** deck_buttons, Deck_t* deck);
 void DestroyPlayerSection(PlayerSection_t** section);
 
 /**
- * RenderPlayerSection - Render player info, chips, bet, and cards
+ * RenderPlayerSection - Render player info and cards
  *
  * @param section - Player section component
  * @param player - Player to render
@@ -45,8 +50,9 @@ void DestroyPlayerSection(PlayerSection_t** section);
  *
  * Handles:
  * - Player name with full score
- * - Chips and bet info
  * - Centered card rendering
+ *
+ * NOTE: Chips/bet info moved to LeftSidebarSection
  */
 void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y);
 

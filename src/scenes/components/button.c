@@ -10,6 +10,7 @@
 #define COLOR_BUTTON_DISABLED   ((aColor_t){80, 80, 80, 255})    // Gray
 #define COLOR_BUTTON_TEXT       ((aColor_t){235, 237, 233, 255}) // #ebede9 - off-white
 #define COLOR_BUTTON_BORDER     ((aColor_t){235, 237, 233, 255}) // #ebede9 - off-white
+#define COLOR_BUTTON_INDICATOR  ((aColor_t){232, 193, 112, 255}) // #e8c170 - yellow/gold ">" (matches menu selection)
 
 // ============================================================================
 // LIFECYCLE
@@ -27,6 +28,7 @@ Button_t* CreateButton(int x, int y, int w, int h, const char* label) {
     button->w = w;
     button->h = h;
     button->enabled = true;
+    button->is_selected = false;
     button->was_pressed = false;
     button->user_data = NULL;
 
@@ -70,6 +72,11 @@ void SetButtonHotkey(Button_t* button, const char* hotkey) {
 void SetButtonEnabled(Button_t* button, bool enabled) {
     if (!button) return;
     button->enabled = enabled;
+}
+
+void SetButtonSelected(Button_t* button, bool selected) {
+    if (!button) return;
+    button->is_selected = selected;
 }
 
 void SetButtonPosition(Button_t* button, int x, int y) {
@@ -130,7 +137,7 @@ bool IsButtonHovered(const Button_t* button) {
 void RenderButton(const Button_t* button) {
     if (!button) return;
 
-    // Button background color
+    // Button background color - hover only, selection doesn't change background
     aColor_t bg_color = button->enabled ? COLOR_BUTTON_BG : COLOR_BUTTON_DISABLED;
 
     // Hover state (lighter blue)
@@ -142,9 +149,23 @@ void RenderButton(const Button_t* button) {
     a_DrawFilledRect(button->x, button->y, button->w, button->h,
                      bg_color.r, bg_color.g, bg_color.b, bg_color.a);
 
+    // Draw yellow selection overlay if arrow-key selected (~25% opacity)
+    if (button->is_selected && button->enabled) {
+        a_DrawFilledRect(button->x, button->y, button->w, button->h, 232, 193, 112, 64);  // #e8c170
+    }
+
     // Draw border (off-white to match text)
     a_DrawRect(button->x, button->y, button->w, button->h,
                COLOR_BUTTON_BORDER.r, COLOR_BUTTON_BORDER.g, COLOR_BUTTON_BORDER.b, COLOR_BUTTON_BORDER.a);
+
+    // Draw selection indicator ">" if selected (to the LEFT of button, vertically centered)
+    if (button->is_selected && button->enabled) {
+        int indicator_x = button->x - 25;  // 25px to the left of button
+        int indicator_y = button->y + button->h / 2 - 8;  // Vertically centered
+        a_DrawText(">", indicator_x, indicator_y,
+                   COLOR_BUTTON_INDICATOR.r, COLOR_BUTTON_INDICATOR.g, COLOR_BUTTON_INDICATOR.b,
+                   FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+    }
 
     // Draw label (properly centered, off-white text)
     int text_w, text_h;

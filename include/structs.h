@@ -93,12 +93,42 @@ typedef struct Player {
     dString_t* name;        // Player name (Constitutional: dString_t, not char[])
     int player_id;          // Unique ID (0 = dealer, 1+ = players)
     Hand_t hand;            // Current hand (VALUE TYPE - embedded, not pointer)
-    int chips;              // Available chips
+    int chips;              // Available chips (also used as HP in combat)
+    float display_chips;    // Displayed chips (tweened for smooth HP bar drain)
     int current_bet;        // Amount bet this round
     bool is_dealer;         // true if dealer
     bool is_ai;             // true if AI-controlled
     PlayerState_t state;    // Current player state
+
+    // Portrait system (hybrid for dynamic effects)
+    SDL_Surface* portrait_surface;  // Source pixel data (owned, for manipulation)
+    SDL_Texture* portrait_texture;  // Cached GPU texture (owned, for rendering)
+    bool portrait_dirty;            // true if surface changed, needs texture rebuild
+
+    int sanity;             // Mental state (0-100)
+    int max_sanity;         // Max sanity value
 } Player_t;
+
+// ============================================================================
+// FORWARD DECLARATIONS
+// ============================================================================
+
+// Forward declare Enemy_t (defined in enemy.h)
+typedef struct Enemy Enemy_t;
+
+// ============================================================================
+// CARD HOVER STATE (shared between dealer and player sections)
+// ============================================================================
+
+/**
+ * CardHoverState_t - Tracks hover animation state for cards
+ *
+ * Used for smooth hover effects (scale + lift) on cards
+ */
+typedef struct CardHoverState {
+    int hovered_card_index;   // Currently hovered card index (-1 = none)
+    float hover_amount;       // 0.0 to 1.0 (tweened for smooth transition)
+} CardHoverState_t;
 
 // ============================================================================
 // GAME CONTEXT STRUCTURE
@@ -121,6 +151,10 @@ typedef struct GameContext {
     Deck_t* deck;                   // Pointer to game deck
     float state_timer;              // Delta time accumulator for state transitions
     int round_number;               // Current round counter
+
+    // Combat system
+    Enemy_t* current_enemy;         // Current combat enemy (NULL if not in combat)
+    bool is_combat_mode;            // true if currently in combat encounter
 } GameContext_t;
 
 #endif // STRUCTS_H

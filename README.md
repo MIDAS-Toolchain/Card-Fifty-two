@@ -43,11 +43,11 @@ typedef struct Button {
 **PlayerSection** (Pattern 2: Dynamic Building)
 ```c
 // src/scenes/sections/playerSection.c
-dString_t* info = d_InitString();
-d_FormatString(info, "%s: %d%s", player->name, player->score,
+dString_t* info = d_StringInit();
+d_StringFormat(info, "%s: %d%s", player->name, player->score,
                player->is_bust ? " (BUST)" : "");
-a_DrawText((char*)d_PeekString(info), x, y, ...);
-d_DestroyString(info);  // Temporary string for this frame
+a_DrawText((char*)d_StringPeek(info), x, y, ...);
+d_StringDestroy(info);  // Temporary string for this frame
 ```
 [→ playerSection.c](src/scenes/sections/playerSection.c)
 
@@ -75,10 +75,10 @@ Examples: [button.c:43](src/scenes/components/button.c#L43), [menuItem.c:43](src
 **Use `dString_t*` for dynamic building:**
 ```c
 // Formatting with variables (created/destroyed each frame)
-dString_t* str = d_InitString();
-d_FormatString(str, "Score: %d | Bet: %d", score, bet);
-a_DrawText((char*)d_PeekString(str), x, y, ...);
-d_DestroyString(str);
+dString_t* str = d_StringInit();
+d_StringFormat(str, "Score: %d | Bet: %d", score, bet);
+a_DrawText((char*)d_StringPeek(str), x, y, ...);
+d_StringDestroy(str);
 ```
 Examples: [playerSection.c:113](src/scenes/sections/playerSection.c#L113), [dealerSection.c:109](src/scenes/sections/dealerSection.c#L109), [deckViewPanel.c:94](src/scenes/sections/deckViewPanel.c#L94)
 

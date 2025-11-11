@@ -46,10 +46,10 @@ void RenderTitleSection(TitleSection_t* section, const GameContext_t* game, int 
                255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
 
     // State info below title
-    dString_t* state_str = d_InitString();
-    d_FormatString(state_str, "State: %s | Round: %d",
+    dString_t* state_str = d_StringInit();
+    d_StringFormat(state_str, "State: %s | Round: %d",
                    StateToString(game->current_state), game->round_number);
-    a_DrawText((char*)d_PeekString(state_str), SCREEN_WIDTH / 2, y + STATE_TEXT_Y_OFFSET,
+    a_DrawText((char*)d_StringPeek(state_str), SCREEN_WIDTH / 2, y + STATE_TEXT_Y_OFFSET,
                200, 200, 200, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
-    d_DestroyString(state_str);
+    d_StringDestroy(state_str);
 }

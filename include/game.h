@@ -100,6 +100,11 @@ void UpdateShowdownState(GameContext_t* game);
  */
 void UpdateRoundEndState(GameContext_t* game);
 
+/**
+ * UpdateCombatVictoryState - Handle combat victory screen display
+ */
+void UpdateCombatVictoryState(GameContext_t* game);
+
 // ============================================================================
 // PLAYER ACTIONS
 // ============================================================================
@@ -176,11 +181,25 @@ const Card_t* GetDealerUpcard(const GameContext_t* game);
 // ============================================================================
 
 /**
- * DealInitialHands - Deal 2 cards to each player
+ * DealInitialHands - Deal 2 cards to each player with animations
  *
  * @param game - Game context
  */
 void DealInitialHands(GameContext_t* game);
+
+/**
+ * DealCardWithAnimation - Deal card to player and spawn animation
+ *
+ * Helper function that deals a card, adds it to hand, and starts animation
+ * from deck position to calculated hand position.
+ *
+ * @param deck - Deck to deal from
+ * @param hand - Hand to add card to
+ * @param player - Player receiving the card (used to calculate correct Y position)
+ * @param face_up - Should card be face-up?
+ * @return true if card dealt successfully, false if deck empty
+ */
+bool DealCardWithAnimation(Deck_t* deck, Hand_t* hand, Player_t* player, bool face_up);
 
 /**
  * ResolveRound - Calculate winners and apply payouts

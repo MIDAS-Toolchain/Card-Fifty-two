@@ -8,9 +8,14 @@
 #include "../include/player.h"
 #include "../include/deck.h"
 #include "../include/hand.h"
+#include "../include/enemy.h"
+#include "../include/scenes/sceneBlackjack.h"
+#include "../include/cardAnimation.h"
+#include "../include/tween/tween.h"
 
 // External globals
 extern dTable_t* g_players;
+extern TweenManager_t g_tween_manager;  // From sceneBlackjack.c
 
 // ============================================================================
 // GAME CONTEXT LIFECYCLE
@@ -66,6 +71,10 @@ void InitGameContext(GameContext_t* game, Deck_t* deck) {
         return;
     }
 
+    // Initialize combat system
+    game->current_enemy = NULL;
+    game->is_combat_mode = false;
+
     d_LogInfo("GameContext initialized successfully");
 }
 
@@ -106,14 +115,15 @@ void CleanupGameContext(GameContext_t* game) {
 
 const char* StateToString(GameState_t state) {
     switch (state) {
-        case STATE_MENU:        return "MENU";
-        case STATE_BETTING:     return "BETTING";
-        case STATE_DEALING:     return "DEALING";
-        case STATE_PLAYER_TURN: return "PLAYER_TURN";
-        case STATE_DEALER_TURN: return "DEALER_TURN";
-        case STATE_SHOWDOWN:    return "SHOWDOWN";
-        case STATE_ROUND_END:   return "ROUND_END";
-        default:                return "UNKNOWN";
+        case STATE_MENU:          return "MENU";
+        case STATE_BETTING:       return "BETTING";
+        case STATE_DEALING:       return "DEALING";
+        case STATE_PLAYER_TURN:   return "PLAYER_TURN";
+        case STATE_DEALER_TURN:   return "DEALER_TURN";
+        case STATE_SHOWDOWN:      return "SHOWDOWN";
+        case STATE_ROUND_END:     return "ROUND_END";
+        case STATE_COMBAT_VICTORY: return "COMBAT_VICTORY";
+        default:                  return "UNKNOWN";
     }
 }
 
@@ -229,6 +239,10 @@ void UpdateGameLogic(GameContext_t* game, float dt) {
 
         case STATE_ROUND_END:
             UpdateRoundEndState(game);
+            break;
+
+        case STATE_COMBAT_VICTORY:
+            UpdateCombatVictoryState(game);
             break;
     }
 }
@@ -377,10 +391,12 @@ void UpdateDealerTurnState(GameContext_t* game, float dt) {
     DealerPhase_t phase = GetDealerPhase(game);
 
     const char* phase_names[] = {"CHECK_REVEAL", "DECIDE", "ACTION", "WAIT"};
-    d_LogInfoF("UpdateDealerTurnState: phase=%s, dealer_total=%d, timer=%.2f",
-               phase_names[phase],
-               dealer->hand.total_value,
-               game->state_timer);
+    d_LogRateLimitedF(D_LOG_RATE_LIMIT_FLAG_HASH_FORMAT_STRING, D_LOG_LEVEL_INFO,
+                      1, 1.0,  // 1 log per 1 second
+                      "UpdateDealerTurnState: phase=%s, dealer_total=%d, timer=%.2f",
+                      phase_names[phase],
+                      dealer->hand.total_value,
+                      game->state_timer);
 
     switch (phase) {
         case DEALER_PHASE_CHECK_REVEAL:
@@ -452,12 +468,8 @@ void UpdateDealerTurnState(GameContext_t* game, float dt) {
         case DEALER_PHASE_ACTION:
             {
                 if (GetBoolFlag(game, "dealer_action_hit", false)) {
-                    // HIT: Deal a card
-                    Card_t card = DealCard(game->deck);
-                    if (card.card_id != -1) {
-                        card.face_up = true;
-                        LoadCardTexture(&card);
-                        AddCardToHand(&dealer->hand, card);
+                    // HIT: Deal a card with animation
+                    if (DealCardWithAnimation(game->deck, &dealer->hand, dealer, true)) {
                         d_LogInfoF("Dealer hits - new total: %d", dealer->hand.total_value);
                     }
                 } else {
@@ -506,13 +518,34 @@ void UpdateDealerTurnState(GameContext_t* game, float dt) {
 
 void UpdateShowdownState(GameContext_t* game) {
     // Showdown executed in TransitionState entry action
-    // Immediately move to round end
-    TransitionState(game, STATE_ROUND_END);
+
+    // Check if enemy was defeated in combat
+    if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
+        TransitionState(game, STATE_COMBAT_VICTORY);
+    } else {
+        // Normal round end
+        TransitionState(game, STATE_ROUND_END);
+    }
 }
 
 void UpdateRoundEndState(GameContext_t* game) {
     // Display results for 3 seconds
     if (game->state_timer > 3.0f) {
+        StartNewRound(game);
+        TransitionState(game, STATE_BETTING);
+    }
+}
+
+void UpdateCombatVictoryState(GameContext_t* game) {
+    // Display victory for 3 seconds
+    if (game->state_timer > 3.0f) {
+        // Clear combat mode
+        if (game->current_enemy) {
+            DestroyEnemy(&game->current_enemy);
+            game->is_combat_mode = false;
+        }
+
+        // Return to betting for next round
         StartNewRound(game);
         TransitionState(game, STATE_BETTING);
     }
@@ -530,12 +563,8 @@ void ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerAction_t a
 
     switch (action) {
         case ACTION_HIT: {
-            Card_t card = DealCard(game->deck);
-            if (card.card_id != -1) {
-                card.face_up = true;
-                LoadCardTexture(&card);
-                AddCardToHand(&player->hand, card);
-
+            // Deal card with animation
+            if (DealCardWithAnimation(game->deck, &player->hand, player, true)) {
                 d_LogInfoF("%s hits (hand value: %d)",
                           GetPlayerName(player), player->hand.total_value);
 
@@ -562,12 +591,7 @@ void ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerAction_t a
         case ACTION_DOUBLE:
             if (CanAffordBet(player, player->current_bet)) {
                 PlaceBet(player, player->current_bet);  // Double the bet
-                Card_t card = DealCard(game->deck);
-                if (card.card_id != -1) {
-                    card.face_up = true;
-                    LoadCardTexture(&card);
-                    AddCardToHand(&player->hand, card);
-                }
+                DealCardWithAnimation(game->deck, &player->hand, player, true);
                 player->state = player->hand.is_bust ? PLAYER_STATE_BUST : PLAYER_STATE_STAND;
                 game->current_player_index++;
                 d_LogInfoF("%s doubles down", GetPlayerName(player));
@@ -696,14 +720,9 @@ void DealerTurn(GameContext_t* game) {
         }
     }
 
-    // Dealer hits on 16 or less
+    // Dealer hits on 16 or less (with animations)
     while (dealer->hand.total_value < 17) {
-        Card_t card = DealCard(game->deck);
-        if (card.card_id != -1) {
-            card.face_up = true;
-            LoadCardTexture(&card);
-            AddCardToHand(&dealer->hand, card);
-        }
+        DealCardWithAnimation(game->deck, &dealer->hand, dealer, true);
     }
 
     d_LogInfoF("Dealer finishes with %d", dealer->hand.total_value);
@@ -725,12 +744,70 @@ const Card_t* GetDealerUpcard(const GameContext_t* game) {
 // ROUND MANAGEMENT
 // ============================================================================
 
+// Deck position (center-right of screen, approximate)
+#define DECK_POSITION_X 850.0f
+#define DECK_POSITION_Y 300.0f
+#define CARD_DEAL_DURATION 0.4f  // Seconds for card to slide from deck to hand
+
+bool DealCardWithAnimation(Deck_t* deck, Hand_t* hand, Player_t* player, bool face_up) {
+    if (!deck || !hand || !player) return false;
+
+    // Deal card from deck
+    Card_t card = DealCard(deck);
+    if (card.card_id == -1) {
+        d_LogError("DealCardWithAnimation: Deck empty");
+        return false;
+    }
+
+    // Set face state and load texture
+    card.face_up = face_up;
+    LoadCardTexture(&card);
+
+    // Add to hand (this becomes the last card in hand)
+    AddCardToHand(hand, card);
+    size_t card_index = hand->cards->count - 1;
+    size_t hand_size = hand->cards->count;
+
+    // Calculate base Y position based on player type
+    int base_y;
+    if (player->is_dealer) {
+        // Dealer: LAYOUT_TOP_MARGIN + SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP
+        base_y = LAYOUT_TOP_MARGIN + SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP;
+    } else {
+        // Player: LAYOUT_TOP_MARGIN + DEALER_AREA_HEIGHT + BUTTON_AREA_HEIGHT +
+        //         SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP
+        base_y = LAYOUT_TOP_MARGIN + DEALER_AREA_HEIGHT + BUTTON_AREA_HEIGHT +
+                 SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP;
+    }
+
+    // Calculate final position using shared fan layout
+    int target_x_int, target_y_int;
+    CalculateCardFanPosition(card_index, hand_size, base_y, &target_x_int, &target_y_int);
+
+    float target_x = (float)target_x_int;
+    float target_y = (float)target_y_int;
+
+    // Get managers (from sceneBlackjack.c)
+    CardTransitionManager_t* anim_mgr = GetCardTransitionManager();
+    TweenManager_t* tween_mgr = GetTweenManager();
+
+    // Start animation from deck to hand
+    StartCardDealAnimation(anim_mgr, tween_mgr,
+                           hand, card_index,
+                           DECK_POSITION_X, DECK_POSITION_Y,
+                           target_x, target_y,
+                           CARD_DEAL_DURATION,
+                           face_up);  // Flip face-up halfway if needed
+
+    return true;
+}
+
 void DealInitialHands(GameContext_t* game) {
     if (!game) return;
 
     d_LogInfo("Dealing initial hands...");
 
-    // Deal 2 cards to each player
+    // Deal 2 cards to each player (with animations)
     for (int round = 0; round < 2; round++) {
         for (size_t i = 0; i < game->active_players->count; i++) {
             int* id = (int*)d_IndexDataFromArray(game->active_players, i);
@@ -738,16 +815,14 @@ void DealInitialHands(GameContext_t* game) {
 
             if (!player) continue;
 
-            Card_t card = DealCard(game->deck);
-            if (card.card_id == -1) {
-                d_LogError("Deck empty during dealing!");
+            // Dealer's first card is face down
+            bool face_up = !(player->is_dealer && round == 0);
+
+            // Deal card with animation
+            if (!DealCardWithAnimation(game->deck, &player->hand, player, face_up)) {
+                d_LogError("Failed to deal card during initial hands!");
                 return;
             }
-
-            // Dealer's first card is face down
-            card.face_up = !(player->is_dealer && round == 0);
-            LoadCardTexture(&card);
-            AddCardToHand(&player->hand, card);
         }
     }
 
@@ -785,40 +860,86 @@ void ResolveRound(GameContext_t* game) {
         if (!player || player->is_dealer) continue;
 
         const char* outcome = "";
+        int damage_dealt = 0;  // Damage to enemy
+        int damage_taken = 0;  // Damage to player
+
+        // Save bet amount BEFORE WinBet/LoseBet clears it
+        int bet_amount = player->current_bet;
+        int hand_value = player->hand.total_value;
 
         if (player->hand.is_bust) {
             LoseBet(player);
             player->state = PLAYER_STATE_LOST;
             outcome = "BUST - LOSE";
+            // Player loses bet = enemy dealt damage
+            damage_taken = bet_amount / 10;  // Convert chips to HP (÷10 scaling)
         } else if (player->hand.is_blackjack) {
             if (dealer->hand.is_blackjack) {
                 ReturnBet(player);
                 player->state = PLAYER_STATE_PUSH;
                 outcome = "PUSH";
+                // No damage on push
             } else {
                 WinBet(player, 1.5f);  // 3:2 payout
                 player->state = PLAYER_STATE_WON;
                 outcome = "BLACKJACK - WIN 3:2";
+                // Damage = hand_value × bet_amount
+                damage_dealt = hand_value * bet_amount;
             }
         } else if (dealer_bust) {
             WinBet(player, 1.0f);  // 1:1 payout
             player->state = PLAYER_STATE_WON;
             outcome = "DEALER BUST - WIN";
+            damage_dealt = hand_value * bet_amount;
         } else if (player->hand.total_value > dealer_value) {
             WinBet(player, 1.0f);
             player->state = PLAYER_STATE_WON;
             outcome = "WIN";
+            damage_dealt = hand_value * bet_amount;
         } else if (player->hand.total_value < dealer_value) {
             LoseBet(player);
             player->state = PLAYER_STATE_LOST;
             outcome = "LOSE";
+            // Player takes NO combat damage, just loses bet
         } else {
             ReturnBet(player);
             player->state = PLAYER_STATE_PUSH;
             outcome = "PUSH";
+            // No damage on push
         }
 
-        d_LogInfoF("%s: %s", GetPlayerName(player), outcome);
+        d_LogInfoF("%s: %s (damage_dealt=%d)",
+                   GetPlayerName(player), outcome, damage_dealt);
+
+        // Apply combat damage to enemy if in combat mode
+        if (game->is_combat_mode && game->current_enemy) {
+            if (damage_dealt > 0) {
+                TakeDamage(game->current_enemy, damage_dealt);
+                TweenEnemyHP(game->current_enemy);  // Smooth HP bar drain animation
+                TriggerEnemyDamageEffect(game->current_enemy, &g_tween_manager);  // Shake + red flash
+
+                // Spawn floating damage number (centered, above HP bar)
+                // Position using constants from sceneBlackjack.h
+                SpawnDamageNumber(damage_dealt,
+                                  SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
+                                  ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                                  false);
+
+                d_LogInfoF("Combat: %s deals %d damage to %s (HP: %d/%d)",
+                          GetPlayerName(player), damage_dealt,
+                          GetEnemyName(game->current_enemy),
+                          game->current_enemy->current_hp,
+                          game->current_enemy->max_hp);
+            }
+
+            // Check for enemy defeat
+            if (game->current_enemy->is_defeated) {
+                d_LogInfoF("COMBAT VICTORY! %s has been defeated!",
+                          GetEnemyName(game->current_enemy));
+                // Don't continue to normal round end - go to victory state
+                return;
+            }
+        }
     }
 }
 

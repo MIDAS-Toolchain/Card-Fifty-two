@@ -43,7 +43,20 @@ extern dTable_t* g_players;
 // Texture cache: Key = int (card_id), Value = SDL_Texture*
 extern dTable_t* g_card_textures;
 
+// Portrait texture cache: Key = int (player_id), Value = SDL_Texture*
+extern dTable_t* g_portraits;
+
 // Card back texture
 extern SDL_Texture* g_card_back_texture;
+
+// ============================================================================
+// GLOBAL FONT STYLES (defined in main.c)
+// ============================================================================
+
+extern aFontConfig_t FONT_STYLE_TITLE;       // Large centered white text
+extern aFontConfig_t FONT_STYLE_BODY;        // Default body text
+extern aFontConfig_t FONT_STYLE_CHIP_COUNT;  // Chip count display
+extern aFontConfig_t FONT_STYLE_DEBUG;       // FPS and debug info
+extern aFontConfig_t FONT_STYLE_DAMAGE;      // Damage numbers
 
 #endif // COMMON_H

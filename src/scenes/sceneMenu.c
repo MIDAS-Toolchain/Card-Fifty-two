@@ -222,9 +222,9 @@ static void MenuDraw(float dt) {
     }
 
     // FPS counter
-    dString_t* fps_str = d_InitString();
-    d_FormatString(fps_str, "FPS: %.1f", 1.0f / a_GetDeltaTime());
-    a_DrawText((char*)d_PeekString(fps_str), SCREEN_WIDTH - 10, 10,
+    dString_t* fps_str = d_StringInit();
+    d_StringFormat(fps_str, "FPS: %.1f", 1.0f / a_GetDeltaTime());
+    a_DrawText((char*)d_StringPeek(fps_str), SCREEN_WIDTH - 10, 10,
                0, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_RIGHT, 0);
-    d_DestroyString(fps_str);
+    d_StringDestroy(fps_str);
 }

@@ -19,6 +19,9 @@ dTable_t* g_players = NULL;
 // Texture cache (defined in common.h, declared here)
 dTable_t* g_card_textures = NULL;
 
+// Portrait texture cache (defined in common.h, declared here)
+dTable_t* g_portraits = NULL;
+
 // Card back texture (defined in common.h, declared here)
 SDL_Texture* g_card_back_texture = NULL;
 
@@ -29,6 +32,50 @@ Deck_t g_test_deck;
 // Player hand (for demonstration)
 // Constitutional pattern: Hand_t is value type, not pointer
 Hand_t g_player_hand;
+
+// ============================================================================
+// GLOBAL FONT STYLES
+// ============================================================================
+
+aFontConfig_t FONT_STYLE_TITLE = {
+    .type = FONT_ENTER_COMMAND,
+    .color = {255, 255, 255, 255},
+    .align = TEXT_ALIGN_CENTER,
+    .wrap_width = 0,
+    .scale = 1.0f
+};
+
+aFontConfig_t FONT_STYLE_BODY = {
+    .type = FONT_GAME,
+    .color = {255, 255, 255, 255},
+    .align = TEXT_ALIGN_CENTER,
+    .wrap_width = 0,
+    .scale = 1.0f
+};
+
+aFontConfig_t FONT_STYLE_CHIP_COUNT = {
+    .type = FONT_GAME,
+    .color = {255, 255, 0, 255},  // Yellow
+    .align = TEXT_ALIGN_CENTER,
+    .wrap_width = 0,
+    .scale = 1.0f
+};
+
+aFontConfig_t FONT_STYLE_DEBUG = {
+    .type = FONT_GAME,
+    .color = {0, 255, 0, 255},  // Green
+    .align = TEXT_ALIGN_RIGHT,
+    .wrap_width = 0,
+    .scale = 1.0f
+};
+
+aFontConfig_t FONT_STYLE_DAMAGE = {
+    .type = FONT_GAME,
+    .color = {255, 0, 0, 255},  // Red (overridden for healing)
+    .align = TEXT_ALIGN_CENTER,
+    .wrap_width = 0,
+    .scale = 1.0f
+};
 
 // ============================================================================
 // INITIALIZATION & CLEANUP
@@ -50,7 +97,10 @@ void Initialize(void) {
     g_card_textures = d_InitTable(sizeof(int), sizeof(SDL_Texture*),
                                    d_HashInt, d_CompareInt, 64);
 
-    if (!g_players || !g_card_textures) {
+    g_portraits = d_InitTable(sizeof(int), sizeof(SDL_Texture*),
+                              d_HashInt, d_CompareInt, 16);
+
+    if (!g_players || !g_card_textures || !g_portraits) {
         fprintf(stderr, "Failed to initialize global tables\n");
         a_Quit();
         exit(1);
@@ -67,11 +117,11 @@ void Initialize(void) {
     // Load 52 card face textures from PNG files (0.png - 51.png)
     // Card ID mapping: 0-12 Hearts, 13-25 Diamonds, 26-38 Spades, 39-51 Clubs
     for (int card_id = 0; card_id < 52; card_id++) {
-        dString_t* path = d_InitString();
-        d_FormatString(path, "resources/textures/cards/%d.png", card_id);
+        dString_t* path = d_StringInit();
+        d_StringFormat(path, "resources/textures/cards/%d.png", card_id);
 
-        SDL_Texture* tex = a_LoadTexture((char*)d_PeekString(path));
-        d_DestroyString(path);
+        SDL_Texture* tex = a_LoadTexture((char*)d_StringPeek(path));
+        d_StringDestroy(path);
 
         if (tex) {
             d_SetDataInTable(g_card_textures, &card_id, &tex);
@@ -102,6 +152,11 @@ void Cleanup(void) {
     if (g_card_textures) {
         d_DestroyTable(&g_card_textures);
         d_LogInfo("Texture cache destroyed");
+    }
+
+    if (g_portraits) {
+        d_DestroyTable(&g_portraits);
+        d_LogInfo("Portrait cache destroyed");
     }
 
     // Quit Archimedes
@@ -199,11 +254,11 @@ static void SceneLogic(float dt) {
                 // Add to player hand
                 AddCardToHand(&g_player_hand, card);
 
-                dString_t* card_str = d_InitString();
+                dString_t* card_str = d_StringInit();
                 CardToString(&card, card_str);
                 d_LogInfoF("Dealt card to hand: %s (Hand value: %d)",
-                          d_PeekString(card_str), g_player_hand.total_value);
-                d_DestroyString(card_str);
+                          d_StringPeek(card_str), g_player_hand.total_value);
+                d_StringDestroy(card_str);
             }
         } else {
             d_LogInfo("Deck is empty - press R to reset");
@@ -234,23 +289,23 @@ static void SceneDraw(float dt) {
                255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
 
     // Draw deck info (Constitutional pattern: dString_t, not char[])
-    dString_t* deck_info = d_InitString();
-    d_FormatString(deck_info, "Deck: %zu cards remaining",
+    dString_t* deck_info = d_StringInit();
+    d_StringFormat(deck_info, "Deck: %zu cards remaining",
                    GetDeckSize(&g_test_deck));
-    a_DrawText((char*)d_PeekString(deck_info), SCREEN_WIDTH / 2, 220,
+    a_DrawText((char*)d_StringPeek(deck_info), SCREEN_WIDTH / 2, 220,
                255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
-    d_DestroyString(deck_info);
+    d_StringDestroy(deck_info);
 
     // Draw player hand info
-    dString_t* hand_info = d_InitString();
-    d_FormatString(hand_info, "Your Hand - Cards: %zu | Value: %d%s",
+    dString_t* hand_info = d_StringInit();
+    d_StringFormat(hand_info, "Your Hand - Cards: %zu | Value: %d%s",
                    GetHandSize(&g_player_hand),
                    g_player_hand.total_value,
                    g_player_hand.is_blackjack ? " (BLACKJACK!)" :
                    g_player_hand.is_bust ? " (BUST)" : "");
-    a_DrawText((char*)d_PeekString(hand_info), SCREEN_WIDTH / 2, 280,
+    a_DrawText((char*)d_StringPeek(hand_info), SCREEN_WIDTH / 2, 280,
                255, 255, 0, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
-    d_DestroyString(hand_info);
+    d_StringDestroy(hand_info);
 
     // Render player hand visually
     RenderHand(&g_player_hand, 100, 350);
@@ -262,11 +317,11 @@ static void SceneDraw(float dt) {
 
     // Draw status (CYAN instead of green - visible on green bg)
     // Constitutional pattern: dString_t, not char[]
-    dString_t* status = d_InitString();
-    d_FormatString(status, "FPS: %.1f", 1.0f / a_GetDeltaTime());
-    a_DrawText((char*)d_PeekString(status), SCREEN_WIDTH - 10, 10,
+    dString_t* status = d_StringInit();
+    d_StringFormat(status, "FPS: %.1f", 1.0f / a_GetDeltaTime());
+    a_DrawText((char*)d_StringPeek(status), SCREEN_WIDTH - 10, 10,
                0, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_RIGHT, 0);
-    d_DestroyString(status);
+    d_StringDestroy(status);
 }
 
 // ============================================================================

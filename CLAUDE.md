@@ -72,15 +72,16 @@ d_AppendDataToArray(hand->cards, &card);
 
 // ✅ Player as pointer type
 typedef struct Player {
+    dString_t* name;   // Constitutional: dString_t, not char[]
     int player_id;
-    char name[32];
+    Hand_t hand;       // VALUE TYPE - embedded, not pointer
     int chips;
-    Hand_t* hand;  // Pointer to heap-allocated hand
     bool is_dealer;
 } Player_t;
 
-Player_t* player = malloc(sizeof(Player_t));
-d_SetDataInTable(g_players, &player_id, &player);  // Store pointer
+// Created via helper function (uses malloc + dString_t)
+Player_t* player = CreatePlayer("Alice", 1, false);
+d_SetDataInTable(g_players, &player->player_id, &player);  // Store pointer
 ```
 
 ### 3. Archimedes Delegate Pattern (Scene Architecture)
@@ -323,23 +324,23 @@ const char* CardToString(Card_t* card) {
 **DO:**
 ```c
 // Caller creates and destroys dString_t
-dString_t* str = d_InitString();
-d_FormatString(str, "Deck: %d cards", count);
-a_DrawText(d_PeekString(str), x, y, ...);
-d_DestroyString(str);
+dString_t* str = d_StringInit();
+d_StringFormat(str, "Deck: %d cards", count);
+a_DrawText(d_StringPeek(str), x, y, ...);
+d_StringDestroy(str);
 
 // Function appends to caller's dString_t
 void CardToString(const Card_t* card, dString_t* out) {
-    d_FormatString(out, "%s of %s",
+    d_StringFormat(out, "%s of %s",
                    GetRankString(card->rank),
                    GetSuitString(card->suit));
 }
 
 // Usage:
-dString_t* card_name = d_InitString();
+dString_t* card_name = d_StringInit();
 CardToString(&card, card_name);
-d_LogInfo(d_PeekString(card_name));
-d_DestroyString(card_name);
+d_LogInfo(d_StringPeek(card_name));
+d_StringDestroy(card_name);
 ```
 
 **Rationale:**

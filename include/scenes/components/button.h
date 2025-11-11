@@ -13,6 +13,7 @@ typedef struct Button {
     char label[256];            // Simple buffer for button text
     char hotkey_hint[64];       // Optional hotkey display (e.g., "[H]")
     bool enabled;
+    bool is_selected;           // Keyboard navigation selection state
     bool was_pressed;
     void* user_data;            // Optional custom data
 } Button_t;
@@ -25,6 +26,7 @@ void DestroyButton(Button_t** button);
 void SetButtonLabel(Button_t* button, const char* label);
 void SetButtonHotkey(Button_t* button, const char* hotkey);
 void SetButtonEnabled(Button_t* button, bool enabled);
+void SetButtonSelected(Button_t* button, bool selected);
 void SetButtonPosition(Button_t* button, int x, int y);
 
 // Interaction

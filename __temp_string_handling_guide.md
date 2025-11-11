@@ -42,7 +42,7 @@ typedef struct {
 
 4. **Performance Critical**
    - No heap allocation overhead
-   - No `d_InitString()` / `d_DestroyString()` calls
+   - No `d_StringInit()` / `d_StringDestroy()` calls
    - Cache-friendly (struct-embedded data)
 
 ### Code Example: Button Component
@@ -87,7 +87,7 @@ void RenderButton(const Button_t* btn) {
 ```
 
 ### Benefits of `char[]`:
-- ✅ Simple lifecycle (no d_DestroyString)
+- ✅ Simple lifecycle (no d_StringDestroy)
 - ✅ No heap fragmentation
 - ✅ Fast: no malloc/free overhead
 - ✅ Predictable memory usage
@@ -101,11 +101,11 @@ void RenderButton(const Button_t* btn) {
 
 ```c
 // ✅ CORRECT - Building formatted string
-dString_t* message = d_InitString();
-d_FormatString(message, "Player: %s | Score: %d | Bet: %d",
+dString_t* message = d_StringInit();
+d_StringFormat(message, "Player: %s | Score: %d | Bet: %d",
                player->name, score, bet);
-a_DrawText((char*)d_PeekString(message), x, y, ...);
-d_DestroyString(message);
+a_DrawText((char*)d_StringPeek(message), x, y, ...);
+d_StringDestroy(message);
 ```
 
 ### Use `dString_t*` When:
@@ -135,24 +135,24 @@ d_DestroyString(message);
 ```c
 void RenderPlayerSection(Player_t* player, int y) {
     // ✅ CORRECT - Dynamic formatting
-    dString_t* info = d_InitString();
-    d_FormatString(info, "%s: %d%s",
+    dString_t* info = d_StringInit();
+    d_StringFormat(info, "%s: %d%s",
                    player->name,           // char[] in struct
                    player->hand.total_value,
                    player->hand.is_blackjack ? " (BLACKJACK!)" :
                    player->hand.is_bust ? " (BUST)" : "");
 
     // Cast safe: a_DrawText is read-only, dString_t used for dynamic formatting
-    a_DrawText((char*)d_PeekString(info), SCREEN_WIDTH / 2, y, ...);
-    d_DestroyString(info);
+    a_DrawText((char*)d_StringPeek(info), SCREEN_WIDTH / 2, y, ...);
+    d_StringDestroy(info);
 
     // Another dynamic string
-    dString_t* chips_info = d_InitString();
-    d_FormatString(chips_info, "Chips: %d | Bet: %d",
+    dString_t* chips_info = d_StringInit();
+    d_StringFormat(chips_info, "Chips: %d | Bet: %d",
                    player->chips, player->current_bet);
     // Cast safe: a_DrawText is read-only, dString_t used for dynamic formatting
-    a_DrawText((char*)d_PeekString(chips_info), SCREEN_WIDTH / 2, y + 30, ...);
-    d_DestroyString(chips_info);
+    a_DrawText((char*)d_StringPeek(chips_info), SCREEN_WIDTH / 2, y + 30, ...);
+    d_StringDestroy(chips_info);
 }
 ```
 
@@ -160,24 +160,24 @@ void RenderPlayerSection(Player_t* player, int y) {
 
 ```c
 // Creation & Destruction
-dString_t* str = d_InitString();           // Create empty
-d_DestroyString(str);                      // Free memory
+dString_t* str = d_StringInit();           // Create empty
+d_StringDestroy(str);                      // Free memory
 
 // Setting Content
-d_SetString(str, "Hello", 0);              // Replace content
+d_StringSet(str, "Hello", 0);              // Replace content
 d_ClearString(str);                        // Empty the string
 
 // Appending
-d_AppendToString(str, " World", 0);        // Append C-string
+d_StringAppend(str, " World", 0);        // Append C-string
 d_AppendCharToString(str, '!');            // Append single char
 d_AppendIntToString(str, 42);              // Append integer
 d_AppendFloatToString(str, 3.14, 2);       // Append float with decimals
 
 // Formatting (like sprintf)
-d_FormatString(str, "Score: %d", score);   // Format like printf
+d_StringFormat(str, "Score: %d", score);   // Format like printf
 
 // Getting Content
-const char* text = d_PeekString(str);      // Read-only pointer (no alloc)
+const char* text = d_StringPeek(str);      // Read-only pointer (no alloc)
 char* copy = d_DumpString(str, NULL);      // Allocate copy (caller must free!)
 
 // Utility
@@ -187,7 +187,7 @@ bool empty = d_IsStringInvalid(str);       // Check if NULL/empty
 
 ### Benefits of `dString_t*`:
 - ✅ No buffer overflow (automatic resizing)
-- ✅ Complex formatting (`d_FormatString`)
+- ✅ Complex formatting (`d_StringFormat`)
 - ✅ String building operations
 - ✅ No manual size calculation
 - ✅ Encapsulated memory management
@@ -206,13 +206,13 @@ typedef struct Button {
 
 Button_t* CreateButton(const char* label) {
     Button_t* btn = malloc(sizeof(Button_t));
-    btn->label = d_InitString();           // Unnecessary heap allocation
-    d_SetString(btn->label, label, 0);     // Just storing a string
+    btn->label = d_StringInit();           // Unnecessary heap allocation
+    d_StringSet(btn->label, label, 0);     // Just storing a string
     return btn;
 }
 
 void DestroyButton(Button_t** btn) {
-    d_DestroyString((*btn)->label);        // Extra cleanup step
+    d_StringDestroy((*btn)->label);        // Extra cleanup step
     free(*btn);
     *btn = NULL;
 }
@@ -244,14 +244,14 @@ void RenderSection(Section_t* section) {
 - Leaks memory if not freed
 - Called 60 times per second = massive leak
 
-**Fix:** Use `d_PeekString()` instead (no allocation):
+**Fix:** Use `d_StringPeek()` instead (no allocation):
 
 ```c
 // ✅ CORRECT
 void RenderSection(Section_t* section) {
     // Cast safe: a_DrawText is read-only, dString_t used for dynamic formatting
-    a_DrawText((char*)d_PeekString(section->title), x, y, ...);
-    // No free() needed - d_PeekString doesn't allocate
+    a_DrawText((char*)d_StringPeek(section->title), x, y, ...);
+    // No free() needed - d_StringPeek doesn't allocate
 }
 ```
 
@@ -275,10 +275,10 @@ a_DrawText(message, x, y, ...);
 
 ```c
 // ✅ BETTER - Daedalus handles resizing
-dString_t* message = d_InitString();
-d_FormatString(message, "Score: %d | Bet: %d", score, bet);
-a_DrawText((char*)d_PeekString(message), x, y, ...);
-d_DestroyString(message);
+dString_t* message = d_StringInit();
+d_StringFormat(message, "Score: %d | Bet: %d", score, bet);
+a_DrawText((char*)d_StringPeek(message), x, y, ...);
+d_StringDestroy(message);
 ```
 
 ---
@@ -331,14 +331,14 @@ typedef struct Button {
 // src/scenes/sections/playerSection.c
 void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
     // ✅ dString_t for dynamic formatting
-    dString_t* info = d_InitString();
-    d_FormatString(info, "%s: %d%s",
+    dString_t* info = d_StringInit();
+    d_StringFormat(info, "%s: %d%s",
                    player->name,  // Note: player->name is char[128] in struct!
                    player->hand.total_value,
                    player->hand.is_blackjack ? " (BLACKJACK!)" : "");
 
-    a_DrawText((char*)d_PeekString(info), SCREEN_WIDTH / 2, y, ...);
-    d_DestroyString(info);
+    a_DrawText((char*)d_StringPeek(info), SCREEN_WIDTH / 2, y, ...);
+    d_StringDestroy(info);
 }
 ```
 
@@ -393,7 +393,7 @@ typedef struct MainMenuSection {
 | Approach | Per-Instance Memory | Heap Allocations | Cleanup Required |
 |----------|---------------------|------------------|------------------|
 | `char label[256]` | 256 bytes (stack/struct) | 0 | No |
-| `dString_t* label` | 8 bytes (pointer) + ~280 bytes (heap) | 1 | Yes (d_DestroyString) |
+| `dString_t* label` | 8 bytes (pointer) + ~280 bytes (heap) | 1 | Yes (d_StringDestroy) |
 
 **For 100 buttons:**
 - `char[]`: 25.6 KB (contiguous, cache-friendly)
@@ -412,19 +412,19 @@ a_DrawText(score, x, y, ...);
 
 **GOOD (no leak):**
 ```c
-dString_t* score = d_InitString();           // 1 alloc
-d_FormatString(score, "Score: %d", value);   // Reuses buffer
-a_DrawText((char*)d_PeekString(score), ...); // No alloc
-d_DestroyString(score);                       // 1 free
+dString_t* score = d_StringInit();           // 1 alloc
+d_StringFormat(score, "Score: %d", value);   // Reuses buffer
+a_DrawText((char*)d_StringPeek(score), ...); // No alloc
+d_StringDestroy(score);                       // 1 free
 ```
 
 **BEST (per-frame is acceptable):**
 ```c
 // Create/destroy per frame is fine for dynamic content!
-dString_t* score = d_InitString();
-d_FormatString(score, "Score: %d", player->score);
-a_DrawText((char*)d_PeekString(score), x, y, ...);
-d_DestroyString(score);
+dString_t* score = d_StringInit();
+d_StringFormat(score, "Score: %d", player->score);
+a_DrawText((char*)d_StringPeek(score), x, y, ...);
+d_StringDestroy(score);
 // Modern allocators handle this efficiently
 ```
 
@@ -441,19 +441,19 @@ d_DestroyString(score);
 void a_DrawText(char* text, int x, int y, ...);
 
 // Daedalus signature
-const char* d_PeekString(const dString_t* sb);
+const char* d_StringPeek(const dString_t* sb);
 ```
 
 **Solution:** Cast with explanatory comment
 
 ```c
 // ✅ CORRECT - Cast is safe when function is read-only
-dString_t* message = d_InitString();
-d_FormatString(message, "Hello %s", name);
+dString_t* message = d_StringInit();
+d_StringFormat(message, "Hello %s", name);
 
 // Cast safe: a_DrawText is read-only, dString_t used for dynamic formatting
-a_DrawText((char*)d_PeekString(message), x, y, ...);
-d_DestroyString(message);
+a_DrawText((char*)d_StringPeek(message), x, y, ...);
+d_StringDestroy(message);
 ```
 
 **Why it's safe:**
@@ -489,10 +489,10 @@ dest[sizeof(dest) - 1] = '\0';
 
 ### The `dString_t` Pattern (for dynamic):
 ```c
-dString_t* str = d_InitString();
-d_FormatString(str, "Format: %d", value);
-// Use: d_PeekString(str)
-d_DestroyString(str);
+dString_t* str = d_StringInit();
+d_StringFormat(str, "Format: %d", value);
+// Use: d_StringPeek(str)
+d_StringDestroy(str);
 ```
 
 ---
@@ -589,19 +589,19 @@ typedef struct {
 
 Component_t* Create() {
     Component_t* c = malloc(sizeof(Component_t));
-    c->label = d_InitString();
-    d_SetString(c->label, "Text", 0);
+    c->label = d_StringInit();
+    d_StringSet(c->label, "Text", 0);
     return c;
 }
 
 void Destroy(Component_t** c) {
-    d_DestroyString((*c)->label);
+    d_StringDestroy((*c)->label);
     free(*c);
     *c = NULL;
 }
 
 void Render(const Component_t* c) {
-    a_DrawText((char*)d_PeekString(c->label), ...);
+    a_DrawText((char*)d_StringPeek(c->label), ...);
 }
 ```
 

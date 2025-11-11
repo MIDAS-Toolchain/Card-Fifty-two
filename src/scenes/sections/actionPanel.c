@@ -37,7 +37,7 @@ ActionPanel_t* CreateActionPanel(const char* instruction, Button_t** buttons, in
     // - RenderActionPanel() receives Y and calls a_FlexSetBounds() to reposition
     // - Child FlexBox (button_row) then calculates button positions
     panel->button_row = a_CreateFlexBox(0, 0, SCREEN_WIDTH, BUTTON_ROW_HEIGHT);
-    a_FlexConfigure(panel->button_row, FLEX_DIR_ROW, FLEX_JUSTIFY_CENTER, BUTTON_GAP);
+    a_FlexConfigure(panel->button_row, FLEX_DIR_ROW, FLEX_JUSTIFY_START, BUTTON_GAP);
 
     // Add buttons to FlexBox (determine size based on first button)
     if (button_count > 0 && buttons[0]) {
@@ -91,20 +91,15 @@ void UpdateActionPanelButtons(ActionPanel_t* panel) {
 void RenderActionPanel(ActionPanel_t* panel, int y) {
     if (!panel || !panel->button_row) return;
 
-    // Position button row at the specified Y (dynamic repositioning pattern)
+    // Position button row in game area (left of screen, lower than flex position)
     // FlexBox bounds are updated each frame because Y position comes from parent FlexBox
-    a_FlexSetBounds(panel->button_row, 0, y, SCREEN_WIDTH, BUTTON_ROW_HEIGHT);
+    a_FlexSetBounds(panel->button_row, GAME_AREA_X + ACTION_PANEL_LEFT_MARGIN, y + ACTION_PANEL_Y_OFFSET, GAME_AREA_WIDTH, BUTTON_ROW_HEIGHT);
 
     // Update button positions from FlexBox (includes layout calculation)
     UpdateActionPanelButtons(panel);
 
     // Get actual button Y position after layout
     int button_y = a_FlexGetItemY(panel->button_row, 0);
-
-    // Instruction text centered above buttons
-    // Cast safe: a_DrawText is read-only, using fixed char buffer
-    a_DrawText((char*)panel->instruction_text, SCREEN_WIDTH / 2, button_y - TEXT_BUTTON_GAP,
-               255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
 
     // Render all buttons
     for (int i = 0; i < panel->button_count; i++) {

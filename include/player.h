@@ -108,6 +108,75 @@ int GetPlayerChips(const Player_t* player);
 bool CanAffordBet(const Player_t* player, int amount);
 
 // ============================================================================
+// PORTRAIT SYSTEM
+// ============================================================================
+
+/**
+ * LoadPlayerPortrait - Load player portrait from file as surface
+ *
+ * @param player - Player to load portrait for
+ * @param filename - Path to portrait image file
+ * @return bool - true on success, false on failure
+ *
+ * Loads portrait as SDL_Surface for pixel manipulation
+ * Sets portrait_dirty = true to trigger texture generation
+ */
+bool LoadPlayerPortrait(Player_t* player, const char* filename);
+
+/**
+ * RefreshPlayerPortraitTexture - Convert surface to texture
+ *
+ * @param player - Player to refresh portrait for
+ *
+ * Converts portrait_surface → portrait_texture
+ * Only call when portrait_dirty == true
+ * Automatically sets portrait_dirty = false after conversion
+ */
+void RefreshPlayerPortraitTexture(Player_t* player);
+
+/**
+ * GetPlayerPortraitTexture - Get current portrait texture for rendering
+ *
+ * @param player - Player to query
+ * @return SDL_Texture* - Portrait texture, or NULL if not loaded
+ *
+ * Automatically refreshes texture if portrait_dirty == true
+ */
+SDL_Texture* GetPlayerPortraitTexture(Player_t* player);
+
+// ============================================================================
+// SANITY SYSTEM
+// ============================================================================
+
+/**
+ * InitializePlayerSanity - Initialize sanity values for player
+ *
+ * @param player Player to initialize
+ * @param max_sanity Maximum sanity value (default: 100)
+ *
+ * Sets player->sanity = max_sanity and player->max_sanity = max_sanity
+ */
+void InitializePlayerSanity(Player_t* player, int max_sanity);
+
+/**
+ * ModifyPlayerSanity - Change player's sanity value
+ *
+ * @param player Player to modify
+ * @param amount Amount to add (positive) or subtract (negative)
+ *
+ * Clamps result between 0 and player->max_sanity
+ */
+void ModifyPlayerSanity(Player_t* player, int amount);
+
+/**
+ * GetPlayerSanityPercent - Get sanity as percentage
+ *
+ * @param player Player to query
+ * @return float - Sanity percentage (0.0 - 1.0)
+ */
+float GetPlayerSanityPercent(const Player_t* player);
+
+// ============================================================================
 // PLAYER UTILITIES
 // ============================================================================
 

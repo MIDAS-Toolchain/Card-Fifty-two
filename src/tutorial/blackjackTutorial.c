@@ -4,19 +4,26 @@
 
 #include "../../include/tutorial/blackjackTutorial.h"
 #include "../../include/game.h"
+#include "../../include/scenes/sceneBlackjack.h"  // For layout constants
 
 // ============================================================================
 // TUTORIAL STEP CREATION
 // ============================================================================
 
 TutorialStep_t* CreateBlackjackTutorial(void) {
-    // Step 1: Betting tutorial
+    // Calculate actual button area position (using layout constants)
+    int button_area_y = LAYOUT_TOP_MARGIN + DEALER_AREA_HEIGHT;
+    int buttons_y = button_area_y + ACTION_PANEL_Y_OFFSET + 95; 
+    int buttons_x = GAME_AREA_X + ACTION_PANEL_LEFT_MARGIN;
+
+    // Step 1: Betting tutorial (3 bet buttons)
+    int bet_buttons_width = (BET_BUTTON_WIDTH * NUM_BET_BUTTONS) + (BUTTON_GAP * (NUM_BET_BUTTONS - 1));
     TutorialSpotlight_t bet_spotlight = {
         .type = SPOTLIGHT_RECTANGLE,
-        .x = (SCREEN_WIDTH / 2) - 250,  // Approximate button row center
-        .y = SCREEN_HEIGHT - 127,        // Higher to add more space on top
-        .w = 500,
-        .h = 105,                        // Taller spotlight
+        .x = buttons_x,
+        .y = buttons_y,
+        .w = bet_buttons_width,
+        .h = BET_BUTTON_HEIGHT,
         .show_arrow = true
     };
 
@@ -35,16 +42,17 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
         bet_spotlight,
         bet_listener,
         false,  // Not final step
-        (SCREEN_HEIGHT - 200) / 2  // CENTER - vertically center the dialogue
+        (SCREEN_HEIGHT - 250) / 2  // CENTER - vertically center the dialogue
     );
 
-    // Step 2: Player turn tutorial
+    // Step 2: Player turn tutorial (3 action buttons)
+    int action_buttons_width = (ACTION_BUTTON_WIDTH * NUM_ACTION_BUTTONS) + (BUTTON_GAP * (NUM_ACTION_BUTTONS - 1));
     TutorialSpotlight_t action_spotlight = {
         .type = SPOTLIGHT_RECTANGLE,
-        .x = (SCREEN_WIDTH / 2) - 200,
-        .y = SCREEN_HEIGHT - 125,        // Higher to add space on top
-        .w = 400,
-        .h = 105,                        // Taller
+        .x = buttons_x,
+        .y = buttons_y,
+        .w = action_buttons_width,
+        .h = ACTION_BUTTON_HEIGHT,
         .show_arrow = true
     };
 

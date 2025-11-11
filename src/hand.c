@@ -285,36 +285,36 @@ void HandToString(const Hand_t* hand, dString_t* out) {
     }
 
     // Format: "Cards: Ace of Hearts, 10 of Spades | Value: 21"
-    d_AppendToString(out, "Cards: ", 7);
+    d_StringAppend(out, "Cards: ", 7);
 
     if (hand->cards->count == 0) {
-        d_AppendToString(out, "(empty)", 7);
+        d_StringAppend(out, "(empty)", 7);
     } else {
         for (size_t i = 0; i < hand->cards->count; i++) {
             const Card_t* card = GetCardFromHand(hand, i);
             if (card) {
-                dString_t* card_str = d_InitString();
+                dString_t* card_str = d_StringInit();
                 CardToString(card, card_str);
-                d_AppendToString(out, d_PeekString(card_str),
-                                 d_GetLengthOfString(card_str));
-                d_DestroyString(card_str);
+                d_StringAppend(out, d_StringPeek(card_str),
+                                 d_StringGetLength(card_str));
+                d_StringDestroy(card_str);
 
                 // Add comma separator (except for last card)
                 if (i < hand->cards->count - 1) {
-                    d_AppendToString(out, ", ", 2);
+                    d_StringAppend(out, ", ", 2);
                 }
             }
         }
     }
 
     // Add hand value
-    d_AppendToString(out, " | Value: ", 10);
-    d_AppendIntToString(out, hand->total_value);
+    d_StringAppend(out, " | Value: ", 10);
+    d_StringAppendInt(out, hand->total_value);
 
     // Add status flags
     if (hand->is_blackjack) {
-        d_AppendToString(out, " (BLACKJACK!)", 13);
+        d_StringAppend(out, " (BLACKJACK!)", 13);
     } else if (hand->is_bust) {
-        d_AppendToString(out, " (BUST)", 7);
+        d_StringAppend(out, " (BUST)", 7);
     }
 }

@@ -107,7 +107,7 @@ void CardToString(const Card_t* card, dString_t* out) {
 
     // Format: "Rank of Suit" (e.g., "Ace of Hearts")
     // Constitutional pattern: dString_t, not snprintf
-    d_FormatString(out, "%s of %s",
+    d_StringFormat(out, "%s of %s",
                    GetRankString(card->rank),
                    GetSuitString(card->suit));
 }

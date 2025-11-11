@@ -60,13 +60,13 @@ TutorialStep_t* CreateTutorialStep(const char* dialogue_text,
     }
 
     // Create dialogue text (dString_t)
-    step->dialogue_text = d_InitString();
+    step->dialogue_text = d_StringInit();
     if (!step->dialogue_text) {
         free(step);
         d_LogFatal("Failed to allocate dialogue text");
         return NULL;
     }
-    d_SetString(step->dialogue_text, dialogue_text, 0);
+    d_StringSet(step->dialogue_text, dialogue_text, 0);
 
     // Copy spotlight and listener configs
     step->spotlight = spotlight;
@@ -82,7 +82,7 @@ void DestroyTutorialStep(TutorialStep_t** step) {
     if (!step || !*step) return;
 
     if ((*step)->dialogue_text) {
-        d_DestroyString((*step)->dialogue_text);
+        d_StringDestroy((*step)->dialogue_text);
     }
 
     free(*step);
@@ -224,6 +224,24 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
         int conf_x = (SCREEN_WIDTH - conf_w) / 2;
         int conf_y = (SCREEN_HEIGHT - conf_h) / 2;
 
+        // Keyboard shortcuts for confirmation modal
+        if (app.keyboard[SDL_SCANCODE_RETURN] || app.keyboard[SDL_SCANCODE_KP_ENTER]) {
+            app.keyboard[SDL_SCANCODE_RETURN] = 0;
+            app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+            // ENTER confirms skip (YES)
+            system->skip_confirmation.skip_confirmed = true;
+            system->skip_confirmation.visible = false;
+            StopTutorial(system);
+            return true;
+        }
+
+        if (app.keyboard[SDL_SCANCODE_ESCAPE]) {
+            app.keyboard[SDL_SCANCODE_ESCAPE] = 0;
+            // ESC cancels skip (NO)
+            system->skip_confirmation.visible = false;
+            return true;
+        }
+
         if (app.mouse.pressed) {
             // YES button (60, 90, 100, 40 relative to conf_x, conf_y)
             int yes_x = conf_x + 60;
@@ -266,12 +284,18 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
         }
     }
 
-    // Keyboard shortcuts: ENTER or SPACE
-    if (app.keyboard[SDL_SCANCODE_RETURN] || app.keyboard[SDL_SCANCODE_SPACE]) {
-        button_clicked = true;
-        app.keyboard[SDL_SCANCODE_RETURN] = 0;
-        app.keyboard[SDL_SCANCODE_SPACE] = 0;
+    // Keyboard shortcuts
+    if (system->current_step->is_final_step) {
+        // Final step: Allow ENTER or ESC to finish tutorial
+        if (app.keyboard[SDL_SCANCODE_RETURN] || app.keyboard[SDL_SCANCODE_KP_ENTER] ||
+            app.keyboard[SDL_SCANCODE_ESCAPE]) {
+            button_clicked = true;
+            app.keyboard[SDL_SCANCODE_RETURN] = 0;
+            app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+            app.keyboard[SDL_SCANCODE_ESCAPE] = 0;
+        }
     }
+    // Non-final steps: No keyboard shortcuts (ENTER reserved for game controls, mouse click only)
 
     if (button_clicked) {
         if (system->current_step->is_final_step) {
@@ -404,7 +428,7 @@ static void RenderDialogue(const TutorialStep_t* step) {
     int text_y = dialogue_y + DIALOGUE_PADDING;
 
     // Get full text
-    const char* full_text = d_PeekString(step->dialogue_text);
+    const char* full_text = d_StringPeek(step->dialogue_text);
 
     // Split by \n and render each line
     char line_buffer[256];

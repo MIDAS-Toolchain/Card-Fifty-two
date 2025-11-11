@@ -5,12 +5,12 @@
 #include "../../../include/scenes/components/menuItem.h"
 
 // Color constants (from provided color palette)
-#define COLOR_SELECTED_HOVER ((aColor_t){198, 81, 151, 255})  // #c65197 - bright pink-purple
-#define COLOR_SELECTED       ((aColor_t){223, 132, 165, 255}) // #df84a5 - pink (matches pause menu)
+#define COLOR_SELECTED_HOVER ((aColor_t){222, 158, 65, 255})  // #de9e41 - orange (hover)
+#define COLOR_SELECTED       ((aColor_t){232, 193, 112, 255}) // #e8c170 - yellow/gold
 #define COLOR_HOVER          ((aColor_t){115, 190, 211, 255}) // #73bed3 - cyan blue
 #define COLOR_NORMAL         ((aColor_t){164, 221, 219, 255}) // #a4dddb - light cyan
 #define COLOR_DISABLED       ((aColor_t){32, 46, 55, 255})    // #202e37 - dark gray
-#define COLOR_INDICATOR      ((aColor_t){223, 132, 165, 255}) // #df84a5 - pink ">"
+#define COLOR_INDICATOR      ((aColor_t){232, 193, 112, 255}) // #e8c170 - yellow/gold ">"
 
 // Bounds constants
 #define MENU_ITEM_PADDING         80   // Clickable padding around text (generous!)
@@ -163,15 +163,21 @@ void RenderMenuItem(const MenuItem_t* item) {
     int text_w, text_h;
     a_CalcTextDimensions((char*)item->label, FONT_ENTER_COMMAND, &text_w, &text_h);
 
-    // Draw hover background (semi-transparent white rectangle)
-    if (item->is_hovered && item->enabled) {
+    // Draw background highlight
+    if (item->enabled) {
         int left = item->x - (item->w / 2);
         int top = item->y - 2;  // Minimal padding above text baseline
         int width = item->w;
         int height = text_h + 4;  // Text height + small padding top/bottom
 
-        // Very subtle semi-transparent white background (~10% opacity)
-        a_DrawFilledRect(left, top, width, height, 255, 255, 255, 25);
+        // Arrow-key selected: yellow background (~25% opacity)
+        if (item->is_selected) {
+            a_DrawFilledRect(left, top, width, height, 232, 193, 112, 64);  // #e8c170
+        }
+        // Mouse hover (but not selected): white background (~10% opacity)
+        else if (item->is_hovered) {
+            a_DrawFilledRect(left, top, width, height, 255, 255, 255, 25);
+        }
     }
 
     // Determine color based on state (visual hierarchy)

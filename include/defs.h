@@ -52,7 +52,8 @@ typedef enum {
     STATE_PLAYER_TURN,   // Player actions (hit/stand)
     STATE_DEALER_TURN,   // Dealer plays by rules
     STATE_SHOWDOWN,      // Compare hands, payout
-    STATE_ROUND_END      // Display results
+    STATE_ROUND_END,     // Display results
+    STATE_COMBAT_VICTORY // Enemy defeated, show victory screen
 } GameState_t;
 
 // Player states

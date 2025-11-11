@@ -16,10 +16,10 @@ OBJ_DIR = build
 LIBS = -lArchimedes -lDaedalus -lSDL2 -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lcjson -lm
 
 # Include paths
-INCLUDES = -I$(INC_DIR) -I/usr/include -I/usr/local/include
+INCLUDES = -I/usr/include -I/usr/local/include -I$(INC_DIR)
 
 # Source files
-SOURCES = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/scenes/*.c) $(wildcard $(SRC_DIR)/scenes/components/*.c) $(wildcard $(SRC_DIR)/scenes/sections/*.c) $(wildcard $(SRC_DIR)/tutorial/*.c)
+SOURCES = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/scenes/*.c) $(wildcard $(SRC_DIR)/scenes/components/*.c) $(wildcard $(SRC_DIR)/scenes/sections/*.c) $(wildcard $(SRC_DIR)/tutorial/*.c) $(wildcard $(SRC_DIR)/terminal/*.c) $(wildcard $(SRC_DIR)/tween/*.c)
 OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
 
 # Target executable

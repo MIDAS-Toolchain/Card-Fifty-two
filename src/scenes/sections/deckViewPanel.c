@@ -91,15 +91,15 @@ void RenderDeckViewPanel(DeckViewPanel_t* panel, int y) {
         DeckButton_t* btn = panel->buttons[i];
 
         // Build count text dynamically (temporary string for this frame)
-        dString_t* count_text = d_InitString();
+        dString_t* count_text = d_StringInit();
         if (i == 0) {
-            d_FormatString(count_text, "Draw: %zu", GetDeckSize(panel->deck));
+            d_StringFormat(count_text, "Draw: %zu", GetDeckSize(panel->deck));
         } else {
-            d_FormatString(count_text, "Discard: %zu", GetDiscardSize(panel->deck));
+            d_StringFormat(count_text, "Discard: %zu", GetDiscardSize(panel->deck));
         }
 
         // Render button with count text (includes count above and hotkey below)
-        RenderDeckButton(btn, d_PeekString(count_text));
-        d_DestroyString(count_text);
+        RenderDeckButton(btn, d_StringPeek(count_text));
+        d_StringDestroy(count_text);
     }
 }
