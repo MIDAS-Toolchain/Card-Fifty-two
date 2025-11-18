@@ -4,6 +4,7 @@
 
 #include "../../../include/scenes/sections/pauseMenuSection.h"
 #include "../../../include/scenes/sceneBlackjack.h"
+#include "../../../include/stats.h"
 
 // Layout constants
 #define PAUSE_PANEL_HEADER_HEIGHT  50
@@ -44,15 +45,16 @@ PauseMenuSection_t* CreatePauseMenuSection(void) {
 
     section->is_visible = false;
     section->show_confirm_dialog = false;
+    section->show_stats_overlay = false;
     section->selected_option = 0;
     section->confirm_selected = 1;  // Default to "No"
 
     // Create main menu items
-    const char* labels[] = {"Resume", "Settings", "Help", "Return to Main Menu"};
+    const char* labels[] = {"Resume", "Stats", "Settings", "Help", "Return to Main Menu"};
     int center_x = SCREEN_WIDTH / 2;
     int start_y = MENU_START_Y;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         section->menu_items[i] = CreateMenuItem(center_x, start_y + (i * MENU_ITEM_GAP), 0, 25, labels[i]);
         if (!section->menu_items[i]) {
             // Cleanup on failure
@@ -78,7 +80,7 @@ PauseMenuSection_t* CreatePauseMenuSection(void) {
         section->confirm_items[i] = CreateMenuItemRow(x, confirm_y, 0, 25, confirm_labels[i]);
         if (!section->confirm_items[i]) {
             // Cleanup on failure
-            for (int j = 0; j < 4; j++) {
+            for (int j = 0; j < 5; j++) {
                 DestroyMenuItem(&section->menu_items[j]);
             }
             for (int j = 0; j < i; j++) {
@@ -103,7 +105,7 @@ void DestroyPauseMenuSection(PauseMenuSection_t** section) {
     PauseMenuSection_t* menu = *section;
 
     // Destroy main menu items
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         if (menu->menu_items[i]) {
             DestroyMenuItem(&menu->menu_items[i]);
         }
@@ -129,6 +131,7 @@ void ShowPauseMenu(PauseMenuSection_t* section) {
     if (!section) return;
     section->is_visible = true;
     section->show_confirm_dialog = false;
+    section->show_stats_overlay = false;
     section->selected_option = 0;
     SetMenuItemSelected(section->menu_items[0], true);
 }
@@ -137,6 +140,7 @@ void HidePauseMenu(PauseMenuSection_t* section) {
     if (!section) return;
     section->is_visible = false;
     section->show_confirm_dialog = false;
+    section->show_stats_overlay = false;
 }
 
 // ============================================================================
@@ -145,6 +149,21 @@ void HidePauseMenu(PauseMenuSection_t* section) {
 
 PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
     if (!section || !section->is_visible) return PAUSE_ACTION_NONE;
+
+    // Handle stats overlay if visible
+    if (section->show_stats_overlay) {
+        // ESC or Enter to close stats overlay
+        if (app.keyboard[SDL_SCANCODE_ESCAPE] || app.keyboard[SDL_SCANCODE_RETURN] ||
+            app.keyboard[SDL_SCANCODE_SPACE] || app.keyboard[SDL_SCANCODE_KP_ENTER]) {
+            app.keyboard[SDL_SCANCODE_ESCAPE] = 0;
+            app.keyboard[SDL_SCANCODE_RETURN] = 0;
+            app.keyboard[SDL_SCANCODE_SPACE] = 0;
+            app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+            section->show_stats_overlay = false;
+            return PAUSE_ACTION_NONE;
+        }
+        return PAUSE_ACTION_NONE;
+    }
 
     // Handle confirmation dialog if visible
     if (section->show_confirm_dialog) {
@@ -240,19 +259,19 @@ PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
         app.keyboard[SDL_SCANCODE_W] = 0;
         app.keyboard[SDL_SCANCODE_UP] = 0;
         SetMenuItemSelected(section->menu_items[section->selected_option], false);
-        section->selected_option = (section->selected_option - 1 + 4) % 4;
+        section->selected_option = (section->selected_option - 1 + 5) % 5;
         SetMenuItemSelected(section->menu_items[section->selected_option], true);
     }
     if (app.keyboard[SDL_SCANCODE_S] || app.keyboard[SDL_SCANCODE_DOWN]) {
         app.keyboard[SDL_SCANCODE_S] = 0;
         app.keyboard[SDL_SCANCODE_DOWN] = 0;
         SetMenuItemSelected(section->menu_items[section->selected_option], false);
-        section->selected_option = (section->selected_option + 1) % 4;
+        section->selected_option = (section->selected_option + 1) % 5;
         SetMenuItemSelected(section->menu_items[section->selected_option], true);
     }
 
     // Mouse hover auto-select
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         if (IsMenuItemHovered(section->menu_items[i]) && i != section->selected_option) {
             SetMenuItemSelected(section->menu_items[section->selected_option], false);
             section->selected_option = i;
@@ -273,9 +292,13 @@ PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
 
         switch (section->selected_option) {
             case 0: return PAUSE_ACTION_RESUME;
-            case 1: return PAUSE_ACTION_SETTINGS;
-            case 2: return PAUSE_ACTION_HELP;
-            case 3:
+            case 1:
+                // Show stats overlay
+                section->show_stats_overlay = true;
+                return PAUSE_ACTION_NONE;
+            case 2: return PAUSE_ACTION_SETTINGS;
+            case 3: return PAUSE_ACTION_HELP;
+            case 4:
                 // Show confirmation dialog
                 section->show_confirm_dialog = true;
                 section->confirm_selected = 1;  // Default to "No"
@@ -286,13 +309,16 @@ PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
     }
 
     // Mouse click handling
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         if (IsMenuItemClicked(section->menu_items[i])) {
             switch (i) {
                 case 0: return PAUSE_ACTION_RESUME;
-                case 1: return PAUSE_ACTION_SETTINGS;
-                case 2: return PAUSE_ACTION_HELP;
-                case 3:
+                case 1:
+                    section->show_stats_overlay = true;
+                    return PAUSE_ACTION_NONE;
+                case 2: return PAUSE_ACTION_SETTINGS;
+                case 3: return PAUSE_ACTION_HELP;
+                case 4:
                     section->show_confirm_dialog = true;
                     section->confirm_selected = 1;  // Default to "No"
                     SetMenuItemRowSelected(section->confirm_items[0], false);
@@ -303,6 +329,83 @@ PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
     }
 
     return PAUSE_ACTION_NONE;
+}
+
+// ============================================================================
+// STATS OVERLAY RENDERING
+// ============================================================================
+
+static void RenderStatsOverlay(void) {
+    const GlobalStats_t* stats = Stats_GetCurrent();
+
+    // Full-screen darkened overlay
+    a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, 200);
+
+    // Stats panel
+    int panel_w = 700;
+    int panel_h = 500;
+    int panel_x = (SCREEN_WIDTH - panel_w) / 2;
+    int panel_y = (SCREEN_HEIGHT - panel_h) / 2;
+
+    // Panel background
+    a_DrawFilledRect(panel_x, panel_y, panel_w, panel_h,
+                     COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, 250);
+
+    // Header
+    a_DrawFilledRect(panel_x, panel_y, panel_w, PAUSE_PANEL_HEADER_HEIGHT,
+                     COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, 255);
+    a_DrawText("RUN STATS", SCREEN_WIDTH / 2, panel_y + 12,
+               COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b,
+               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+
+    // Stats content (using dString_t per Constitutional pattern)
+    int y = panel_y + 80;
+    int line_height = 30;
+    dString_t* text = d_StringInit();
+
+    // Cards Drawn
+    d_StringFormat(text, "Cards Drawn: %llu", stats->cards_drawn);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 200, 200, 255, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    y += line_height;
+
+    // Turns
+    y += 10;
+    d_StringFormat(text, "Turns Played: %llu  Won: %llu  Lost: %llu  Pushed: %llu",
+                   stats->turns_played, stats->turns_won, stats->turns_lost, stats->turns_pushed);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 255, 255, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    y += line_height;
+
+    // Combat
+    d_StringFormat(text, "Combats Won: %llu", stats->combats_won);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 150, 255, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    y += line_height;
+
+    // Damage
+    y += 10;
+    d_StringFormat(text, "Total Damage: %llu", stats->damage_dealt_total);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 255, 150, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    y += line_height;
+
+    // Damage breakdown
+    const char* damage_sources[] = {"Turn Wins", "Trinket Passives", "Trinket Actives", "Abilities"};
+    for (int i = 0; i < DAMAGE_SOURCE_MAX; i++) {
+        d_StringFormat(text, "  %s: %llu", damage_sources[i], stats->damage_by_source[i]);
+        a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 200, 150, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+        y += line_height;
+    }
+
+    // Chips
+    y += 10;
+    d_StringFormat(text, "Chips Bet: %llu  Won: %llu  Lost: %llu  Drained: %llu",
+                   stats->chips_bet, stats->chips_won, stats->chips_lost, stats->chips_drained);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 150, 255, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+
+    // Footer hint
+    a_DrawText("Press ESC or Enter to close", SCREEN_WIDTH / 2, panel_y + panel_h - 30,
+               COLOR_MENU_NORMAL.r, COLOR_MENU_NORMAL.g, COLOR_MENU_NORMAL.b,
+               FONT_GAME, TEXT_ALIGN_CENTER, 0);
+
+    d_StringDestroy(text);
 }
 
 // ============================================================================
@@ -341,7 +444,7 @@ void RenderPauseMenuSection(PauseMenuSection_t* section) {
                FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
 
     // Render menu items with custom colors
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         MenuItem_t* item = section->menu_items[i];
         if (!item) continue;
 
@@ -349,12 +452,12 @@ void RenderPauseMenuSection(PauseMenuSection_t* section) {
         int text_w, text_h;
         a_CalcTextDimensions((char*)item->label, FONT_ENTER_COMMAND, &text_w, &text_h);
 
-        // Disable hover effects when confirmation dialog is open
-        bool is_actually_hovered = section->show_confirm_dialog ? false : IsMenuItemHovered(item);
+        // Disable hover effects when confirmation dialog or stats overlay is open
+        bool is_actually_hovered = (section->show_confirm_dialog || section->show_stats_overlay) ? false : IsMenuItemHovered(item);
 
         // Determine color based on item type and state
         aColor_t text_color;
-        if (i == 3) {  // "Return to Main Menu" - danger color
+        if (i == 4) {  // "Return to Main Menu" - danger color
             if (item->is_selected && is_actually_hovered) {
                 text_color = COLOR_DANGER_SELECTED;
             } else if (item->is_selected) {
@@ -472,5 +575,10 @@ void RenderPauseMenuSection(PauseMenuSection_t* section) {
                        text_color.r, text_color.g, text_color.b,
                        FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
         }
+    }
+
+    // Render stats overlay if visible
+    if (section->show_stats_overlay) {
+        RenderStatsOverlay();
     }
 }

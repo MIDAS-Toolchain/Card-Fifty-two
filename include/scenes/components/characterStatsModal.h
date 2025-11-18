@@ -10,17 +10,13 @@
 #include "../../common.h"
 #include "../../player.h"
 
-// Modal dimensions
-#define STATS_MODAL_WIDTH   550
-#define STATS_MODAL_HEIGHT  400
-#define STATS_MODAL_PADDING 15
-#define STATS_MODAL_GAP     12
+// Modal dimensions (modern tooltip style - dynamic height)
+#define STATS_MODAL_WIDTH   280
 
 typedef struct CharacterStatsModal {
     bool is_visible;
-    int x, y, w, h;
+    int x, y;
     Player_t* player;    // Reference to player (NOT owned)
-    FlexBox_t* layout;   // FlexBox for content layout (owned)
 } CharacterStatsModal_t;
 
 /**

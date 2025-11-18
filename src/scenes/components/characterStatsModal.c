@@ -4,14 +4,16 @@
  */
 
 #include "../../../include/scenes/components/characterStatsModal.h"
+#include "../../../include/scenes/sceneBlackjack.h"
 
-// Color constants
-#define COLOR_BG            ((aColor_t){23, 32, 56, 230})    // #172038 with alpha
-#define COLOR_BORDER        ((aColor_t){60, 94, 139, 255})   // #3c5e8b
-#define COLOR_TITLE         ((aColor_t){235, 237, 233, 255}) // #ebede9 - off-white
-#define COLOR_TEXT          ((aColor_t){200, 200, 200, 255}) // Light gray
-#define COLOR_THRESHOLD     ((aColor_t){164, 221, 219, 255}) // #a4dddb - cyan
-#define COLOR_WARNING       ((aColor_t){222, 158, 65, 255})  // #de9e41 - orange
+// Modern tooltip color scheme (matching status/ability tooltips)
+#define COLOR_BG            ((aColor_t){20, 20, 30, 230})     // Dark background
+#define COLOR_BORDER        ((aColor_t){100, 100, 100, 200})  // Light gray border
+#define COLOR_TITLE         ((aColor_t){235, 237, 233, 255})  // #ebede9 - off-white title
+#define COLOR_TEXT          ((aColor_t){200, 200, 200, 255})  // Light gray text
+#define COLOR_SANITY_GOOD   ((aColor_t){115, 190, 211, 255})  // #73bed3 - cyan (healthy)
+#define COLOR_SANITY_LOW    ((aColor_t){222, 158, 65, 255})   // #de9e41 - orange (warning)
+#define COLOR_DIVIDER       ((aColor_t){100, 100, 100, 200})  // Divider line
 
 // ============================================================================
 // LIFECYCLE
@@ -32,24 +34,7 @@ CharacterStatsModal_t* CreateCharacterStatsModal(Player_t* player) {
     modal->is_visible = false;
     modal->x = 0;
     modal->y = 0;
-    modal->w = STATS_MODAL_WIDTH;
-    modal->h = STATS_MODAL_HEIGHT;
     modal->player = player;  // Reference only, not owned
-
-    // Create FlexBox for content layout
-    modal->layout = a_CreateFlexBox(0, 0, STATS_MODAL_WIDTH, STATS_MODAL_HEIGHT);
-    a_FlexConfigure(modal->layout, FLEX_DIR_COLUMN, FLEX_JUSTIFY_START, STATS_MODAL_GAP);
-    a_FlexSetPadding(modal->layout, STATS_MODAL_PADDING);
-
-    // Add FlexBox items for each section
-    a_FlexAddItem(modal->layout, STATS_MODAL_WIDTH, 30, NULL);  // 0: Title
-    a_FlexAddItem(modal->layout, STATS_MODAL_WIDTH, 25, NULL);  // 1: Current sanity
-    a_FlexAddItem(modal->layout, STATS_MODAL_WIDTH, 15, NULL);  // 2: Spacer
-    a_FlexAddItem(modal->layout, STATS_MODAL_WIDTH, 25, NULL);  // 3: Thresholds header
-    a_FlexAddItem(modal->layout, STATS_MODAL_WIDTH, 45, NULL);  // 4: Threshold 75+
-    a_FlexAddItem(modal->layout, STATS_MODAL_WIDTH, 45, NULL);  // 5: Threshold 50-74
-    a_FlexAddItem(modal->layout, STATS_MODAL_WIDTH, 45, NULL);  // 6: Threshold 25-49
-    a_FlexAddItem(modal->layout, STATS_MODAL_WIDTH, 45, NULL);  // 7: Threshold 0-24
 
     d_LogInfo("CharacterStatsModal created");
     return modal;
@@ -57,11 +42,6 @@ CharacterStatsModal_t* CreateCharacterStatsModal(Player_t* player) {
 
 void DestroyCharacterStatsModal(CharacterStatsModal_t** modal) {
     if (!modal || !*modal) return;
-
-    // Destroy FlexBox if it exists
-    if ((*modal)->layout) {
-        a_DestroyFlexBox(&(*modal)->layout);
-    }
 
     free(*modal);
     *modal = NULL;
@@ -89,103 +69,207 @@ void HideCharacterStatsModal(CharacterStatsModal_t* modal) {
 // RENDERING
 // ============================================================================
 
-void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
-    if (!modal || !modal->is_visible || !modal->player || !modal->layout) return;
+// Helper function to get class name as string
+static const char* GetClassName(PlayerClass_t class) {
+    switch (class) {
+        case PLAYER_CLASS_DEGENERATE: return "The Degenerate";
+        case PLAYER_CLASS_DEALER:     return "The Dealer";
+        case PLAYER_CLASS_DETECTIVE:  return "The Detective";
+        case PLAYER_CLASS_DREAMER:    return "The Dreamer";
+        default:                      return "Unknown Class";
+    }
+}
 
-    // Background
-    a_DrawFilledRect(modal->x, modal->y, modal->w, modal->h,
+// Helper function to get class-specific sanity threshold effects
+static const char* GetSanityThresholdEffect(PlayerClass_t class, int threshold) {
+    switch (class) {
+        case PLAYER_CLASS_DEGENERATE:
+            switch (threshold) {
+                case 75: return "Risk Bonus: +10% token gain";
+                case 50: return "Shaky Hands: -5% accuracy";
+                case 25: return "Desperate: +20% damage taken";
+                case 0:  return "Broken: Cannot gain tokens";
+                default: return "[Unknown threshold]";
+            }
+        case PLAYER_CLASS_DEALER:
+            return "[Class not implemented]";
+        case PLAYER_CLASS_DETECTIVE:
+            return "[Class not implemented]";
+        case PLAYER_CLASS_DREAMER:
+            return "[Class not implemented]";
+        default:
+            return "[No class selected]";
+    }
+}
+
+void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
+    if (!modal || !modal->is_visible || !modal->player) return;
+
+    // Use full game area height (minus top bar)
+    int padding = 16;
+    int modal_width = STATS_MODAL_WIDTH;
+    int modal_height = SCREEN_HEIGHT - TOP_BAR_HEIGHT;  // Full height!
+    int content_width = modal_width - (padding * 2);
+
+    // Get class name for measurement
+    const char* class_name_for_measure = GetClassName(modal->player->class);
+
+    // Measure actual text heights (for spacing only, not for modal height)
+    int title_height = a_GetWrappedTextHeight((char*)class_name_for_measure, FONT_ENTER_COMMAND, content_width);
+
+    dString_t* sanity_measure = d_StringInit();
+    d_StringFormat(sanity_measure, "Sanity: %d / %d", modal->player->sanity, modal->player->max_sanity);
+    int sanity_height = a_GetWrappedTextHeight((char*)d_StringPeek(sanity_measure), FONT_GAME, content_width);
+    d_StringDestroy(sanity_measure);
+
+    dString_t* chips_measure = d_StringInit();
+    d_StringFormat(chips_measure, "Tokens: %d", modal->player->chips);
+    int chips_height = a_GetWrappedTextHeight((char*)d_StringPeek(chips_measure), FONT_GAME, content_width);
+    d_StringDestroy(chips_measure);
+
+    int header_height = a_GetWrappedTextHeight("Sanity Effects:", FONT_ENTER_COMMAND, content_width);
+    int range_height = a_GetWrappedTextHeight("75-100:", FONT_GAME, content_width);
+    int effect_height = a_GetWrappedTextHeight("Risk Bonus: +10% token gain", FONT_GAME, content_width - 10);
+
+    // Draw background (modern dark style)
+    a_DrawFilledRect(modal->x, modal->y, modal_width, modal_height,
                      COLOR_BG.r, COLOR_BG.g, COLOR_BG.b, COLOR_BG.a);
 
-    // Border
-    a_DrawRect(modal->x, modal->y, modal->w, modal->h,
+    // Draw border
+    a_DrawRect(modal->x, modal->y, modal_width, modal_height,
                COLOR_BORDER.r, COLOR_BORDER.g, COLOR_BORDER.b, COLOR_BORDER.a);
 
-    // Update FlexBox bounds
-    a_FlexSetBounds(modal->layout, modal->x, modal->y, modal->w, modal->h);
-    a_FlexLayout(modal->layout);
-
-    int center_x = modal->x + modal->w / 2;
-    int left_x = modal->x + STATS_MODAL_PADDING;
+    // Content positioning
+    int content_x = modal->x + padding;
+    int current_y = modal->y + padding;
 
     // ========================================================================
-    // FlexBox Item 0: Title - Character Name
+    // Title - Class Name (e.g., "The Degenerate")
     // ========================================================================
 
-    int title_y = a_FlexGetItemY(modal->layout, 0);
-    a_DrawText((char*)d_StringPeek(modal->player->name), center_x, title_y,
-               COLOR_TITLE.r, COLOR_TITLE.g, COLOR_TITLE.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+    aFontConfig_t title_config = {
+        .type = FONT_ENTER_COMMAND,
+        .color = COLOR_TITLE,
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = content_width,
+        .scale = 1.0f
+    };
+
+    const char* class_name = GetClassName(modal->player->class);
+    a_DrawTextStyled((char*)class_name, content_x, current_y, &title_config);
+    current_y += title_height + 8;  // Actual height + margin
 
     // ========================================================================
-    // FlexBox Item 1: Current Sanity Display
+    // Sanity Display (color-coded based on current sanity)
     // ========================================================================
 
-    int sanity_y = a_FlexGetItemY(modal->layout, 1);
     dString_t* sanity_text = d_StringInit();
     d_StringFormat(sanity_text, "Sanity: %d / %d", modal->player->sanity, modal->player->max_sanity);
-    a_DrawText((char*)d_StringPeek(sanity_text), center_x, sanity_y,
-               COLOR_TEXT.r, COLOR_TEXT.g, COLOR_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+
+    // Color based on sanity percentage
+    float sanity_percent = (float)modal->player->sanity / (float)modal->player->max_sanity;
+    aColor_t sanity_color = (sanity_percent >= 0.5f) ? COLOR_SANITY_GOOD : COLOR_SANITY_LOW;
+
+    aFontConfig_t sanity_config = {
+        .type = FONT_GAME,
+        .color = sanity_color,
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = content_width,
+        .scale = 1.0f
+    };
+
+    a_DrawTextStyled((char*)d_StringPeek(sanity_text), content_x, current_y, &sanity_config);
     d_StringDestroy(sanity_text);
+    current_y += sanity_height + 8;  // Actual height + spacing
 
     // ========================================================================
-    // FlexBox Item 2: Spacer (no rendering)
+    // Divider Line
     // ========================================================================
 
-    // ========================================================================
-    // FlexBox Item 3: Sanity Thresholds Header
-    // ========================================================================
-
-    int header_y = a_FlexGetItemY(modal->layout, 3);
-    a_DrawText("Sanity Thresholds:", left_x, header_y,
-               COLOR_THRESHOLD.r, COLOR_THRESHOLD.g, COLOR_THRESHOLD.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+    a_DrawFilledRect(content_x, current_y, content_width, 1,
+                     COLOR_DIVIDER.r, COLOR_DIVIDER.g, COLOR_DIVIDER.b, COLOR_DIVIDER.a);
+    current_y += 1 + 8;  // Divider height + spacing
 
     // ========================================================================
-    // FlexBox Item 4: Threshold 75+ Sanity
+    // Chips Display
     // ========================================================================
 
-    int threshold1_y = a_FlexGetItemY(modal->layout, 4);
-    a_DrawText("75+ Sanity:", left_x + 10, threshold1_y,
-               COLOR_TEXT.r, COLOR_TEXT.g, COLOR_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
-    a_DrawText("[PLACEHOLDER: Bonus effect]", left_x + 20, threshold1_y + 20,
-               COLOR_TEXT.r, COLOR_TEXT.g, COLOR_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+    dString_t* chips_text = d_StringInit();
+    d_StringFormat(chips_text, "Tokens: %d", modal->player->chips);
+
+    aFontConfig_t chips_config = {
+        .type = FONT_GAME,
+        .color = COLOR_TEXT,
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = content_width,
+        .scale = 1.0f
+    };
+
+    a_DrawTextStyled((char*)d_StringPeek(chips_text), content_x, current_y, &chips_config);
+    d_StringDestroy(chips_text);
+    current_y += chips_height + 12;  // Actual height + section spacing
 
     // ========================================================================
-    // FlexBox Item 5: Threshold 50-74 Sanity
+    // Sanity Thresholds Section
     // ========================================================================
 
-    int threshold2_y = a_FlexGetItemY(modal->layout, 5);
-    a_DrawText("50-74 Sanity:", left_x + 10, threshold2_y,
-               COLOR_TEXT.r, COLOR_TEXT.g, COLOR_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
-    a_DrawText("[PLACEHOLDER: Penalty begins]", left_x + 20, threshold2_y + 20,
-               COLOR_TEXT.r, COLOR_TEXT.g, COLOR_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+    // Header
+    aFontConfig_t header_config = {
+        .type = FONT_ENTER_COMMAND,
+        .color = COLOR_SANITY_GOOD,
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = content_width,
+        .scale = 1.0f
+    };
 
-    // ========================================================================
-    // FlexBox Item 6: Threshold 25-49 Sanity
-    // ========================================================================
+    a_DrawTextStyled("Sanity Effects:", content_x, current_y, &header_config);
+    current_y += header_height + 8;  // Actual height + margin
 
-    int threshold3_y = a_FlexGetItemY(modal->layout, 6);
-    a_DrawText("25-49 Sanity:", left_x + 10, threshold3_y,
-               COLOR_TEXT.r, COLOR_TEXT.g, COLOR_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
-    a_DrawText("[PLACEHOLDER: Severe penalty]", left_x + 20, threshold3_y + 20,
-               COLOR_WARNING.r, COLOR_WARNING.g, COLOR_WARNING.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+    // Threshold colors (based on severity)
+    aColor_t threshold_colors[] = {
+        COLOR_SANITY_GOOD,  // 75+ (good)
+        COLOR_TEXT,         // 50-74 (neutral)
+        COLOR_SANITY_LOW,   // 25-49 (warning)
+        (aColor_t){200, 50, 50, 255}  // 0-24 (danger - red)
+    };
 
-    // ========================================================================
-    // FlexBox Item 7: Threshold 0-24 Sanity
-    // ========================================================================
+    const char* threshold_ranges[] = {
+        "75-100:",
+        "50-74:",
+        "25-49:",
+        "0-24:"
+    };
 
-    int threshold4_y = a_FlexGetItemY(modal->layout, 7);
-    a_DrawText("0-24 Sanity:", left_x + 10, threshold4_y,
-               COLOR_TEXT.r, COLOR_TEXT.g, COLOR_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
-    a_DrawText("[PLACEHOLDER: Extreme difficulty]", left_x + 20, threshold4_y + 20,
-               COLOR_WARNING.r, COLOR_WARNING.g, COLOR_WARNING.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+    int threshold_values[] = {75, 50, 25, 0};
+
+    // Render each threshold
+    for (int i = 0; i < 4; i++) {
+        // Threshold range label
+        aFontConfig_t range_config = {
+            .type = FONT_GAME,
+            .color = threshold_colors[i],
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.1f  // ADR-008: Consistent readability
+        };
+
+        int range_height = a_GetWrappedTextHeight((char*)threshold_ranges[i], FONT_GAME, content_width);
+        a_DrawTextStyled((char*)threshold_ranges[i], content_x, current_y, &range_config);
+        current_y += range_height + 4;  // Actual height + small spacing
+
+        // Effect description (indented slightly)
+        const char* effect = GetSanityThresholdEffect(modal->player->class, threshold_values[i]);
+
+        aFontConfig_t effect_config = {
+            .type = FONT_GAME,
+            .color = COLOR_TEXT,
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width - 10,  // Indent effect text
+            .scale = 1.1f  // Match ability/status tooltip size for readability
+        };
+
+        int effect_height = a_GetWrappedTextHeight((char*)effect, FONT_GAME, content_width - 10);
+        a_DrawTextStyled((char*)effect, content_x + 10, current_y, &effect_config);
+        current_y += effect_height + 6;  // Actual height + spacing between entries
+    }
 }

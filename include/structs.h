@@ -2,6 +2,7 @@
 #define STRUCTS_H
 
 #include "defs.h"
+#include "stateStorage.h"
 #include <SDL2/SDL.h>
 #include <Daedalus.h>
 #include <stdbool.h>
@@ -81,6 +82,19 @@ typedef struct Hand {
 } Hand_t;
 
 // ============================================================================
+// FORWARD DECLARATIONS (needed before Player_t)
+// ============================================================================
+
+// Forward declare Enemy_t (defined in enemy.h)
+typedef struct Enemy Enemy_t;
+
+// Forward declare StatusEffectManager_t (defined in statusEffects.h)
+typedef struct StatusEffectManager StatusEffectManager_t;
+
+// Forward declare Trinket_t (defined in trinket.h)
+typedef struct Trinket Trinket_t;
+
+// ============================================================================
 // PLAYER STRUCTURE
 // ============================================================================
 
@@ -107,14 +121,15 @@ typedef struct Player {
 
     int sanity;             // Mental state (0-100)
     int max_sanity;         // Max sanity value
+
+    // Status effects system (token manipulation debuffs)
+    StatusEffectManager_t* status_effects;  // Heap-allocated status effect manager
+
+    // Class system
+    PlayerClass_t class;           // Character class (Degenerate, Dealer, Detective, Dreamer)
+    Trinket_t* class_trinket;      // Class-specific trinket (separate from 6 regular slots)
+    dArray_t* trinket_slots;       // Array of Trinket_t* (6 slots max)
 } Player_t;
-
-// ============================================================================
-// FORWARD DECLARATIONS
-// ============================================================================
-
-// Forward declare Enemy_t (defined in enemy.h)
-typedef struct Enemy Enemy_t;
 
 // ============================================================================
 // CARD HOVER STATE (shared between dealer and player sections)
@@ -137,15 +152,15 @@ typedef struct CardHoverState {
 /**
  * GameContext_t - Global game state and state machine
  *
- * Constitutional pattern: Uses separate typed dTable_t for each state variable type,
- * dArray_t for active player list. No void* chaos - explicit types only.
+ * Constitutional pattern: Composition over inheritance
+ * - Embeds GameStateData_t for typed state storage
+ * - Uses dArray_t for active player list
+ * - No void* chaos - explicit types only
  */
 typedef struct GameContext {
     GameState_t current_state;      // Current state in state machine
     GameState_t previous_state;     // Previous state (for transitions)
-    dTable_t* bool_flags;           // Boolean flags (key: char*, value: bool)
-    dTable_t* int_values;           // Integer values (key: char*, value: int)
-    dTable_t* dealer_phase;         // Dealer phase (key: char*, value: DealerPhase_t)
+    GameStateData_t state_data;     // State variable storage (embedded)
     dArray_t* active_players;       // Array of int (player IDs in turn order)
     int current_player_index;       // Index into active_players for current turn
     Deck_t* deck;                   // Pointer to game deck

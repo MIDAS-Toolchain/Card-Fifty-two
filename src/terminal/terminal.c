@@ -38,7 +38,8 @@ Terminal_t* InitTerminal(void) {
     }
 
     // Initialize command history (array of dString_t pointers)
-    terminal->command_history = d_InitArray(sizeof(dString_t*), 16);
+    // d_InitArray(capacity, element_size) - capacity FIRST!
+    terminal->command_history = d_InitArray(16, sizeof(dString_t*));
     if (!terminal->command_history) {
         d_StringDestroy(terminal->input_buffer);
         free(terminal);
@@ -47,7 +48,8 @@ Terminal_t* InitTerminal(void) {
     }
 
     // Initialize output log (array of dString_t pointers)
-    terminal->output_log = d_InitArray(sizeof(dString_t*), TERMINAL_MAX_OUTPUT_LINES);
+    // d_InitArray(capacity, element_size) - capacity FIRST!
+    terminal->output_log = d_InitArray(TERMINAL_MAX_OUTPUT_LINES, sizeof(dString_t*));
     if (!terminal->output_log) {
         d_StringDestroy(terminal->input_buffer);
         d_DestroyArray(terminal->command_history);
@@ -513,7 +515,8 @@ void TerminalClear(Terminal_t* terminal) {
 
     // Clear array (hacky: destroy and recreate)
     d_DestroyArray(terminal->output_log);
-    terminal->output_log = d_InitArray(sizeof(dString_t*), TERMINAL_MAX_OUTPUT_LINES);
+    // d_InitArray(capacity, element_size) - capacity FIRST!
+    terminal->output_log = d_InitArray(TERMINAL_MAX_OUTPUT_LINES, sizeof(dString_t*));
 
     // Recreate FlexBox layout (clears all items)
     if (terminal->output_layout) {

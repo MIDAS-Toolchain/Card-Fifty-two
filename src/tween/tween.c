@@ -3,8 +3,11 @@
  */
 
 #include "../../include/tween/tween.h"
+#include "../../include/common.h"  // For dArray_t
 #include <string.h>
 #include <math.h>
+#include <stddef.h>  // For offsetof
+#include <stdint.h>  // For uintptr_t
 
 // ============================================================================
 // CONSTANTS
@@ -172,6 +175,57 @@ static float ApplyEasing(float t, TweenEasing_t easing) {
 }
 
 // ============================================================================
+// POINTER RESOLUTION (For ARRAY_ELEM targets)
+// ============================================================================
+
+/**
+ * get_tween_target_pointer - Resolve pointer from tween target specification
+ *
+ * For DIRECT targets: returns direct_target
+ * For ARRAY_ELEM targets: recalculates pointer from array index + offset
+ *
+ * @param tween - Tween to resolve pointer for
+ * @return float* - Resolved pointer, or NULL if array is invalid
+ *
+ * This function is called every frame in UpdateTweens() to ensure pointer
+ * is always valid even if the underlying dArray has been reallocated.
+ */
+static float* get_tween_target_pointer(Tween_t* tween) {
+    if (!tween || !tween->active) {
+        return NULL;
+    }
+
+    if (tween->target_type == TWEEN_TARGET_DIRECT) {
+        // Simple case - return stored pointer
+        return tween->direct_target;
+    }
+
+    // TWEEN_TARGET_ARRAY_ELEM - recalculate pointer from array
+    if (!tween->array_ptr) {
+        return NULL;
+    }
+
+    // Dereference the dArray_t** to get dArray_t*
+    dArray_t** array_ptr_ptr = (dArray_t**)tween->array_ptr;
+    dArray_t* array = *array_ptr_ptr;
+
+    if (!array || !array->data) {
+        return NULL;
+    }
+
+    // Check bounds
+    if (tween->element_index >= array->count) {
+        return NULL;
+    }
+
+    // Calculate pointer: base + (element_index * element_size) + float_offset
+    char* element_ptr = (char*)array->data + (tween->element_index * array->element_size);
+    float* target_ptr = (float*)(element_ptr + tween->float_offset);
+
+    return target_ptr;
+}
+
+// ============================================================================
 // LIFECYCLE
 // ============================================================================
 
@@ -224,10 +278,14 @@ bool TweenFloatWithCallback(TweenManager_t* manager, float* target, float end_va
         return false;  // Pool full
     }
 
-    // Initialize tween
+    // Initialize tween (DIRECT target type)
     Tween_t* tween = &manager->tweens[slot];
     tween->active = true;
-    tween->target = target;
+    tween->target_type = TWEEN_TARGET_DIRECT;
+    tween->direct_target = target;
+    tween->array_ptr = NULL;
+    tween->element_index = 0;
+    tween->float_offset = 0;
     tween->start_value = *target;  // Capture current value
     tween->end_value = end_value;
     tween->duration = duration;
@@ -235,6 +293,89 @@ bool TweenFloatWithCallback(TweenManager_t* manager, float* target, float end_va
     tween->easing = easing;
     tween->on_complete = on_complete;
     tween->user_data = user_data;
+
+    manager->active_count++;
+    return true;
+}
+
+bool TweenFloatInArray(TweenManager_t* manager,
+                       void* array_ptr,
+                       size_t element_index,
+                       size_t float_offset,
+                       float end_value,
+                       float duration,
+                       TweenEasing_t easing) {
+    if (!manager || !array_ptr || duration <= 0.0f) return false;
+
+    // Validate array and index
+    dArray_t** array_ptr_ptr = (dArray_t**)array_ptr;
+    dArray_t* array = *array_ptr_ptr;
+
+    if (!array) {
+        d_LogError("TweenFloatInArray: array is NULL");
+        return false;
+    }
+
+    if (!array->data) {
+        d_LogErrorF("TweenFloatInArray: array->data is NULL (count=%zu)", array->count);
+        return false;
+    }
+
+    if (element_index >= array->count) {
+        d_LogErrorF("TweenFloatInArray: element_index %zu >= count %zu",
+                   element_index, array->count);
+        return false;
+    }
+
+    // Find free slot
+    int slot = -1;
+    for (int i = 0; i < TWEEN_MAX_ACTIVE; i++) {
+        if (!manager->tweens[i].active) {
+            slot = i;
+            break;
+        }
+    }
+
+    if (slot == -1) {
+        return false;  // Pool full
+    }
+
+    // Calculate initial pointer to get start value
+    char* element_ptr = (char*)array->data + (element_index * array->element_size);
+
+    // Defensive: Verify offset doesn't exceed element bounds
+    if (float_offset + sizeof(float) > array->element_size) {
+        d_LogErrorF("TweenFloatInArray: Invalid offset %zu for element_size %zu",
+                   float_offset, array->element_size);
+        return false;
+    }
+
+    float* target_ptr = (float*)(element_ptr + float_offset);
+
+    // Defensive: Check pointer alignment (floats must be 4-byte aligned on most platforms)
+    if (((uintptr_t)target_ptr & 0x3) != 0) {
+        d_LogErrorF("TweenFloatInArray: Misaligned float pointer %p (offset %zu)",
+                   (void*)target_ptr, float_offset);
+        return false;
+    }
+
+    float start_value = *target_ptr;
+
+    // Initialize tween (ARRAY_ELEM target type)
+    Tween_t* tween = &manager->tweens[slot];
+    tween->active = true;
+    tween->target_type = TWEEN_TARGET_ARRAY_ELEM;
+    tween->direct_target = NULL;
+    tween->array_ptr = array_ptr;
+    tween->element_index = element_index;
+    tween->float_offset = float_offset;
+    tween->start_value = start_value;
+    tween->end_value = end_value;
+    tween->duration = duration;
+    tween->elapsed = 0.0f;
+    tween->easing = easing;
+    tween->on_complete = NULL;
+    tween->user_data = NULL;
 
     manager->active_count++;
     return true;
@@ -257,6 +398,15 @@ void UpdateTweens(TweenManager_t* manager, float dt) {
 
         if (!tween->active) continue;
 
+        // Resolve pointer (safe for both DIRECT and ARRAY_ELEM targets)
+        float* target = get_tween_target_pointer(tween);
+        if (!target) {
+            // Array was destroyed or index out of bounds - deactivate tween
+            tween->active = false;
+            manager->active_count--;
+            continue;
+        }
+
         // Update elapsed time
         tween->elapsed += dt;
 
@@ -266,7 +416,7 @@ void UpdateTweens(TweenManager_t* manager, float dt) {
         if (t >= 1.0f) {
             // Tween complete
             t = 1.0f;
-            *tween->target = tween->end_value;  // Snap to exact end value
+            *target = tween->end_value;  // Snap to exact end value
 
             // Call completion callback if provided
             if (tween->on_complete) {
@@ -281,7 +431,7 @@ void UpdateTweens(TweenManager_t* manager, float dt) {
             float eased_t = ApplyEasing(t, tween->easing);
 
             // Interpolate value
-            *tween->target = tween->start_value + (tween->end_value - tween->start_value) * eased_t;
+            *target = tween->start_value + (tween->end_value - tween->start_value) * eased_t;
         }
     }
 }
@@ -297,7 +447,11 @@ int StopTweensForTarget(TweenManager_t* manager, float* target) {
     for (int i = 0; i < TWEEN_MAX_ACTIVE; i++) {
         Tween_t* tween = &manager->tweens[i];
 
-        if (tween->active && tween->target == target) {
+        if (!tween->active) continue;
+
+        // Check if this tween targets the given pointer
+        float* tween_target = get_tween_target_pointer(tween);
+        if (tween_target == target) {
             tween->active = false;
             manager->active_count--;
             stopped++;
@@ -333,8 +487,11 @@ bool IsTweenActive(const TweenManager_t* manager, const float* target) {
     if (!manager || !target) return false;
 
     for (int i = 0; i < TWEEN_MAX_ACTIVE; i++) {
-        const Tween_t* tween = &manager->tweens[i];
-        if (tween->active && tween->target == target) {
+        Tween_t* tween = (Tween_t*)&manager->tweens[i];
+        if (!tween->active) continue;
+
+        float* tween_target = get_tween_target_pointer(tween);
+        if (tween_target == target) {
             return true;
         }
     }
@@ -346,8 +503,11 @@ float GetTweenProgress(const TweenManager_t* manager, const float* target) {
     if (!manager || !target) return -1.0f;
 
     for (int i = 0; i < TWEEN_MAX_ACTIVE; i++) {
-        const Tween_t* tween = &manager->tweens[i];
-        if (tween->active && tween->target == target) {
+        Tween_t* tween = (Tween_t*)&manager->tweens[i];
+        if (!tween->active) continue;
+
+        float* tween_target = get_tween_target_pointer(tween);
+        if (tween_target == target) {
             // Return normalized progress (0.0 to 1.0)
             float progress = tween->elapsed / tween->duration;
             if (progress > 1.0f) progress = 1.0f;

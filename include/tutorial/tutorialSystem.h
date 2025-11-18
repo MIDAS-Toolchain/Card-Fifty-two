@@ -13,10 +13,6 @@
 // TUTORIAL SYSTEM CONSTANTS
 // ============================================================================
 
-// Overlay opacity
-#define TUTORIAL_OVERLAY_ALPHA      200  // Dark overlay alpha (0-255)
-#define TUTORIAL_SPOTLIGHT_PADDING  20   // Extra padding around spotlight area
-
 // Dialogue constants
 #define DIALOGUE_WIDTH              600
 #define DIALOGUE_HEIGHT             200
@@ -34,33 +30,19 @@
 // TUTORIAL ENUMS
 // ============================================================================
 
-// Spotlight shape types
-typedef enum {
-    SPOTLIGHT_NONE,       // No spotlight
-    SPOTLIGHT_RECTANGLE,  // Rectangular spotlight
-    SPOTLIGHT_CIRCLE      // Circular spotlight
-} SpotlightType_t;
-
 // Tutorial event types (what triggers next step)
 typedef enum {
     TUTORIAL_EVENT_NONE,            // No event (manual advance)
     TUTORIAL_EVENT_BUTTON_CLICK,    // Specific button clicked
     TUTORIAL_EVENT_STATE_CHANGE,    // Game state changed
     TUTORIAL_EVENT_FUNCTION_CALL,   // Specific function called
-    TUTORIAL_EVENT_KEY_PRESS        // Specific key pressed
+    TUTORIAL_EVENT_KEY_PRESS,       // Specific key pressed
+    TUTORIAL_EVENT_HOVER            // Hover over specific area
 } TutorialEventType_t;
 
 // ============================================================================
 // TUTORIAL STRUCTURES
 // ============================================================================
-
-// Spotlight definition (highlights area of screen)
-typedef struct TutorialSpotlight {
-    SpotlightType_t type;   // Shape type
-    int x, y;               // Position
-    int w, h;               // Size (w=h for circle radius)
-    bool show_arrow;        // Show pointing arrow from dialogue
-} TutorialSpotlight_t;
 
 // Tutorial event listener
 typedef struct TutorialListener {
@@ -69,14 +51,24 @@ typedef struct TutorialListener {
     bool triggered;                  // Has event been triggered
 } TutorialListener_t;
 
-// Tutorial step (one dialogue + spotlight + listener)
+// Arrow configuration for tutorial dialogues
+typedef struct {
+    bool enabled;                    // Whether to draw an arrow
+    int from_x, from_y;             // Arrow start point (on dialogue box edge)
+    int to_x, to_y;                 // Arrow end point (target on screen)
+} TutorialArrow_t;
+
+// Tutorial step (one dialogue + listener)
 typedef struct TutorialStep {
     dString_t* dialogue_text;        // Dialogue content
-    TutorialSpotlight_t spotlight;   // Optional spotlight highlight
     TutorialListener_t listener;     // Event trigger for next step
     struct TutorialStep* next_step;  // Next step pointer (NULL = end)
     bool is_final_step;              // Is this the last step (shows "Finish" instead of "Skip")
+    int dialogue_x_offset;           // X offset from center (0 = centered)
     int dialogue_y_position;         // Y position for dialogue (0 = center, 60 = top)
+    int wait_for_game_state;         // Wait for this game state before advancing (-1 = don't wait)
+    TutorialArrow_t arrow;           // Optional arrow pointing from dialogue to target
+    bool advance_immediately;        // Advance to this step right away (don't wait for previous step's state)
 } TutorialStep_t;
 
 // Skip confirmation state
@@ -94,6 +86,8 @@ typedef struct TutorialSystem {
     TutorialSkipConfirmation_t skip_confirmation;  // Skip confirmation modal
     bool waiting_to_advance;         // Waiting for delay before advancing
     float advance_delay_timer;       // Countdown timer for advance delay (seconds)
+    bool waiting_for_betting_state;  // Waiting for game to return to BETTING state
+    int current_step_number;         // Current step number (1-indexed, 0 = inactive)
 } TutorialSystem_t;
 
 // ============================================================================
@@ -158,15 +152,23 @@ void UpdateTutorialListeners(TutorialSystem_t* system, float dt);
 void TriggerTutorialEvent(TutorialSystem_t* system, TutorialEventType_t event_type, void* event_data);
 
 /**
- * RenderTutorial - Render tutorial overlay, spotlight, and dialogue
+ * CheckTutorialGameState - Notify tutorial of game state changes
+ *
+ * @param system - Tutorial system
+ * @param game_state - Current game state (STATE_BETTING = 0, etc)
+ *
+ * Used to allow tutorial to advance only when game returns to BETTING state
+ */
+void CheckTutorialGameState(TutorialSystem_t* system, int game_state);
+
+/**
+ * RenderTutorial - Render tutorial dialogue
  *
  * @param system - Tutorial system
  *
  * Renders:
- * - Dark overlay covering screen
- * - Spotlight "cutout" highlighting specific area
  * - Dialogue modal with text and continue arrow
- * - Optional pointing arrow from dialogue to spotlight
+ * - Optional pointing arrow from dialogue to target
  */
 void RenderTutorial(TutorialSystem_t* system);
 
@@ -194,16 +196,23 @@ bool HandleTutorialInput(TutorialSystem_t* system);
  * CreateTutorialStep - Create a new tutorial step
  *
  * @param dialogue_text - Dialogue content
- * @param spotlight - Spotlight definition (can be SPOTLIGHT_NONE)
  * @param listener - Event listener configuration
  * @param is_final_step - Is this the final step (shows "Finish" instead of "Skip")
+ * @param dialogue_x_offset - X offset from center (0 = centered)
+ * @param dialogue_y_position - Y position for dialogue
+ * @param wait_for_game_state - Wait for this game state before showing dialogue (-1 = don't wait)
+ * @param arrow - Optional arrow pointing from dialogue to target
+ * @param advance_immediately - Advance to this step right away (don't wait for previous step's state)
  * @return TutorialStep_t* - Heap-allocated step (must be freed)
  */
 TutorialStep_t* CreateTutorialStep(const char* dialogue_text,
-                                   TutorialSpotlight_t spotlight,
                                    TutorialListener_t listener,
                                    bool is_final_step,
-                                   int dialogue_y_position);
+                                   int dialogue_x_offset,
+                                   int dialogue_y_position,
+                                   int wait_for_game_state,
+                                   TutorialArrow_t arrow,
+                                   bool advance_immediately);
 
 /**
  * DestroyTutorialStep - Destroy a tutorial step

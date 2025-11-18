@@ -181,10 +181,10 @@ void RenderSidebarButton(const SidebarButton_t* button, const char* count_text) 
                    FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
     }
 
-    // Draw hotkey in bottom-right corner if present
+    // Draw hotkey in bottom-right corner if present (moved up 12px for visibility)
     if (button->hotkey_hint[0] != '\0') {
         int hotkey_x = button->x + button->w - SIDEBAR_BUTTON_HOTKEY_PADDING;
-        int hotkey_y = button->y + button->h - SIDEBAR_BUTTON_HOTKEY_PADDING;
+        int hotkey_y = button->y + button->h - SIDEBAR_BUTTON_HOTKEY_PADDING - 12;
         a_DrawText((char*)button->hotkey_hint, hotkey_x, hotkey_y,
                    COLOR_HOTKEY_TEXT.r, COLOR_HOTKEY_TEXT.g, COLOR_HOTKEY_TEXT.b,
                    FONT_ENTER_COMMAND, TEXT_ALIGN_RIGHT, 0);

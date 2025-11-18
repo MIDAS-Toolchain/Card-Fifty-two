@@ -3,6 +3,7 @@
  */
 
 #include "../../include/tutorial/tutorialSystem.h"
+#include <math.h>
 
 // ============================================================================
 // TUTORIAL SYSTEM LIFECYCLE
@@ -23,6 +24,8 @@ TutorialSystem_t* CreateTutorialSystem(void) {
     system->skip_confirmation.skip_confirmed = false;
     system->waiting_to_advance = false;
     system->advance_delay_timer = 0.0f;
+    system->waiting_for_betting_state = false;
+    system->current_step_number = 0;
 
     d_LogInfo("TutorialSystem created");
     return system;
@@ -44,10 +47,13 @@ void DestroyTutorialSystem(TutorialSystem_t** system) {
 // ============================================================================
 
 TutorialStep_t* CreateTutorialStep(const char* dialogue_text,
-                                   TutorialSpotlight_t spotlight,
                                    TutorialListener_t listener,
                                    bool is_final_step,
-                                   int dialogue_y_position) {
+                                   int dialogue_x_offset,
+                                   int dialogue_y_position,
+                                   int wait_for_game_state,
+                                   TutorialArrow_t arrow,
+                                   bool advance_immediately) {
     if (!dialogue_text) {
         d_LogError("CreateTutorialStep: NULL dialogue_text");
         return NULL;
@@ -68,12 +74,15 @@ TutorialStep_t* CreateTutorialStep(const char* dialogue_text,
     }
     d_StringSet(step->dialogue_text, dialogue_text, 0);
 
-    // Copy spotlight and listener configs
-    step->spotlight = spotlight;
+    // Copy listener config
     step->listener = listener;
     step->next_step = NULL;
     step->is_final_step = is_final_step;
+    step->dialogue_x_offset = dialogue_x_offset;
     step->dialogue_y_position = dialogue_y_position;
+    step->wait_for_game_state = wait_for_game_state;
+    step->arrow = arrow;
+    step->advance_immediately = advance_immediately;
 
     return step;
 }
@@ -105,6 +114,7 @@ void StartTutorial(TutorialSystem_t* system, TutorialStep_t* first_step) {
     system->current_step = first_step;
     system->active = true;
     system->dialogue_visible = true;
+    system->current_step_number = 1;  // Start at step 1
 
     d_LogInfo("Tutorial started");
 }
@@ -115,6 +125,7 @@ void StopTutorial(TutorialSystem_t* system) {
     system->active = false;
     system->dialogue_visible = false;
     system->current_step = NULL;
+    system->current_step_number = 0;  // Reset to 0 (inactive)
 
     d_LogInfo("Tutorial stopped");
 }
@@ -124,6 +135,7 @@ void AdvanceTutorial(TutorialSystem_t* system) {
 
     // Move to next step
     system->current_step = system->current_step->next_step;
+    system->current_step_number++;  // Increment step number
 
     if (!system->current_step) {
         // No more steps - end tutorial
@@ -132,7 +144,7 @@ void AdvanceTutorial(TutorialSystem_t* system) {
     } else {
         // Show dialogue for next step
         system->dialogue_visible = true;
-        d_LogInfo("Tutorial advanced to next step - showing dialogue");
+        d_LogInfoF("Tutorial advanced to step %d - showing dialogue", system->current_step_number);
     }
 }
 
@@ -146,12 +158,44 @@ void UpdateTutorialListeners(TutorialSystem_t* system, float dt) {
     // If waiting to advance, count down timer
     if (system->waiting_to_advance) {
         system->advance_delay_timer -= dt;
+
         if (system->advance_delay_timer <= 0.0f) {
-            // Timer expired - advance now
-            system->waiting_to_advance = false;
-            system->advance_delay_timer = 0.0f;
-            AdvanceTutorial(system);
-            system->current_step->listener.triggered = false;  // Reset listener
+            // Check if next step wants to advance immediately (without waiting for state)
+            bool next_advances_immediately = (system->current_step->next_step &&
+                                             system->current_step->next_step->advance_immediately);
+
+            if (next_advances_immediately) {
+                // Advance to next step immediately (increments step number, unblocking input)
+                // BUT keep dialogue hidden until state is reached
+                system->waiting_to_advance = false;
+                system->advance_delay_timer = 0.0f;
+                system->waiting_for_betting_state = false;
+
+                // Move to next step
+                system->current_step = system->current_step->next_step;
+                system->current_step_number++;
+
+                if (!system->current_step) {
+                    StopTutorial(system);
+                    d_LogInfo("Tutorial completed");
+                } else {
+                    // Keep dialogue HIDDEN until state is reached
+                    system->dialogue_visible = false;
+                    system->current_step->listener.triggered = false;
+                    d_LogInfoF("Tutorial advanced to step %d (immediate advance, waiting for state %d to show dialogue)",
+                              system->current_step_number, system->current_step->wait_for_game_state);
+                }
+            } else {
+                // Normal behavior: wait for state before advancing
+                if (!system->waiting_for_betting_state) {
+                    system->waiting_to_advance = false;
+                    system->advance_delay_timer = 0.0f;
+                    AdvanceTutorial(system);
+                    if (system->current_step) {
+                        system->current_step->listener.triggered = false;
+                    }
+                }
+            }
         }
         return;  // Don't check for new triggers while waiting
     }
@@ -163,10 +207,37 @@ void UpdateTutorialListeners(TutorialSystem_t* system, float dt) {
         // Hide dialogue immediately so user can see game action
         system->dialogue_visible = false;
 
-        // Start 1.0 second delay before advancing
+        // Start 1.0 second delay + wait for BETTING state before advancing
         system->waiting_to_advance = true;
         system->advance_delay_timer = 1.0f;
-        d_LogInfo("Tutorial event triggered - hiding dialogue, waiting 1.0s before advancing");
+        system->waiting_for_betting_state = true;
+        d_LogInfo("Tutorial event triggered - hiding dialogue, waiting for BETTING state to advance");
+    }
+}
+
+void CheckTutorialGameState(TutorialSystem_t* system, int game_state) {
+    if (!system || !system->current_step) return;
+
+    // Case 1: Waiting to advance to next step (normal flow)
+    if (system->waiting_for_betting_state) {
+        // Check if we've reached the required game state for the NEXT step
+        if (system->current_step->next_step) {
+            int required_state = system->current_step->next_step->wait_for_game_state;
+            if (required_state == -1 || required_state == game_state) {
+                system->waiting_for_betting_state = false;
+                d_LogInfoF("Tutorial: Ready to advance (required state: %d, current: %d)", required_state, game_state);
+            }
+        }
+    }
+
+    // Case 2: Current step advanced immediately but dialogue hidden, waiting for state to show it
+    if (!system->dialogue_visible && system->current_step->advance_immediately) {
+        int required_state = system->current_step->wait_for_game_state;
+        if (required_state == -1 || required_state == game_state) {
+            // State reached - show dialogue now
+            system->dialogue_visible = true;
+            d_LogInfoF("Tutorial: Step %d state reached (%d) - showing dialogue", system->current_step_number, game_state);
+        }
     }
 }
 
@@ -195,8 +266,9 @@ void TriggerTutorialEvent(TutorialSystem_t* system, TutorialEventType_t event_ty
 
             case TUTORIAL_EVENT_FUNCTION_CALL:
             case TUTORIAL_EVENT_KEY_PRESS:
-                // Direct match
-                if (listener->event_data == event_data) {
+            case TUTORIAL_EVENT_HOVER:
+                // Direct match (or NULL for any hover)
+                if (listener->event_data == event_data || listener->event_data == NULL) {
                     listener->triggered = true;
                 }
                 break;
@@ -273,14 +345,32 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
 
     // Mouse click on skip/finish button
     if (app.mouse.pressed) {
-        int dialogue_x = (SCREEN_WIDTH - DIALOGUE_WIDTH) / 2;
-        int dialogue_y = system->current_step->dialogue_y_position;  // Use step-specific position
+        int dialogue_x = ((SCREEN_WIDTH - DIALOGUE_WIDTH) / 2) + system->current_step->dialogue_x_offset;
+        int dialogue_y = system->current_step->dialogue_y_position;
         int button_x = dialogue_x + DIALOGUE_WIDTH - DIALOGUE_ARROW_MARGIN - 80;
         int button_y = dialogue_y + DIALOGUE_HEIGHT - DIALOGUE_ARROW_MARGIN - 30;
 
+        // DEBUG: Log click and bounds (rate-limited to once per second)
+        d_LogRateLimitedF(D_LOG_RATE_LIMIT_FLAG_HASH_FORMAT_STRING, D_LOG_LEVEL_INFO, 1, 1.0,
+                         "🖱️ CLICK at (%d,%d) | Dialogue: (%d,%d)-(%d,%d)",
+                         app.mouse.x, app.mouse.y,
+                         dialogue_x, dialogue_y, dialogue_x + DIALOGUE_WIDTH, dialogue_y + DIALOGUE_HEIGHT);
+
+        // Check if click is on skip button
         if (app.mouse.x >= button_x && app.mouse.x <= button_x + 80 &&
             app.mouse.y >= button_y && app.mouse.y <= button_y + 30) {
+            d_LogInfo("  ➡️ Click on SKIP button - consuming");
             button_clicked = true;
+            app.mouse.pressed = 0;
+        }
+        // Check if click is anywhere INSIDE dialogue box
+        else if (app.mouse.x >= dialogue_x && app.mouse.x <= dialogue_x + DIALOGUE_WIDTH &&
+                 app.mouse.y >= dialogue_y && app.mouse.y <= dialogue_y + DIALOGUE_HEIGHT) {
+            d_LogInfo("  ➡️ Click in DIALOGUE - consuming");
+            app.mouse.pressed = 0;
+        }
+        else {
+            d_LogInfo("  ➡️ Click OUTSIDE - passing through to game");
         }
     }
 
@@ -354,65 +444,12 @@ static void DrawTutorialButton(int x, int y, int w, int h,
 // TUTORIAL RENDERING
 // ============================================================================
 
-static void RenderOverlayWithSpotlight(const TutorialSpotlight_t* spotlight) {
-    // If no spotlight, draw full overlay
-    if (!spotlight || spotlight->type == SPOTLIGHT_NONE) {
-        a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, TUTORIAL_OVERLAY_ALPHA);
-        return;
-    }
-
-    // Calculate spotlight bounds with padding
-    int spotlight_x, spotlight_y, spotlight_w, spotlight_h;
-
-    switch (spotlight->type) {
-        case SPOTLIGHT_RECTANGLE:
-            spotlight_x = spotlight->x - TUTORIAL_SPOTLIGHT_PADDING;
-            spotlight_y = spotlight->y - TUTORIAL_SPOTLIGHT_PADDING;
-            spotlight_w = spotlight->w + (TUTORIAL_SPOTLIGHT_PADDING * 2);
-            spotlight_h = spotlight->h + (TUTORIAL_SPOTLIGHT_PADDING * 2);
-            break;
-
-        case SPOTLIGHT_CIRCLE:
-            spotlight_x = spotlight->x - spotlight->w - TUTORIAL_SPOTLIGHT_PADDING;
-            spotlight_y = spotlight->y - spotlight->h - TUTORIAL_SPOTLIGHT_PADDING;
-            spotlight_w = (spotlight->w * 2) + (TUTORIAL_SPOTLIGHT_PADDING * 2);
-            spotlight_h = (spotlight->h * 2) + (TUTORIAL_SPOTLIGHT_PADDING * 2);
-            break;
-
-        default:
-            a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, TUTORIAL_OVERLAY_ALPHA);
-            return;
-    }
-
-    // Draw overlay as 4 rectangles around spotlight (creates true cutout)
-    // Top rectangle
-    if (spotlight_y > 0) {
-        a_DrawFilledRect(0, 0, SCREEN_WIDTH, spotlight_y, 0, 0, 0, TUTORIAL_OVERLAY_ALPHA);
-    }
-
-    // Left rectangle
-    if (spotlight_x > 0) {
-        a_DrawFilledRect(0, spotlight_y, spotlight_x, spotlight_h, 0, 0, 0, TUTORIAL_OVERLAY_ALPHA);
-    }
-
-    // Right rectangle
-    int right_x = spotlight_x + spotlight_w;
-    if (right_x < SCREEN_WIDTH) {
-        a_DrawFilledRect(right_x, spotlight_y, SCREEN_WIDTH - right_x, spotlight_h, 0, 0, 0, TUTORIAL_OVERLAY_ALPHA);
-    }
-
-    // Bottom rectangle
-    int bottom_y = spotlight_y + spotlight_h;
-    if (bottom_y < SCREEN_HEIGHT) {
-        a_DrawFilledRect(0, bottom_y, SCREEN_WIDTH, SCREEN_HEIGHT - bottom_y, 0, 0, 0, TUTORIAL_OVERLAY_ALPHA);
-    }
-}
 
 static void RenderDialogue(const TutorialStep_t* step) {
     if (!step || !step->dialogue_text) return;
 
-    // Dialogue box position (use step-specific Y position)
-    int dialogue_x = (SCREEN_WIDTH - DIALOGUE_WIDTH) / 2;
+    // Dialogue box position (use step-specific X offset and Y position)
+    int dialogue_x = ((SCREEN_WIDTH - DIALOGUE_WIDTH) / 2) + step->dialogue_x_offset;
     int dialogue_y = step->dialogue_y_position;
 
     // Draw dialogue background
@@ -469,6 +506,67 @@ static void RenderDialogue(const TutorialStep_t* step) {
                   FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
     }
 
+    // Draw arrow if enabled (pointing from dialogue to target)
+    if (step->arrow.enabled) {
+        // Calculate actual from position (relative to dialogue box)
+        int arrow_from_x = dialogue_x + step->arrow.from_x;
+        int arrow_from_y = dialogue_y + step->arrow.from_y;
+        int arrow_to_x = step->arrow.to_x;
+        int arrow_to_y = step->arrow.to_y;
+
+        // Calculate angle from 'from' to 'to'
+        float dx = arrow_to_x - arrow_from_x;
+        float dy = arrow_to_y - arrow_from_y;
+        float angle = atan2f(dy, dx);
+
+        // Arrowhead dimensions (larger and more visible)
+        const int arrow_size = 20;  // Increased from 12
+        const float arrow_angle = 0.4f;  // Narrower angle for sharper arrowhead
+
+        // === DRAW BLACK OUTLINE FIRST ===
+        // Thicker black outline for line (3px thick outline)
+        SDL_SetRenderDrawColor(app.renderer, 0, 0, 0, 255);
+        for (int offset = -3; offset <= 3; offset++) {
+            if (offset == 0) continue;  // Skip center (will be drawn yellow)
+            // Offset perpendicular to line direction
+            int offset_x = (int)(offset * sinf(angle));
+            int offset_y = (int)(-offset * cosf(angle));
+            SDL_RenderDrawLine(app.renderer,
+                arrow_from_x + offset_x, arrow_from_y + offset_y,
+                arrow_to_x + offset_x, arrow_to_y + offset_y);
+        }
+
+        // Black outline for arrowhead (draw larger black triangle)
+        const int outline_size = arrow_size + 3;
+        for (int i = 0; i <= outline_size; i++) {
+            int fill_x1 = arrow_to_x - (int)(i * cosf(angle - arrow_angle));
+            int fill_y1 = arrow_to_y - (int)(i * sinf(angle - arrow_angle));
+            int fill_x2 = arrow_to_x - (int)(i * cosf(angle + arrow_angle));
+            int fill_y2 = arrow_to_y - (int)(i * sinf(angle + arrow_angle));
+            SDL_RenderDrawLine(app.renderer, fill_x1, fill_y1, fill_x2, fill_y2);
+        }
+
+        // === DRAW YELLOW ARROW ON TOP ===
+        // Thicker yellow arrow line (draw 3 lines for 3px thickness)
+        SDL_SetRenderDrawColor(app.renderer, DIALOGUE_ARROW.r, DIALOGUE_ARROW.g, DIALOGUE_ARROW.b, 255);
+        for (int offset = -1; offset <= 1; offset++) {
+            int offset_x = (int)(offset * sinf(angle));
+            int offset_y = (int)(-offset * cosf(angle));
+            SDL_RenderDrawLine(app.renderer,
+                arrow_from_x + offset_x, arrow_from_y + offset_y,
+                arrow_to_x + offset_x, arrow_to_y + offset_y);
+        }
+
+        // Yellow filled triangle arrowhead
+        for (int i = 0; i <= arrow_size; i++) {
+            int fill_x1 = arrow_to_x - (int)(i * cosf(angle - arrow_angle));
+            int fill_y1 = arrow_to_y - (int)(i * sinf(angle - arrow_angle));
+            int fill_x2 = arrow_to_x - (int)(i * cosf(angle + arrow_angle));
+            int fill_y2 = arrow_to_y - (int)(i * sinf(angle + arrow_angle));
+            SDL_RenderDrawLine(app.renderer, fill_x1, fill_y1, fill_x2, fill_y2);
+        }
+    }
+
     // Draw skip/finish button at bottom-right using helper
     const char* button_text = step->is_final_step ? "Finish" : "Skip";
     int button_x = dialogue_x + DIALOGUE_WIDTH - DIALOGUE_ARROW_MARGIN - 80;
@@ -489,9 +587,6 @@ static void RenderDialogue(const TutorialStep_t* step) {
 }
 
 static void RenderSkipConfirmation(void) {
-    // Semi-transparent overlay
-    a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, 150);
-
     // Confirmation dialogue (smaller than main dialogue)
     int conf_w = 400;
     int conf_h = 150;
@@ -541,12 +636,6 @@ static void RenderSkipConfirmation(void) {
                        no_hovered);
 }
 
-static void RenderPointingArrow(const TutorialSpotlight_t* spotlight) {
-    if (!spotlight || !spotlight->show_arrow || spotlight->type == SPOTLIGHT_NONE) return;
-
-    // TODO: Draw arrow from dialogue to spotlight
-    // For now, skip arrow rendering (requires vector drawing)
-}
 
 void RenderTutorial(TutorialSystem_t* system) {
     if (!system || !system->active || !system->dialogue_visible || !system->current_step) {
@@ -555,14 +644,8 @@ void RenderTutorial(TutorialSystem_t* system) {
 
     TutorialStep_t* step = system->current_step;
 
-    // Render overlay with spotlight
-    RenderOverlayWithSpotlight(&step->spotlight);
-
-    // Render dialogue modal
+    // Render dialogue modal (no overlay)
     RenderDialogue(step);
-
-    // Render pointing arrow (if enabled)
-    RenderPointingArrow(&step->spotlight);
 
     // Render skip confirmation if visible
     if (system->skip_confirmation.visible) {

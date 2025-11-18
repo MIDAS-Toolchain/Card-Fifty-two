@@ -6,6 +6,11 @@
 
 // Forward declarations
 typedef struct TweenManager TweenManager_t;
+typedef struct GameContext GameContext_t;
+
+// Need full game.h for GameEvent_t enum (can't forward-declare enums properly)
+// This is OK - enemy.h depends on game.h for event system
+#include "game.h"
 
 // ============================================================================
 // ENEMY ABILITIES
@@ -23,11 +28,17 @@ typedef enum {
     ABILITY_PRESSURE,                // Sanity drains faster during combat
 
     // Active Abilities (triggered by conditions)
-    ABILITY_DOUBLE_OR_NOTHING,       // At 50% HP: Forces player to double or auto-lose
+    // NOTE: None of these should affect betting UI/options - only sanity affects betting
+    ABILITY_DOUBLE_OR_NOTHING,       // At 50% HP: TODO - needs non-betting implementation
     ABILITY_RESHUFFLE_REALITY,       // Once per fight: Replaces player's hand
-    ABILITY_HOUSE_RULES,             // Phase 2: Changes blackjack rules mid-fight
-    ABILITY_ALL_IN,                  // At 25% HP: Both bet all chips
+    ABILITY_HOUSE_RULES,             // Phase 2: Changes blackjack rules mid-fight (win conditions, not betting)
+    ABILITY_ALL_IN,                  // At 25% HP: TODO - needs non-betting implementation
     ABILITY_GLITCH,                  // Random: Dealer's bust becomes 21
+
+    // The Didact Abilities (Tutorial Enemy - Dread-themed names)
+    ABILITY_THE_HOUSE_REMEMBERS,     // On player blackjack: Apply STATUS_GREED (2 rounds) - "The casino is alive"
+    ABILITY_IRREGULARITY_DETECTED,   // Every 5 cards drawn: Apply STATUS_CHIP_DRAIN (5 chips, 3 rounds) - "You've been noticed"
+    ABILITY_SYSTEM_OVERRIDE,         // Below 30% HP (once): Heal 50 HP + Force deck shuffle - "System recalibrates"
 
     ABILITY_MAX
 } EnemyAbility_t;
@@ -40,7 +51,9 @@ typedef enum {
     TRIGGER_HP_THRESHOLD,       // Triggers at specific HP percentage
     TRIGGER_ONCE_PER_COMBAT,    // Can only trigger once per fight
     TRIGGER_RANDOM,             // Random chance each round
-    TRIGGER_PLAYER_ACTION       // Triggers on player action
+    TRIGGER_PLAYER_ACTION,      // Triggers on player action
+    TRIGGER_ON_EVENT,           // Triggers on specific game event
+    TRIGGER_COUNTER             // Triggers after N occurrences of an event
 } AbilityTrigger_t;
 
 /**
@@ -51,6 +64,16 @@ typedef struct AbilityData {
     AbilityTrigger_t trigger;
     float trigger_value;        // HP threshold (0.0-1.0) or random chance
     bool has_triggered;         // Track one-time abilities
+
+    // Event-based trigger data
+    GameEvent_t trigger_event;  // Event to listen for (TRIGGER_ON_EVENT/TRIGGER_COUNTER)
+    int counter_max;            // Max count for TRIGGER_COUNTER (e.g., 5 for "every 5 cards")
+    int counter_current;        // Current count towards trigger
+
+    // Animation state (for shake/flash on trigger)
+    float shake_offset_x;       // X shake offset (tweened)
+    float shake_offset_y;       // Y shake offset (tweened)
+    float flash_alpha;          // Red flash alpha (tweened)
 } AbilityData_t;
 
 // ============================================================================
@@ -84,6 +107,10 @@ typedef struct Enemy {
     float shake_offset_y;           // Vertical shake offset (tweened)
     float red_flash_alpha;          // Red overlay alpha (tweened from 1.0 to 0.0)
 
+    // Defeat animation
+    float defeat_fade_alpha;        // Alpha for fade-out (1.0 → 0.0)
+    float defeat_scale;             // Scale for zoom-out (1.0 → 0.8)
+
     bool is_defeated;               // true if current_hp <= 0
 } Enemy_t;
 
@@ -103,6 +130,18 @@ typedef struct Enemy {
  * Caller must call DestroyEnemy() when done
  */
 Enemy_t* CreateEnemy(const char* name, int max_hp, int chip_threat);
+
+/**
+ * CreateTheDidact - Create tutorial enemy "The Didact"
+ *
+ * @return Enemy_t* - Preconfigured tutorial enemy with 3 teaching abilities
+ *
+ * Theme: Teacher/instructor who introduces mechanics through abilities:
+ * - House Rules: On blackjack → GREED (teaches status effects)
+ * - Pop Quiz: Every 5 cards → CHIP_DRAIN (teaches counters + pressure)
+ * - Final Exam: Below 30% HP → MIN_BET + NO_ADJUST (teaches restrictions)
+ */
+Enemy_t* CreateTheDidact(void);
 
 /**
  * DestroyEnemy - Free enemy resources
@@ -139,6 +178,29 @@ void AddActiveAbility(Enemy_t* enemy, EnemyAbility_t ability,
                       AbilityTrigger_t trigger, float trigger_value);
 
 /**
+ * AddEventAbility - Add an ability that triggers on a specific game event
+ *
+ * @param enemy - Enemy to modify
+ * @param ability - Ability ID to add
+ * @param event - Game event to trigger on
+ *
+ * Triggers every time the specified event occurs
+ */
+void AddEventAbility(Enemy_t* enemy, EnemyAbility_t ability, GameEvent_t event);
+
+/**
+ * AddCounterAbility - Add an ability that triggers after N occurrences of an event
+ *
+ * @param enemy - Enemy to modify
+ * @param ability - Ability ID to add
+ * @param event - Game event to count
+ * @param counter_max - Number of occurrences before trigger (e.g., 5 for "every 5 cards")
+ *
+ * Counter resets after each trigger
+ */
+void AddCounterAbility(Enemy_t* enemy, EnemyAbility_t ability, GameEvent_t event, int counter_max);
+
+/**
  * HasAbility - Check if enemy has a specific ability
  *
  * @param enemy - Enemy to check
@@ -158,17 +220,6 @@ const char* GetAbilityName(EnemyAbility_t ability);
 // ============================================================================
 // COMBAT ACTIONS
 // ============================================================================
-
-/**
- * EnemyPlaceBet - Enemy places bet for this round
- *
- * @param enemy - Enemy entity
- * @return int - Bet amount (chip_threat + modifiers)
- *
- * Base bet = chip_threat (chips at risk this round)
- * May be modified by abilities or HP thresholds
- */
-int EnemyPlaceBet(const Enemy_t* enemy);
 
 /**
  * TakeDamage - Apply damage to enemy HP
@@ -203,14 +254,16 @@ float GetEnemyHPPercent(const Enemy_t* enemy);
 // ============================================================================
 
 /**
- * CheckAbilityTriggers - Check if any active abilities should trigger
+ * CheckEnemyAbilityTriggers - Check if any active abilities should trigger on event
  *
  * @param enemy - Enemy to check
+ * @param event - Game event that occurred
+ * @param game - Game context (for effect execution)
  *
- * Checks HP thresholds, random chances, and sets has_triggered flags
- * Called at start of each combat round
+ * Checks if abilities trigger on this event, executes effects if triggered
+ * Called by Game_TriggerEvent() when gameplay events occur
  */
-void CheckAbilityTriggers(Enemy_t* enemy);
+void CheckEnemyAbilityTriggers(Enemy_t* enemy, GameEvent_t event, GameContext_t* game);
 
 /**
  * ResetAbilityTriggers - Reset one-time ability flags
@@ -316,5 +369,35 @@ void GetEnemyShakeOffset(const Enemy_t* enemy, float* out_x, float* out_y);
  * Draw a red filled rect over enemy portrait with this alpha value
  */
 float GetEnemyRedFlashAlpha(const Enemy_t* enemy);
+
+/**
+ * TriggerEnemyDefeatAnimation - Trigger fade-out and zoom-out on defeat
+ *
+ * @param enemy - Enemy that was defeated
+ * @param tween_manager - Tween manager to use for animation
+ *
+ * Creates:
+ * - Fade: alpha 1.0 → 0.0 over 1.5s (EASE_OUT_CUBIC)
+ * - Zoom out: scale 1.0 → 0.8 over 1.5s (EASE_OUT_CUBIC)
+ *
+ * Call this when enemy HP reaches 0 in combat
+ */
+void TriggerEnemyDefeatAnimation(Enemy_t* enemy, TweenManager_t* tween_manager);
+
+/**
+ * GetEnemyDefeatAlpha - Get current defeat fade alpha
+ *
+ * @param enemy - Enemy to query
+ * @return float - Defeat alpha (1.0 = visible, 0.0 = invisible)
+ */
+float GetEnemyDefeatAlpha(const Enemy_t* enemy);
+
+/**
+ * GetEnemyDefeatScale - Get current defeat scale
+ *
+ * @param enemy - Enemy to query
+ * @return float - Defeat scale (1.0 = normal, 0.8 = zoomed out)
+ */
+float GetEnemyDefeatScale(const Enemy_t* enemy);
 
 #endif // ENEMY_H

@@ -14,8 +14,8 @@
 #define SIDEBAR_BUTTON_HEIGHT 65
 
 // Internal text positioning
-#define SIDEBAR_BUTTON_LABEL_OFFSET_Y   10   // Label Y offset from button top
-#define SIDEBAR_BUTTON_COUNT_OFFSET_Y   55   // Count text Y offset from button top
+#define SIDEBAR_BUTTON_LABEL_OFFSET_Y   15   // Label Y offset from button top
+#define SIDEBAR_BUTTON_COUNT_OFFSET_Y   40   // Count text Y offset from button top
 #define SIDEBAR_BUTTON_HOTKEY_PADDING   8    // Padding for hotkey from edges
 
 typedef struct SidebarButton {

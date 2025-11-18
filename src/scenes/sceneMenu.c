@@ -7,8 +7,12 @@
 #include "../../include/scenes/sceneMenu.h"
 #include "../../include/scenes/sceneBlackjack.h"
 #include "../../include/scenes/sceneSettings.h"
+#include "../../include/stats.h"
 #include "../../include/scenes/components/menuItem.h"
 #include "../../include/scenes/sections/mainMenuSection.h"
+
+// Forward declaration for stats screen
+static void InitStatsScene(void);
 
 // Forward declarations
 static void MenuLogic(float dt);
@@ -16,11 +20,11 @@ static void MenuDraw(float dt);
 static void CleanupMenuScene(void);
 
 // Menu state
-static int selectedOption = 0;  // 0=Play, 1=Settings, 2=Quit
-static const int NUM_OPTIONS = 3;
+static int selectedOption = 0;  // 0=Play, 1=Tutorial, 2=Stats, 3=Settings, 4=Quit
+static const int NUM_OPTIONS = 5;
 
 // UI Components (scene owns these)
-static MenuItem_t* menu_items[3] = {NULL};  // Play, Settings, Quit
+static MenuItem_t* menu_items[5] = {NULL};  // Play, Tutorial, Stats, Settings, Quit
 
 // UI Section
 static MainMenuSection_t* main_menu_section = NULL;
@@ -39,7 +43,7 @@ void InitMenuScene(void) {
     selectedOption = 0;
 
     // Create menu item components (scene owns these)
-    const char* labels[] = {"Play", "Settings", "Quit"};
+    const char* labels[] = {"Play", "Tutorial", "Stats", "Settings", "Quit"};
     for (int i = 0; i < NUM_OPTIONS; i++) {
         menu_items[i] = CreateMenuItem(SCREEN_WIDTH / 2, 0, 0, 25, labels[i]);
         if (!menu_items[i]) {
@@ -111,17 +115,31 @@ static void MenuLogic(float dt) {
         if (menu_items[i] && IsMenuItemClicked(menu_items[i])) {
             // Execute action immediately based on which item was clicked
             switch (i) {
-                case 0:  // Play
-                    d_LogInfo("Starting Blackjack (clicked)");
+                case 0:  // Play (roguelike mode - coming soon!)
+                    printf("\n🎮 PLAY MODE - COMING SOON! 🎮\n");
+                    printf("This will be the full roguelike experience:\n");
+                    printf("  - 3-Act structure\n");
+                    printf("  - Procedurally generated encounters\n");
+                    printf("  - Persistent progression\n");
+                    printf("  - Multiple enemy types\n");
+                    printf("\nFor now, try the Tutorial! 📚\n\n");
+                    break;
+                case 1:  // Tutorial
+                    d_LogInfo("Starting Tutorial (clicked)");
                     CleanupMenuScene();
-                    InitBlackjackScene();
+                    InitBlackjackScene();  // Current tutorial implementation
                     return;
-                case 1:  // Settings
+                case 2:  // Stats
+                    d_LogInfo("Opening Stats (clicked)");
+                    CleanupMenuScene();
+                    InitStatsScene();
+                    return;
+                case 3:  // Settings
                     d_LogInfo("Opening Settings (clicked)");
                     CleanupMenuScene();
                     InitSettingsScene();
                     return;
-                case 2:  // Quit
+                case 4:  // Quit
                     d_LogInfo("Quitting (clicked)");
                     app.running = 0;
                     return;
@@ -188,17 +206,31 @@ static void MenuLogic(float dt) {
         app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
 
         switch (selectedOption) {
-            case 0:  // Play
-                d_LogInfo("Starting Blackjack");
-                CleanupMenuScene();
-                InitBlackjackScene();
+            case 0:  // Play (roguelike mode - coming soon!)
+                printf("\n🎮 PLAY MODE - COMING SOON! 🎮\n");
+                printf("This will be the full roguelike experience:\n");
+                printf("  - 3-Act structure\n");
+                printf("  - Procedurally generated encounters\n");
+                printf("  - Persistent progression\n");
+                printf("  - Multiple enemy types\n");
+                printf("\nFor now, try the Tutorial! 📚\n\n");
                 break;
-            case 1:  // Settings
+            case 1:  // Tutorial
+                d_LogInfo("Starting Tutorial");
+                CleanupMenuScene();
+                InitBlackjackScene();  // Current tutorial implementation
+                break;
+            case 2:  // Stats
+                d_LogInfo("Opening Stats");
+                CleanupMenuScene();
+                InitStatsScene();
+                break;
+            case 3:  // Settings
                 d_LogInfo("Opening Settings");
                 CleanupMenuScene();
                 InitSettingsScene();
                 break;
-            case 2:  // Quit
+            case 4:  // Quit
                 d_LogInfo("Quitting");
                 app.running = 0;
                 break;
@@ -227,4 +259,88 @@ static void MenuDraw(float dt) {
     a_DrawText((char*)d_StringPeek(fps_str), SCREEN_WIDTH - 10, 10,
                0, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_RIGHT, 0);
     d_StringDestroy(fps_str);
+}
+
+// ============================================================================
+// STATS SCENE (Standalone)
+// ============================================================================
+
+static void StatsSceneLogic(float dt);
+static void StatsSceneDraw(float dt);
+
+static void InitStatsScene(void) {
+    d_LogInfo("Initializing Stats scene");
+    app.delegate.logic = StatsSceneLogic;
+    app.delegate.draw = StatsSceneDraw;
+}
+
+static void StatsSceneLogic(float dt) {
+    (void)dt;
+    a_DoInput();
+
+    // ESC - Return to menu
+    if (app.keyboard[SDL_SCANCODE_ESCAPE]) {
+        app.keyboard[SDL_SCANCODE_ESCAPE] = 0;
+        InitMenuScene();
+    }
+}
+
+static void StatsSceneDraw(float dt) {
+    (void)dt;
+    app.background = (aColor_t){20, 25, 35, 255};
+
+    const GlobalStats_t* stats = Stats_GetCurrent();
+
+    // Title
+    a_DrawText("RUN STATISTICS", SCREEN_WIDTH / 2, 80,
+               255, 255, 100, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+
+    dString_t* text = d_StringInit();
+    int y = 140;
+
+    // Cards
+    d_StringFormat(text, "Cards Drawn: %llu", stats->cards_drawn);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 200, 255, 200, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    y += 40;
+
+    // Turns
+    d_StringFormat(text, "Turns: %llu  Won: %llu  Lost: %llu  Push: %llu",
+                   stats->turns_played, stats->turns_won, stats->turns_lost, stats->turns_pushed);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 180, 220, 255, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    y += 40;
+
+    // Combat
+    d_StringFormat(text, "Combats Won: %llu", stats->combats_won);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 255, 150, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    y += 50;
+
+    // Damage
+    d_StringFormat(text, "Total Damage: %llu", stats->damage_dealt_total);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 255, 180, 100, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    y += 35;
+
+    // Damage breakdown
+    for (int i = 0; i < DAMAGE_SOURCE_MAX; i++) {
+        uint64_t dmg = stats->damage_by_source[i];
+        if (dmg == 0) continue;
+        float pct = stats->damage_dealt_total > 0 ?
+                    (float)dmg / stats->damage_dealt_total * 100.0f : 0.0f;
+        d_StringFormat(text, "  %s: %llu (%.1f%%)",
+                       Stats_GetDamageSourceName((DamageSource_t)i), dmg, pct);
+        a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 200, 200, 200, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+        y += 32;
+    }
+
+    y += 10;
+
+    // Chips
+    d_StringFormat(text, "Chips Bet: %llu  Won: %llu  Lost: %llu  Drained: %llu",
+                   stats->chips_bet, stats->chips_won, stats->chips_lost, stats->chips_drained);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 150, 255, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+
+    d_StringDestroy(text);
+
+    // Instructions
+    a_DrawText("[ESC] Back to Menu", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 50,
+               150, 150, 150, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
 }

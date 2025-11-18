@@ -73,8 +73,8 @@ const char* GetSuitString(CardSuit_t suit) {
     switch (suit) {
         case SUIT_HEARTS:   return "Hearts";
         case SUIT_DIAMONDS: return "Diamonds";
-        case SUIT_CLUBS:    return "Clubs";
         case SUIT_SPADES:   return "Spades";
+        case SUIT_CLUBS:    return "Clubs";
         default:            return "Unknown";
     }
 }

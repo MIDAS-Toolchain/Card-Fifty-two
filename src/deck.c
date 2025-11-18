@@ -4,8 +4,8 @@
  */
 
 #include "deck.h"
+#include "random.h"
 #include <stdlib.h>
-#include <time.h>
 
 // ============================================================================
 // DECK LIFECYCLE
@@ -92,18 +92,12 @@ void ShuffleDeck(Deck_t* deck) {
         return;  // Nothing to shuffle
     }
 
-    // Seed RNG (only once per program run)
-    static bool seeded = false;
-    if (!seeded) {
-        srand((unsigned int)time(NULL));
-        seeded = true;
-    }
-
     // Fisher-Yates shuffle algorithm (O(n))
     // Constitutional pattern: Direct array access via Daedalus
+    // Using high-quality PCG RNG (no modulo bias)
     for (size_t i = n - 1; i > 0; i--) {
-        // Random index from 0 to i (inclusive)
-        size_t j = rand() % (i + 1);
+        // Random index from 0 to i (inclusive) - unbiased
+        size_t j = (size_t)GetRandomInt(0, (int)i);
 
         // Swap cards[i] and cards[j]
         Card_t* card_i = (Card_t*)d_IndexDataFromArray(deck->cards, i);

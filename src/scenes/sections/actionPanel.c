@@ -11,8 +11,14 @@
 
 ActionPanel_t* CreateActionPanel(const char* instruction, Button_t** buttons, int button_count) {
     // Constitutional pattern: NULL checks
-    if (!instruction || !buttons || button_count <= 0) {
-        d_LogError("CreateActionPanel: Invalid parameters");
+    if (!instruction) {
+        d_LogError("CreateActionPanel: Invalid instruction");
+        return NULL;
+    }
+
+    // Allow NULL buttons for instruction-only panels
+    if (button_count < 0) {
+        d_LogError("CreateActionPanel: Invalid button_count");
         return NULL;
     }
 
@@ -89,7 +95,25 @@ void UpdateActionPanelButtons(ActionPanel_t* panel) {
 }
 
 void RenderActionPanel(ActionPanel_t* panel, int y) {
-    if (!panel || !panel->button_row) return;
+    if (!panel) return;
+
+    // Render instruction text left-aligned above buttons
+    // Buttons are at y + ACTION_PANEL_Y_OFFSET (310), so put text ~40px above buttons
+    int text_x = GAME_AREA_X + ACTION_PANEL_LEFT_MARGIN;
+    int text_y = y + ACTION_PANEL_Y_OFFSET - 40;
+
+    // Draw instruction text (bright white)
+    aFontConfig_t instruction_config = {
+        .type = FONT_ENTER_COMMAND,
+        .color = {255, 255, 255, 255},  // Bright white
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = 0,
+        .scale = 1.0f
+    };
+    a_DrawTextStyled(panel->instruction_text, text_x, text_y, &instruction_config);
+
+    // Only render buttons if panel has them
+    if (!panel->button_row || panel->button_count == 0) return;
 
     // Position button row in game area (left of screen, lower than flex position)
     // FlexBox bounds are updated each frame because Y position comes from parent FlexBox

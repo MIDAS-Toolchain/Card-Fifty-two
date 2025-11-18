@@ -9,553 +9,68 @@
 #include "../include/deck.h"
 #include "../include/hand.h"
 #include "../include/enemy.h"
+#include "../include/stats.h"
 #include "../include/scenes/sceneBlackjack.h"
 #include "../include/cardAnimation.h"
 #include "../include/tween/tween.h"
+#include "../include/stateStorage.h"
+#include "../include/statusEffects.h"
+#include "../include/trinket.h"
 
 // External globals
 extern dTable_t* g_players;
 extern TweenManager_t g_tween_manager;  // From sceneBlackjack.c
 
 // ============================================================================
-// GAME CONTEXT LIFECYCLE
+// GAME EVENTS
 // ============================================================================
 
-void InitGameContext(GameContext_t* game, Deck_t* deck) {
+const char* GameEventToString(GameEvent_t event) {
+    switch (event) {
+        case GAME_EVENT_COMBAT_START:        return "COMBAT_START";
+        case GAME_EVENT_HAND_END:            return "HAND_END";
+        case GAME_EVENT_PLAYER_WIN:          return "PLAYER_WIN";
+        case GAME_EVENT_PLAYER_LOSS:         return "PLAYER_LOSS";
+        case GAME_EVENT_PLAYER_PUSH:         return "PLAYER_PUSH";
+        case GAME_EVENT_PLAYER_BUST:         return "PLAYER_BUST";
+        case GAME_EVENT_PLAYER_BLACKJACK:    return "PLAYER_BLACKJACK";
+        case GAME_EVENT_DEALER_BUST:         return "DEALER_BUST";
+        case GAME_EVENT_CARD_DRAWN:          return "CARD_DRAWN";
+        case GAME_EVENT_PLAYER_ACTION_END:   return "PLAYER_ACTION_END";
+        default:                             return "UNKNOWN_EVENT";
+    }
+}
+
+void Game_TriggerEvent(GameContext_t* game, GameEvent_t event) {
     if (!game) {
-        d_LogFatal("InitGameContext: NULL game pointer");
+        d_LogError("Game_TriggerEvent: NULL game");
         return;
     }
 
-    if (!deck) {
-        d_LogFatal("InitGameContext: NULL deck pointer");
-        return;
+    d_LogDebugF("Game event: %s", GameEventToString(event));
+
+    // Check enemy abilities (if in combat)
+    if (game->is_combat_mode && game->current_enemy) {
+        CheckEnemyAbilityTriggers(game->current_enemy, event, game);
     }
 
-    // Initialize state machine
-    game->current_state = STATE_BETTING;
-    game->previous_state = STATE_BETTING;
-    game->state_timer = 0.0f;
-    game->round_number = 1;
-    game->current_player_index = 0;
-    game->deck = deck;
-
-    // Initialize typed state tables (Constitutional: explicit types, no void*)
-    game->bool_flags = d_InitTable(sizeof(char*), sizeof(bool),
-                                    d_HashString, d_CompareString, 16);
-    game->int_values = d_InitTable(sizeof(char*), sizeof(int),
-                                    d_HashString, d_CompareString, 8);
-    game->dealer_phase = d_InitTable(sizeof(char*), sizeof(DealerPhase_t),
-                                      d_HashString, d_CompareString, 2);
-
-    if (!game->bool_flags || !game->int_values || !game->dealer_phase) {
-        d_LogFatal("InitGameContext: Failed to initialize state tables");
-        if (game->bool_flags) d_DestroyTable(&game->bool_flags);
-        if (game->int_values) d_DestroyTable(&game->int_values);
-        if (game->dealer_phase) d_DestroyTable(&game->dealer_phase);
-        return;
+    // Check player trinket passives (only for human player ID 1)
+    Player_t* human_player = Game_GetPlayerByID(1);
+    if (human_player) {
+        CheckTrinketPassiveTriggers(human_player, event, game);
     }
 
-    d_LogInfoF("InitGameContext: Tables initialized (bool_flags=%p, int_values=%p, dealer_phase=%p)",
-               (void*)game->bool_flags,
-               (void*)game->int_values,
-               (void*)game->dealer_phase);
-
-    // Initialize active players array (holds int player_ids)
-    game->active_players = d_InitArray(8, sizeof(int));
-    if (!game->active_players) {
-        d_LogFatal("InitGameContext: Failed to initialize active_players array");
-        d_DestroyTable(&game->bool_flags);
-        d_DestroyTable(&game->int_values);
-        d_DestroyTable(&game->dealer_phase);
-        return;
-    }
-
-    // Initialize combat system
-    game->current_enemy = NULL;
-    game->is_combat_mode = false;
-
-    d_LogInfo("GameContext initialized successfully");
-}
-
-void CleanupGameContext(GameContext_t* game) {
-    if (!game) {
-        d_LogError("CleanupGameContext: NULL game pointer");
-        return;
-    }
-
-    // Destroy typed state tables
-    if (game->bool_flags) {
-        d_DestroyTable(&game->bool_flags);
-        game->bool_flags = NULL;
-    }
-
-    if (game->int_values) {
-        d_DestroyTable(&game->int_values);
-        game->int_values = NULL;
-    }
-
-    if (game->dealer_phase) {
-        d_DestroyTable(&game->dealer_phase);
-        game->dealer_phase = NULL;
-    }
-
-    // Destroy active players array
-    if (game->active_players) {
-        d_DestroyArray(game->active_players);
-        game->active_players = NULL;
-    }
-
-    d_LogInfo("GameContext cleaned up");
-}
-
-// ============================================================================
-// STATE MACHINE
-// ============================================================================
-
-const char* StateToString(GameState_t state) {
-    switch (state) {
-        case STATE_MENU:          return "MENU";
-        case STATE_BETTING:       return "BETTING";
-        case STATE_DEALING:       return "DEALING";
-        case STATE_PLAYER_TURN:   return "PLAYER_TURN";
-        case STATE_DEALER_TURN:   return "DEALER_TURN";
-        case STATE_SHOWDOWN:      return "SHOWDOWN";
-        case STATE_ROUND_END:     return "ROUND_END";
-        case STATE_COMBAT_VICTORY: return "COMBAT_VICTORY";
-        default:                  return "UNKNOWN";
-    }
-}
-
-void TransitionState(GameContext_t* game, GameState_t new_state) {
-    if (!game) {
-        d_LogError("TransitionState: NULL game pointer");
-        return;
-    }
-
-    // Warn on suspicious no-op transitions
-    if (game->current_state == new_state) {
-        d_LogWarningF("TransitionState: No-op transition %s -> %s",
-                      StateToString(game->current_state),
-                      StateToString(new_state));
-    }
-
-    d_LogInfoF("State transition: %s -> %s (timer was %.2f)",
-               StateToString(game->current_state),
-               StateToString(new_state),
-               game->state_timer);
-
-    game->previous_state = game->current_state;
-    game->current_state = new_state;
-    game->state_timer = 0.0f;
-
-    // State entry actions
-    switch (new_state) {
-        case STATE_BETTING:
-            // Reset player states
-            for (size_t i = 0; i < game->active_players->count; i++) {
-                int* id = (int*)d_IndexDataFromArray(game->active_players, i);
-                Player_t* player = GetPlayerByID(*id);
-                if (player && !player->is_dealer) {
-                    player->state = PLAYER_STATE_BETTING;
-                }
-            }
-            break;
-
-        case STATE_DEALING:
-            DealInitialHands(game);
-            break;
-
-        case STATE_PLAYER_TURN:
-            game->current_player_index = 0;
-            break;
-
-        case STATE_DEALER_TURN:
-            d_LogInfo("STATE_DEALER_TURN entry: About to clear dealer state");
-
-            // Validate tables before clearing (SUSSY check)
-            if (!game->dealer_phase) {
-                d_LogError("STATE_DEALER_TURN entry: SUSSY - dealer_phase table is NULL!");
-            }
-            if (!game->bool_flags) {
-                d_LogError("STATE_DEALER_TURN entry: SUSSY - bool_flags table is NULL!");
-            }
-
-            // Clear dealer phase state from previous round
-            ClearDealerPhase(game);
-            d_LogDebug("STATE_DEALER_TURN entry: Cleared dealer phase");
-
-            ClearBoolFlag(game, "dealer_action_hit");
-            d_LogDebug("STATE_DEALER_TURN entry: Cleared dealer_action_hit");
-
-            // Keep player_stood flag - needed for reveal logic
-            d_LogInfo("STATE_DEALER_TURN entry: Done clearing state");
-            break;
-
-        case STATE_SHOWDOWN:
-            ResolveRound(game);
-            break;
-
-        case STATE_ROUND_END:
-            // Display results for 3 seconds
-            break;
-
-        default:
-            break;
-    }
-}
-
-void UpdateGameLogic(GameContext_t* game, float dt) {
-    if (!game) {
-        return;
-    }
-
-    game->state_timer += dt;
-
-    switch (game->current_state) {
-        case STATE_MENU:
-            // Handled by sceneMenu.c
-            break;
-
-        case STATE_BETTING:
-            UpdateBettingState(game);
-            break;
-
-        case STATE_DEALING:
-            UpdateDealingState(game);
-            break;
-
-        case STATE_PLAYER_TURN:
-            UpdatePlayerTurnState(game, dt);
-            break;
-
-        case STATE_DEALER_TURN:
-            UpdateDealerTurnState(game, dt);
-            break;
-
-        case STATE_SHOWDOWN:
-            UpdateShowdownState(game);
-            break;
-
-        case STATE_ROUND_END:
-            UpdateRoundEndState(game);
-            break;
-
-        case STATE_COMBAT_VICTORY:
-            UpdateCombatVictoryState(game);
-            break;
-    }
-}
-
-// ============================================================================
-// STATE UPDATE FUNCTIONS
-// ============================================================================
-
-void UpdateBettingState(GameContext_t* game) {
-    bool all_bets_placed = true;
-
-    for (size_t i = 0; i < game->active_players->count; i++) {
-        int* id = (int*)d_IndexDataFromArray(game->active_players, i);
-        Player_t* player = GetPlayerByID(*id);
-
-        if (!player || player->is_dealer) continue;
-
-        if (player->current_bet == 0) {
-            all_bets_placed = false;
-
-            if (player->is_ai) {
-                // AI places random bet
-                int bet = 10 + (rand() % 91);  // 10-100
-                PlaceBet(player, bet);
-            }
-            // Human player waits for UI input
-        }
-    }
-
-    if (all_bets_placed) {
-        TransitionState(game, STATE_DEALING);
-    }
-}
-
-void UpdateDealingState(GameContext_t* game) {
-    // Wait for animation delay
-    if (game->state_timer > 1.0f) {
-        TransitionState(game, STATE_PLAYER_TURN);
-    }
-}
-
-void UpdatePlayerTurnState(GameContext_t* game, float dt) {
-    (void)dt;
-
-    if (!game) {
-        d_LogError("UpdatePlayerTurnState: NULL game!");
-        return;
-    }
-
-    if (game->current_player_index >= (int)game->active_players->count) {
-        d_LogInfoF("UpdatePlayerTurnState: All players done (index=%d >= count=%zu)",
-                   game->current_player_index, game->active_players->count);
-        TransitionState(game, STATE_DEALER_TURN);
-        return;
-    }
-
-    int* current_id = (int*)d_IndexDataFromArray(game->active_players,
-                                                   game->current_player_index);
-    if (!current_id) {
-        d_LogWarningF("UpdatePlayerTurnState: NULL player ID at index %d", game->current_player_index);
-        game->current_player_index++;
-        return;
-    }
-
-    Player_t* player = GetPlayerByID(*current_id);
-    if (!player) {
-        d_LogErrorF("UpdatePlayerTurnState: Player ID %d not found in g_players table", *current_id);
-        game->current_player_index++;
-        return;
-    }
-
-    // Skip dealer
-    if (player->is_dealer) {
-        game->current_player_index++;
-        if (game->current_player_index >= (int)game->active_players->count) {
-            TransitionState(game, STATE_DEALER_TURN);
-        }
-        return;
-    }
-
-    // Check if player is done with their turn
-    if (player->state == PLAYER_STATE_BUST ||
-        player->state == PLAYER_STATE_STAND ||
-        player->state == PLAYER_STATE_BLACKJACK) {
-
-        d_LogInfoF("Player %d is done (state=%d, blackjack=%d, bust=%d, stand=%d)",
-                   *current_id,
-                   player->state,
-                   player->state == PLAYER_STATE_BLACKJACK,
-                   player->state == PLAYER_STATE_BUST,
-                   player->state == PLAYER_STATE_STAND);
-
-        // Track if player stood (for dealer reveal logic)
-        if (player->state == PLAYER_STATE_STAND) {
-            if (!GetBoolFlag(game, "player_stood", false)) {
-                SetBoolFlag(game, "player_stood", true);
-                d_LogInfo("Set player_stood flag for dealer reveal logic");
-            }
-        }
-
-        // Wait for delay before advancing
-        if (!GetBoolFlag(game, "waiting_for_dealer", false)) {
-            // Just finished action, start wait timer
-            SetBoolFlag(game, "waiting_for_dealer", true);
-            game->state_timer = 0.0f;
-            d_LogInfoF("Player action complete - waiting %.2fs before next turn", PLAYER_ACTION_DELAY);
-        } else if (game->state_timer >= PLAYER_ACTION_DELAY) {
-            // Wait complete, advance to next player or dealer
-            d_LogInfoF("Wait complete (%.2fs) - advancing to next player", game->state_timer);
-            game->current_player_index++;
-            ClearBoolFlag(game, "waiting_for_dealer");
-
-            if (game->current_player_index >= (int)game->active_players->count) {
-                TransitionState(game, STATE_DEALER_TURN);
-            }
-        }
-        return;
-    }
-
-    // AI decision (human waits for UI input)
-    if (player->is_ai && game->state_timer > 1.0f) {
-        const Card_t* dealer_upcard = GetDealerUpcard(game);
-        if (dealer_upcard) {
-            PlayerAction_t action = GetAIAction(player, dealer_upcard);
-            ExecutePlayerAction(game, player, action);
-        }
-    }
-}
-
-void UpdateDealerTurnState(GameContext_t* game, float dt) {
-    (void)dt;
-
-    if (!game) {
-        d_LogError("UpdateDealerTurnState: NULL game!");
-        return;
-    }
-
-    Player_t* dealer = GetPlayerByID(0);
-    if (!dealer) {
-        d_LogError("UpdateDealerTurnState: Dealer not found");
-        TransitionState(game, STATE_SHOWDOWN);
-        return;
-    }
-
-    // Get current phase (default to CHECK_REVEAL)
-    DealerPhase_t phase = GetDealerPhase(game);
-
-    const char* phase_names[] = {"CHECK_REVEAL", "DECIDE", "ACTION", "WAIT"};
-    d_LogRateLimitedF(D_LOG_RATE_LIMIT_FLAG_HASH_FORMAT_STRING, D_LOG_LEVEL_INFO,
-                      1, 1.0,  // 1 log per 1 second
-                      "UpdateDealerTurnState: phase=%s, dealer_total=%d, timer=%.2f",
-                      phase_names[phase],
-                      dealer->hand.total_value,
-                      game->state_timer);
-
-    switch (phase) {
-        case DEALER_PHASE_CHECK_REVEAL:
-            // Check if all players busted
-            {
-                bool all_busted = true;
-                for (size_t i = 0; i < game->active_players->count; i++) {
-                    int* id = (int*)d_IndexDataFromArray(game->active_players, i);
-                    Player_t* p = GetPlayerByID(*id);
-                    if (p && !p->is_dealer && p->state != PLAYER_STATE_BUST) {
-                        all_busted = false;
-                        break;
-                    }
-                }
-
-                if (all_busted) {
-                    // Everyone busted - reveal card for counting, then end
-                    if (dealer->hand.cards->count > 0) {
-                        Card_t* hidden = (Card_t*)d_IndexDataFromArray(dealer->hand.cards, 0);
-                        if (hidden && !hidden->face_up) {
-                            hidden->face_up = true;
-                            d_LogInfo("Dealer reveals hidden card (all players busted - card counting)");
-                        }
-                    }
-                    TransitionState(game, STATE_SHOWDOWN);
-                    return;
-                }
-
-                // Check if player stood (triggers immediate reveal)
-                if (GetBoolFlag(game, "player_stood", false)) {
-                    // Wait for reveal animation time
-                    if (game->state_timer >= CARD_REVEAL_DELAY) {
-                        if (dealer->hand.cards->count > 0) {
-                            Card_t* hidden = (Card_t*)d_IndexDataFromArray(dealer->hand.cards, 0);
-                            if (hidden && !hidden->face_up) {
-                                hidden->face_up = true;
-                                d_LogInfoF("Dealer reveals hidden card (player stood) - total: %d",
-                                          dealer->hand.total_value);
-                            }
-                        }
-
-                        // Move to decide phase
-                        SetDealerPhase(game, DEALER_PHASE_DECIDE);
-                        game->state_timer = 0.0f;
-                    }
-                } else {
-                    // Player didn't stand (hit/busted), card stays hidden for now
-                    // Skip straight to decide
-                    SetDealerPhase(game, DEALER_PHASE_DECIDE);
-                    game->state_timer = 0.0f;
-                }
-            }
-            break;
-
-        case DEALER_PHASE_DECIDE:
-            // Dealer decides based on their total (knows hidden card value)
-            if (dealer->hand.total_value < 17) {
-                d_LogInfoF("Dealer has %d - will HIT", dealer->hand.total_value);
-                SetDealerPhase(game, DEALER_PHASE_ACTION);
-                SetBoolFlag(game, "dealer_action_hit", true);
-            } else {
-                d_LogInfoF("Dealer has %d - will STAND", dealer->hand.total_value);
-                SetDealerPhase(game, DEALER_PHASE_ACTION);
-                SetBoolFlag(game, "dealer_action_hit", false);
-            }
-            game->state_timer = 0.0f;
-            break;
-
-        case DEALER_PHASE_ACTION:
-            {
-                if (GetBoolFlag(game, "dealer_action_hit", false)) {
-                    // HIT: Deal a card with animation
-                    if (DealCardWithAnimation(game->deck, &dealer->hand, dealer, true)) {
-                        d_LogInfoF("Dealer hits - new total: %d", dealer->hand.total_value);
-                    }
-                } else {
-                    // STAND: Reveal hidden card if not already revealed
-                    if (dealer->hand.cards->count > 0) {
-                        Card_t* hidden = (Card_t*)d_IndexDataFromArray(dealer->hand.cards, 0);
-                        if (hidden && !hidden->face_up) {
-                            hidden->face_up = true;
-                            d_LogInfo("Dealer reveals hidden card on STAND");
-                        }
-                    }
-                }
-
-                // Move to wait
-                SetDealerPhase(game, DEALER_PHASE_WAIT);
-                game->state_timer = 0.0f;
-            }
-            break;
-
-        case DEALER_PHASE_WAIT:
-            if (game->state_timer >= DEALER_ACTION_DELAY) {
-                if (!GetBoolFlag(game, "dealer_action_hit", false)) {
-                    // Dealer stood - end turn
-                    d_LogInfo("Dealer finished turn (stood)");
-                    TransitionState(game, STATE_SHOWDOWN);
-                } else if (dealer->hand.is_bust) {
-                    // Dealer busted - reveal hole card to show bust score
-                    if (dealer->hand.cards->count > 0) {
-                        Card_t* hidden = (Card_t*)d_IndexDataFromArray(dealer->hand.cards, 0);
-                        if (hidden && !hidden->face_up) {
-                            hidden->face_up = true;
-                            d_LogInfo("Dealer reveals hidden card on BUST");
-                        }
-                    }
-                    d_LogInfoF("Dealer busts with %d", dealer->hand.total_value);
-                    TransitionState(game, STATE_SHOWDOWN);
-                } else {
-                    // Continue playing
-                    SetDealerPhase(game, DEALER_PHASE_DECIDE);
-                    game->state_timer = 0.0f;
-                }
-            }
-            break;
-    }
-}
-
-void UpdateShowdownState(GameContext_t* game) {
-    // Showdown executed in TransitionState entry action
-
-    // Check if enemy was defeated in combat
-    if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
-        TransitionState(game, STATE_COMBAT_VICTORY);
-    } else {
-        // Normal round end
-        TransitionState(game, STATE_ROUND_END);
-    }
-}
-
-void UpdateRoundEndState(GameContext_t* game) {
-    // Display results for 3 seconds
-    if (game->state_timer > 3.0f) {
-        StartNewRound(game);
-        TransitionState(game, STATE_BETTING);
-    }
-}
-
-void UpdateCombatVictoryState(GameContext_t* game) {
-    // Display victory for 3 seconds
-    if (game->state_timer > 3.0f) {
-        // Clear combat mode
-        if (game->current_enemy) {
-            DestroyEnemy(&game->current_enemy);
-            game->is_combat_mode = false;
-        }
-
-        // Return to betting for next round
-        StartNewRound(game);
-        TransitionState(game, STATE_BETTING);
-    }
+    // Future: Check player status effects
+    // if (game->human_player && game->human_player->status_effects) {
+    //     ProcessStatusEffectTriggers(game->human_player->status_effects, event);
+    // }
 }
 
 // ============================================================================
 // PLAYER ACTIONS
 // ============================================================================
 
-void ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerAction_t action) {
+void Game_ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerAction_t action) {
     if (!game || !player) {
         d_LogError("ExecutePlayerAction: NULL pointer");
         return;
@@ -564,18 +79,23 @@ void ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerAction_t a
     switch (action) {
         case ACTION_HIT: {
             // Deal card with animation
-            if (DealCardWithAnimation(game->deck, &player->hand, player, true)) {
+            if (Game_DealCardWithAnimation(game->deck, &player->hand, player, true)) {
                 d_LogInfoF("%s hits (hand value: %d)",
                           GetPlayerName(player), player->hand.total_value);
+
+                // ✅ NEW: Fire event
+                Game_TriggerEvent(game, GAME_EVENT_CARD_DRAWN);
 
                 if (player->hand.is_bust) {
                     player->state = PLAYER_STATE_BUST;
                     game->current_player_index++;
                     d_LogInfoF("%s busts!", GetPlayerName(player));
+                    Game_TriggerEvent(game, GAME_EVENT_PLAYER_ACTION_END);
                 } else if (player->hand.total_value == 21) {
                     player->state = PLAYER_STATE_STAND;
                     game->current_player_index++;
                     d_LogInfoF("%s reaches 21 (auto-stand)", GetPlayerName(player));
+                    Game_TriggerEvent(game, GAME_EVENT_PLAYER_ACTION_END);
                 }
             }
             break;
@@ -586,15 +106,21 @@ void ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerAction_t a
             game->current_player_index++;
             d_LogInfoF("%s stands (hand value: %d)",
                       GetPlayerName(player), player->hand.total_value);
+            Game_TriggerEvent(game, GAME_EVENT_PLAYER_ACTION_END);
             break;
 
         case ACTION_DOUBLE:
             if (CanAffordBet(player, player->current_bet)) {
                 PlaceBet(player, player->current_bet);  // Double the bet
-                DealCardWithAnimation(game->deck, &player->hand, player, true);
+                Game_DealCardWithAnimation(game->deck, &player->hand, player, true);
+
+                // ✅ NEW: Fire event (double also draws a card)
+                Game_TriggerEvent(game, GAME_EVENT_CARD_DRAWN);
+
                 player->state = player->hand.is_bust ? PLAYER_STATE_BUST : PLAYER_STATE_STAND;
                 game->current_player_index++;
                 d_LogInfoF("%s doubles down", GetPlayerName(player));
+                Game_TriggerEvent(game, GAME_EVENT_PLAYER_ACTION_END);
             }
             break;
 
@@ -605,7 +131,7 @@ void ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerAction_t a
     }
 }
 
-PlayerAction_t GetAIAction(const Player_t* player, const Card_t* dealer_upcard) {
+PlayerAction_t Game_GetAIAction(const Player_t* player, const Card_t* dealer_upcard) {
     if (!player || !dealer_upcard) {
         return ACTION_STAND;
     }
@@ -631,7 +157,7 @@ PlayerAction_t GetAIAction(const Player_t* player, const Card_t* dealer_upcard) 
 // INPUT PROCESSING (UI → Game Logic Bridge)
 // ============================================================================
 
-bool ProcessBettingInput(GameContext_t* game, Player_t* player, int bet_amount) {
+bool Game_ProcessBettingInput(GameContext_t* game, Player_t* player, int bet_amount) {
     // Constitutional pattern: NULL checks
     if (!game || !player) {
         d_LogError("ProcessBettingInput: NULL pointer");
@@ -644,6 +170,28 @@ bool ProcessBettingInput(GameContext_t* game, Player_t* player, int bet_amount) 
         return false;
     }
 
+    // ✅ NEW: Apply status effect modifiers to bet
+    if (player->status_effects) {
+        // Check minimum bet restrictions (base minimum is 1 chip)
+        int base_min = 1;
+        int modified_min = GetMinimumBetWithEffects(player->status_effects, base_min);
+        if (bet_amount < modified_min) {
+            // Only mention status effects if they're actually raising the minimum
+            if (modified_min > base_min) {
+                d_LogWarningF("ProcessBettingInput: Bet %d below minimum %d (status effects active)",
+                             bet_amount, modified_min);
+            } else {
+                d_LogWarningF("ProcessBettingInput: Bet %d below minimum %d",
+                             bet_amount, modified_min);
+            }
+            return false;
+        }
+
+        // Modify bet amount (forced all-in, madness, etc.)
+        bet_amount = ModifyBetWithEffects(player->status_effects, bet_amount, player);
+        d_LogInfoF("Bet modified by status effects: %d", bet_amount);
+    }
+
     // Validate bet amount
     if (!CanAffordBet(player, bet_amount)) {
         d_LogWarningF("ProcessBettingInput: Player cannot afford bet %d (has %d chips)",
@@ -651,8 +199,17 @@ bool ProcessBettingInput(GameContext_t* game, Player_t* player, int bet_amount) 
         return false;
     }
 
+    // Reset current_bet before placing new bet (in case previous hand didn't clean up)
+    d_LogInfoF("🎲 ProcessBettingInput: Resetting current_bet from %d to 0 before placing %d",
+               player->current_bet, bet_amount);
+    player->current_bet = 0;
+
     // Execute bet
     if (PlaceBet(player, bet_amount)) {
+        // Play chip sound effect
+        d_LogInfo("Playing push_chips sound effect");
+        a_PlaySoundEffect(&g_push_chips_sound);
+
         d_LogInfoF("Player bet %d chips", bet_amount);
         // State machine will handle transition to DEALING
         return true;
@@ -661,7 +218,7 @@ bool ProcessBettingInput(GameContext_t* game, Player_t* player, int bet_amount) 
     return false;
 }
 
-bool ProcessPlayerTurnInput(GameContext_t* game, Player_t* player, PlayerAction_t action) {
+bool Game_ProcessPlayerTurnInput(GameContext_t* game, Player_t* player, PlayerAction_t action) {
     // Constitutional pattern: NULL checks
     if (!game || !player) {
         d_LogError("ProcessPlayerTurnInput: NULL pointer");
@@ -675,7 +232,7 @@ bool ProcessPlayerTurnInput(GameContext_t* game, Player_t* player, PlayerAction_
     }
 
     // Validate it's this player's turn
-    Player_t* current = GetCurrentPlayer(game);
+    Player_t* current = Game_GetCurrentPlayer(game);
     if (current != player) {
         d_LogWarning("ProcessPlayerTurnInput: Not current player's turn");
         return false;
@@ -697,7 +254,7 @@ bool ProcessPlayerTurnInput(GameContext_t* game, Player_t* player, PlayerAction_
     }
 
     // Execute action
-    ExecutePlayerAction(game, player, action);
+    Game_ExecutePlayerAction(game, player, action);
     return true;
 }
 
@@ -705,8 +262,8 @@ bool ProcessPlayerTurnInput(GameContext_t* game, Player_t* player, PlayerAction_
 // DEALER LOGIC
 // ============================================================================
 
-void DealerTurn(GameContext_t* game) {
-    Player_t* dealer = GetPlayerByID(0);
+void Game_DealerTurn(GameContext_t* game) {
+    Player_t* dealer = Game_GetPlayerByID(0);
     if (!dealer) {
         d_LogError("DealerTurn: Dealer not found");
         return;
@@ -722,16 +279,16 @@ void DealerTurn(GameContext_t* game) {
 
     // Dealer hits on 16 or less (with animations)
     while (dealer->hand.total_value < 17) {
-        DealCardWithAnimation(game->deck, &dealer->hand, dealer, true);
+        Game_DealCardWithAnimation(game->deck, &dealer->hand, dealer, true);
     }
 
     d_LogInfoF("Dealer finishes with %d", dealer->hand.total_value);
 }
 
-const Card_t* GetDealerUpcard(const GameContext_t* game) {
+const Card_t* Game_GetDealerUpcard(const GameContext_t* game) {
     if (!game) return NULL;
 
-    Player_t* dealer = GetPlayerByID(0);
+    Player_t* dealer = Game_GetPlayerByID(0);
     if (!dealer || dealer->hand.cards->count < 2) {
         return NULL;
     }
@@ -749,7 +306,7 @@ const Card_t* GetDealerUpcard(const GameContext_t* game) {
 #define DECK_POSITION_Y 300.0f
 #define CARD_DEAL_DURATION 0.4f  // Seconds for card to slide from deck to hand
 
-bool DealCardWithAnimation(Deck_t* deck, Hand_t* hand, Player_t* player, bool face_up) {
+bool Game_DealCardWithAnimation(Deck_t* deck, Hand_t* hand, Player_t* player, bool face_up) {
     if (!deck || !hand || !player) return false;
 
     // Deal card from deck
@@ -802,7 +359,7 @@ bool DealCardWithAnimation(Deck_t* deck, Hand_t* hand, Player_t* player, bool fa
     return true;
 }
 
-void DealInitialHands(GameContext_t* game) {
+void Game_DealInitialHands(GameContext_t* game) {
     if (!game) return;
 
     d_LogInfo("Dealing initial hands...");
@@ -811,7 +368,7 @@ void DealInitialHands(GameContext_t* game) {
     for (int round = 0; round < 2; round++) {
         for (size_t i = 0; i < game->active_players->count; i++) {
             int* id = (int*)d_IndexDataFromArray(game->active_players, i);
-            Player_t* player = GetPlayerByID(*id);
+            Player_t* player = Game_GetPlayerByID(*id);
 
             if (!player) continue;
 
@@ -819,9 +376,14 @@ void DealInitialHands(GameContext_t* game) {
             bool face_up = !(player->is_dealer && round == 0);
 
             // Deal card with animation
-            if (!DealCardWithAnimation(game->deck, &player->hand, player, face_up)) {
+            if (!Game_DealCardWithAnimation(game->deck, &player->hand, player, face_up)) {
                 d_LogError("Failed to deal card during initial hands!");
                 return;
+            }
+
+            // Trigger CARD_DRAWN event for ability counters (only for non-dealer)
+            if (!player->is_dealer) {
+                Game_TriggerEvent(game, GAME_EVENT_CARD_DRAWN);
             }
         }
     }
@@ -829,22 +391,39 @@ void DealInitialHands(GameContext_t* game) {
     // Check for blackjacks
     for (size_t i = 0; i < game->active_players->count; i++) {
         int* id = (int*)d_IndexDataFromArray(game->active_players, i);
-        Player_t* player = GetPlayerByID(*id);
+        Player_t* player = Game_GetPlayerByID(*id);
 
         if (player && player->hand.is_blackjack) {
             player->state = PLAYER_STATE_BLACKJACK;
             d_LogInfoF("%s has BLACKJACK!", GetPlayerName(player));
+
+            // Trigger event immediately when blackjack is dealt
+            if (!player->is_dealer) {
+                Game_TriggerEvent(game, GAME_EVENT_PLAYER_BLACKJACK);
+            }
         }
     }
 }
 
-void ResolveRound(GameContext_t* game) {
+void Game_ResolveRound(GameContext_t* game) {
     if (!game) return;
 
-    Player_t* dealer = GetPlayerByID(0);
+    Player_t* dealer = Game_GetPlayerByID(0);
     if (!dealer) {
         d_LogError("ResolveRound: Dealer not found");
         return;
+    }
+
+    // ✅ NEW: Process status effects at round start (chip drain, etc.)
+    for (size_t i = 0; i < game->active_players->count; i++) {
+        int* id = (int*)d_IndexDataFromArray(game->active_players, i);
+        Player_t* player = Game_GetPlayerByID(*id);
+
+        if (!player || player->is_dealer) continue;
+
+        if (player->status_effects) {
+            ProcessStatusEffectsRoundStart(player->status_effects, player);
+        }
     }
 
     int dealer_value = dealer->hand.total_value;
@@ -853,59 +432,181 @@ void ResolveRound(GameContext_t* game) {
     d_LogInfoF("Resolving round - Dealer: %d%s",
                dealer_value, dealer_bust ? " (BUST)" : "");
 
+    // ✅ NEW: Fire dealer bust event
+    if (dealer_bust) {
+        Game_TriggerEvent(game, GAME_EVENT_DEALER_BUST);
+    }
+
     for (size_t i = 0; i < game->active_players->count; i++) {
         int* id = (int*)d_IndexDataFromArray(game->active_players, i);
-        Player_t* player = GetPlayerByID(*id);
+        Player_t* player = Game_GetPlayerByID(*id);
 
         if (!player || player->is_dealer) continue;
 
         const char* outcome = "";
         int damage_dealt = 0;  // Damage to enemy
-        int damage_taken = 0;  // Damage to player
 
         // Save bet amount BEFORE WinBet/LoseBet clears it
         int bet_amount = player->current_bet;
         int hand_value = player->hand.total_value;
 
+        // Record bet in stats (do this BEFORE incrementing turn counter)
+        Stats_RecordChipsBet(bet_amount);
+
+        // Track turn played for stats
+        Stats_RecordTurnPlayed();
+
         if (player->hand.is_bust) {
             LoseBet(player);
+
+            // ✅ NEW: Apply status effect loss modifiers (TILT doubles losses)
+            if (player->status_effects) {
+                int additional_loss = ModifyLosses(player->status_effects, bet_amount);
+                if (additional_loss > 0) {
+                    player->chips -= additional_loss;
+                    Stats_RecordChipsDrained(additional_loss);
+                    Stats_UpdateChipsPeak(player->chips);
+                    d_LogInfoF("Status effect additional loss: %d chips", additional_loss);
+                }
+            }
+
             player->state = PLAYER_STATE_LOST;
             outcome = "BUST - LOSE";
-            // Player loses bet = enemy dealt damage
-            damage_taken = bet_amount / 10;  // Convert chips to HP (÷10 scaling)
+
+            // Track loss in stats
+            Stats_RecordTurnLost();
+            Stats_RecordChipsLost(bet_amount);
+
+            // ✅ NEW: Fire event
+            Game_TriggerEvent(game, GAME_EVENT_PLAYER_BUST);
+
         } else if (player->hand.is_blackjack) {
             if (dealer->hand.is_blackjack) {
                 ReturnBet(player);
                 player->state = PLAYER_STATE_PUSH;
-                outcome = "PUSH";
-                // No damage on push
+                outcome = "PUSH - Half Damage";
+
+                // Push deals half damage (explicitly calculate half to avoid any issues)
+                int full_damage = hand_value * bet_amount;
+                damage_dealt = full_damage / 2;
+
+                // Track push in stats
+                Stats_RecordTurnPushed();
+
+                // ✅ NEW: Fire event
+                Game_TriggerEvent(game, GAME_EVENT_PLAYER_PUSH);
             } else {
-                WinBet(player, 1.5f);  // 3:2 payout
+                // Calculate base winnings (net profit only)
+                int base_winnings = (int)(bet_amount * 1.5f);
+
+                // ✅ NEW: Apply status effect win modifiers (GREED caps at 50% of bet)
+                if (player->status_effects) {
+                    base_winnings = ModifyWinnings(player->status_effects, base_winnings, bet_amount);
+                }
+
+                // Award net winnings only (bet was never deducted)
+                player->chips += base_winnings;
+                Stats_UpdateChipsPeak(player->chips);
+                player->current_bet = 0;
+
                 player->state = PLAYER_STATE_WON;
                 outcome = "BLACKJACK - WIN 3:2";
                 // Damage = hand_value × bet_amount
                 damage_dealt = hand_value * bet_amount;
+
+                // Track win in stats
+                Stats_RecordTurnWon();
+                Stats_RecordChipsWon(base_winnings);
+
+                // ✅ NEW: Fire event
+                Game_TriggerEvent(game, GAME_EVENT_PLAYER_BLACKJACK);
             }
         } else if (dealer_bust) {
-            WinBet(player, 1.0f);  // 1:1 payout
+            // Calculate base winnings (net profit only)
+            int base_winnings = bet_amount;
+
+            // ✅ NEW: Apply status effect win modifiers (GREED caps at 50% of bet)
+            if (player->status_effects) {
+                base_winnings = ModifyWinnings(player->status_effects, base_winnings, bet_amount);
+            }
+
+            // Award net winnings only (bet was never deducted)
+            player->chips += base_winnings;
+            player->current_bet = 0;
+
             player->state = PLAYER_STATE_WON;
             outcome = "DEALER BUST - WIN";
             damage_dealt = hand_value * bet_amount;
+
+            // Track win in stats
+            Stats_RecordTurnWon();
+            Stats_RecordChipsWon(base_winnings);
+
+            // ✅ NEW: Fire event
+            Game_TriggerEvent(game, GAME_EVENT_PLAYER_WIN);
+
         } else if (player->hand.total_value > dealer_value) {
-            WinBet(player, 1.0f);
+            // Calculate base winnings (net profit only)
+            int base_winnings = bet_amount;
+
+            // ✅ NEW: Apply status effect win modifiers (GREED caps at 50% of bet)
+            if (player->status_effects) {
+                base_winnings = ModifyWinnings(player->status_effects, base_winnings, bet_amount);
+            }
+
+            // Award net winnings only (bet was never deducted)
+            player->chips += base_winnings;
+            player->current_bet = 0;
+
             player->state = PLAYER_STATE_WON;
             outcome = "WIN";
             damage_dealt = hand_value * bet_amount;
+
+            // Track win in stats
+            Stats_RecordTurnWon();
+            Stats_RecordChipsWon(base_winnings);
+
+            // ✅ NEW: Fire event
+            Game_TriggerEvent(game, GAME_EVENT_PLAYER_WIN);
+
         } else if (player->hand.total_value < dealer_value) {
             LoseBet(player);
+
+            // ✅ NEW: Apply status effect loss modifiers (TILT doubles losses)
+            if (player->status_effects) {
+                int additional_loss = ModifyLosses(player->status_effects, bet_amount);
+                if (additional_loss > 0) {
+                    player->chips -= additional_loss;
+                    Stats_RecordChipsDrained(additional_loss);
+                    Stats_UpdateChipsPeak(player->chips);
+                    d_LogInfoF("Status effect additional loss: %d chips", additional_loss);
+                }
+            }
+
             player->state = PLAYER_STATE_LOST;
             outcome = "LOSE";
-            // Player takes NO combat damage, just loses bet
+
+            // Track loss in stats
+            Stats_RecordTurnLost();
+            Stats_RecordChipsLost(bet_amount);
+
+            // ✅ NEW: Fire event
+            Game_TriggerEvent(game, GAME_EVENT_PLAYER_LOSS);
+
         } else {
             ReturnBet(player);
             player->state = PLAYER_STATE_PUSH;
-            outcome = "PUSH";
-            // No damage on push
+            outcome = "PUSH - Half Damage";
+
+            // Push deals half damage (explicitly calculate half to avoid any issues)
+            int full_damage = hand_value * bet_amount;
+            damage_dealt = full_damage / 2;
+
+            // Track push in stats
+            Stats_RecordTurnPushed();
+
+            // ✅ NEW: Fire event
+            Game_TriggerEvent(game, GAME_EVENT_PLAYER_PUSH);
         }
 
         d_LogInfoF("%s: %s (damage_dealt=%d)",
@@ -917,6 +618,12 @@ void ResolveRound(GameContext_t* game) {
                 TakeDamage(game->current_enemy, damage_dealt);
                 TweenEnemyHP(game->current_enemy);  // Smooth HP bar drain animation
                 TriggerEnemyDamageEffect(game->current_enemy, &g_tween_manager);  // Shake + red flash
+
+                // Track damage in global stats (use appropriate source)
+                DamageSource_t damage_source = (player->state == PLAYER_STATE_PUSH)
+                    ? DAMAGE_SOURCE_TURN_PUSH
+                    : DAMAGE_SOURCE_TURN_WIN;
+                Stats_RecordDamage(damage_source, damage_dealt);
 
                 // Spawn floating damage number (centered, above HP bar)
                 // Position using constants from sceneBlackjack.h
@@ -936,14 +643,39 @@ void ResolveRound(GameContext_t* game) {
             if (game->current_enemy->is_defeated) {
                 d_LogInfoF("COMBAT VICTORY! %s has been defeated!",
                           GetEnemyName(game->current_enemy));
+
+                // Clear all status effects on victory (no chip drain on victory screen!)
+                for (size_t j = 0; j < game->active_players->count; j++) {
+                    int* player_id = (int*)d_IndexDataFromArray(game->active_players, j);
+                    Player_t* p = Game_GetPlayerByID(*player_id);
+                    if (p && !p->is_dealer && p->status_effects) {
+                        ClearAllStatusEffects(p->status_effects);
+                    }
+                }
+
                 // Don't continue to normal round end - go to victory state
                 return;
             }
         }
     }
+
+    // ✅ NEW: Tick status effect durations (remove expired effects)
+    for (size_t i = 0; i < game->active_players->count; i++) {
+        int* id = (int*)d_IndexDataFromArray(game->active_players, i);
+        Player_t* player = Game_GetPlayerByID(*id);
+
+        if (!player || player->is_dealer) continue;
+
+        if (player->status_effects) {
+            TickStatusEffectDurations(player->status_effects);
+        }
+    }
+
+    // ✅ NEW: Fire round end event (after all outcomes resolved)
+    Game_TriggerEvent(game, GAME_EVENT_HAND_END);
 }
 
-void StartNewRound(GameContext_t* game) {
+void Game_StartNewRound(GameContext_t* game) {
     if (!game) return;
 
     d_LogInfo("Starting new round...");
@@ -951,7 +683,7 @@ void StartNewRound(GameContext_t* game) {
     // Clear all hands
     for (size_t i = 0; i < game->active_players->count; i++) {
         int* id = (int*)d_IndexDataFromArray(game->active_players, i);
-        Player_t* player = GetPlayerByID(*id);
+        Player_t* player = Game_GetPlayerByID(*id);
 
         if (player) {
             ClearHand(&player->hand, game->deck);
@@ -974,7 +706,7 @@ void StartNewRound(GameContext_t* game) {
 // PLAYER MANAGEMENT
 // ============================================================================
 
-void AddPlayerToGame(GameContext_t* game, int player_id) {
+void Game_AddPlayerToGame(GameContext_t* game, int player_id) {
     if (!game) {
         d_LogError("AddPlayerToGame: NULL game pointer");
         return;
@@ -984,7 +716,7 @@ void AddPlayerToGame(GameContext_t* game, int player_id) {
     d_LogInfoF("Added player %d to game", player_id);
 }
 
-Player_t* GetCurrentPlayer(GameContext_t* game) {
+Player_t* Game_GetCurrentPlayer(GameContext_t* game) {
     if (!game || game->current_player_index >= (int)game->active_players->count) {
         return NULL;
     }
@@ -993,162 +725,13 @@ Player_t* GetCurrentPlayer(GameContext_t* game) {
                                           game->current_player_index);
     if (!id) return NULL;
 
-    return GetPlayerByID(*id);
+    return Game_GetPlayerByID(*id);
 }
 
-Player_t* GetPlayerByID(int player_id) {
+Player_t* Game_GetPlayerByID(int player_id) {
     if (!g_players) return NULL;
 
     // Constitutional pattern: Table stores Player_t by value, return direct pointer
     return (Player_t*)d_GetDataFromTable(g_players, &player_id);
 }
 
-// ============================================================================
-// STATE VARIABLE HELPERS (Constitutional: Typed tables, no void*)
-// ============================================================================
-
-// Static storage for bool values (only 2 possible values, persistent memory)
-static const bool BOOL_TRUE = true;
-static const bool BOOL_FALSE = false;
-
-void SetBoolFlag(GameContext_t* game, const char* key, bool value) {
-    if (!game) {
-        d_LogErrorF("SetBoolFlag: NULL game pointer (key='%s')", key ? key : "NULL");
-        return;
-    }
-    if (!key) {
-        d_LogError("SetBoolFlag: NULL key");
-        return;
-    }
-    if (!game->bool_flags) {
-        d_LogFatalF("SetBoolFlag: game->bool_flags is NULL! Memory corruption? (key='%s')", key);
-        return;
-    }
-
-    // Store pointer to static bool (persistent memory, not stack!)
-    d_SetDataInTable(game->bool_flags, &key, value ? &BOOL_TRUE : &BOOL_FALSE);
-
-    // Verify storage (SUSSY checks)
-    bool* verify = (bool*)d_GetDataFromTable(game->bool_flags, &key);
-    if (!verify) {
-        d_LogWarningF("SetBoolFlag: SUSSY - Failed to store key='%s', value=%d", key, value);
-    } else if (*verify != value) {
-        d_LogErrorF("SetBoolFlag: SUSSY - Stored value mismatch! Expected %d, got %d (key='%s')",
-                    value, *verify, key);
-    }
-}
-
-bool GetBoolFlag(const GameContext_t* game, const char* key, bool default_value) {
-    if (!game || !key) {
-        return default_value;
-    }
-
-    bool* value_ptr = (bool*)d_GetDataFromTable(game->bool_flags, &key);
-    return value_ptr ? *value_ptr : default_value;
-}
-
-void ClearBoolFlag(GameContext_t* game, const char* key) {
-    if (!game || !key) {
-        d_LogWarningF("ClearBoolFlag: NULL pointer (game=%p, key=%p)",
-                      (void*)game, (void*)key);
-        return;
-    }
-
-    if (!game->bool_flags) {
-        d_LogErrorF("ClearBoolFlag: game->bool_flags is NULL! (key='%s')", key);
-        return;
-    }
-
-    // Check if key exists before removing (not an error if it doesn't)
-    bool* exists = (bool*)d_GetDataFromTable(game->bool_flags, &key);
-    if (exists) {
-        d_RemoveDataFromTable(game->bool_flags, &key);
-        d_LogDebugF("ClearBoolFlag: Removed key='%s' (was %d)", key, *exists);
-    } else {
-        d_LogDebugF("ClearBoolFlag: Key='%s' not found (already clear)", key);
-    }
-}
-
-// Static storage for dealer phases (4 possible values, persistent memory)
-static const DealerPhase_t PHASE_CHECK_REVEAL = DEALER_PHASE_CHECK_REVEAL;
-static const DealerPhase_t PHASE_DECIDE = DEALER_PHASE_DECIDE;
-static const DealerPhase_t PHASE_ACTION = DEALER_PHASE_ACTION;
-static const DealerPhase_t PHASE_WAIT = DEALER_PHASE_WAIT;
-
-void SetDealerPhase(GameContext_t* game, DealerPhase_t phase) {
-    if (!game) {
-        d_LogError("SetDealerPhase: NULL game pointer");
-        return;
-    }
-    if (!game->dealer_phase) {
-        d_LogFatal("SetDealerPhase: game->dealer_phase is NULL! Memory corruption?");
-        return;
-    }
-
-    // Store pointer to static phase value (persistent memory)
-    const DealerPhase_t* phase_ptr = NULL;
-    switch (phase) {
-        case DEALER_PHASE_CHECK_REVEAL: phase_ptr = &PHASE_CHECK_REVEAL; break;
-        case DEALER_PHASE_DECIDE:       phase_ptr = &PHASE_DECIDE; break;
-        case DEALER_PHASE_ACTION:       phase_ptr = &PHASE_ACTION; break;
-        case DEALER_PHASE_WAIT:         phase_ptr = &PHASE_WAIT; break;
-    }
-
-    if (phase_ptr) {
-        const char* key = "phase";
-        d_SetDataInTable(game->dealer_phase, &key, phase_ptr);
-
-        // Verify storage (SUSSY checks)
-        DealerPhase_t* verify = (DealerPhase_t*)d_GetDataFromTable(game->dealer_phase, &key);
-        if (!verify) {
-            d_LogWarningF("SetDealerPhase: SUSSY - Failed to store phase=%d", phase);
-        } else if (*verify != phase) {
-            d_LogErrorF("SetDealerPhase: SUSSY - Stored phase mismatch! Expected %d, got %d",
-                        phase, *verify);
-        }
-    } else {
-        d_LogErrorF("SetDealerPhase: Invalid phase value %d", phase);
-    }
-}
-
-DealerPhase_t GetDealerPhase(const GameContext_t* game) {
-    if (!game) {
-        return DEALER_PHASE_CHECK_REVEAL;
-    }
-
-    const char* key = "phase";
-    DealerPhase_t* phase_ptr = (DealerPhase_t*)d_GetDataFromTable(game->dealer_phase, &key);
-    return phase_ptr ? *phase_ptr : DEALER_PHASE_CHECK_REVEAL;
-}
-
-void ClearDealerPhase(GameContext_t* game) {
-    if (!game) {
-        d_LogWarning("ClearDealerPhase: NULL game pointer!");
-        return;
-    }
-
-    if (!game->dealer_phase) {
-        d_LogError("ClearDealerPhase: game->dealer_phase is NULL!");
-        return;
-    }
-
-    // SUSSY: Log table state before accessing
-    d_LogInfoF("ClearDealerPhase: game=%p, dealer_phase table=%p",
-               (void*)game, (void*)game->dealer_phase);
-
-    // Check if phase exists before removing (not an error if it doesn't)
-    const char* key_str = "phase";
-    d_LogInfoF("ClearDealerPhase: About to call d_GetDataFromTable with key='%s' at %p",
-               key_str, (void*)key_str);
-
-    DealerPhase_t* exists = (DealerPhase_t*)d_GetDataFromTable(game->dealer_phase, &key_str);
-
-    d_LogInfo("ClearDealerPhase: d_GetDataFromTable returned");
-
-    if (exists) {
-        d_RemoveDataFromTable(game->dealer_phase, &key_str);
-        d_LogDebugF("ClearDealerPhase: Removed phase (was %d)", *exists);
-    } else {
-        d_LogDebug("ClearDealerPhase: Phase not found (already clear)");
-    }
-}

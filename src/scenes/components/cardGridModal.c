@@ -4,8 +4,10 @@
 
 #include "../../../include/scenes/components/cardGridModal.h"
 #include "../../../include/card.h"
+#include "../../../include/cardTags.h"
+#include "../../../include/random.h"
 #include <stdlib.h>
-#include <time.h>
+#include <string.h>
 
 // External globals
 extern dTable_t* g_card_textures;
@@ -26,7 +28,7 @@ extern SDL_Texture* g_card_back_texture;
 // Helper: Fisher-Yates shuffle for indices
 static void ShuffleIndices(int* indices, int count) {
     for (int i = count - 1; i > 0; i--) {
-        int j = rand() % (i + 1);
+        int j = GetRandomInt(0, i);
         int temp = indices[i];
         indices[i] = indices[j];
         indices[j] = temp;
@@ -57,6 +59,15 @@ CardGridModal_t* CreateCardGridModal(const char* title, dArray_t* cards, bool sh
     modal->drag_start_y = 0;
     modal->drag_start_scroll = 0;
     modal->shuffled_indices = NULL;
+    modal->hovered_card_index = -1;
+
+    // Create tooltip
+    modal->tooltip = CreateCardTooltipModal();
+    if (!modal->tooltip) {
+        free(modal);
+        d_LogError("Failed to create CardTooltipModal");
+        return NULL;
+    }
 
     d_LogInfo("CardGridModal created");
     return modal;
@@ -71,6 +82,11 @@ void DestroyCardGridModal(CardGridModal_t** modal) {
 
     if (m->shuffled_indices) {
         free(m->shuffled_indices);
+    }
+
+    // Destroy tooltip
+    if (m->tooltip) {
+        DestroyCardTooltipModal(&m->tooltip);
     }
 
     free(m);
@@ -134,12 +150,21 @@ void HideCardGridModal(CardGridModal_t* modal) {
 bool HandleCardGridModalInput(CardGridModal_t* modal) {
     if (!modal || !modal->is_visible) return false;
 
-    int modal_x = (SCREEN_WIDTH - MODAL_WIDTH) / 2;
+    // Match rendering position (shifted 96px right)
+    int modal_x = ((SCREEN_WIDTH - MODAL_WIDTH) / 2) + 96;
     int modal_y = (SCREEN_HEIGHT - MODAL_HEIGHT) / 2;
 
-    // ESC key closes modal
+    // ESC, V, or C key closes modal (V and C are the hotkeys for draw/discard pile)
     if (app.keyboard[SDL_SCANCODE_ESCAPE]) {
         app.keyboard[SDL_SCANCODE_ESCAPE] = 0;
+        return true;  // Request close
+    }
+    if (app.keyboard[SDL_SCANCODE_V]) {
+        app.keyboard[SDL_SCANCODE_V] = 0;
+        return true;  // Request close
+    }
+    if (app.keyboard[SDL_SCANCODE_C]) {
+        app.keyboard[SDL_SCANCODE_C] = 0;
         return true;  // Request close
     }
 
@@ -155,6 +180,32 @@ bool HandleCardGridModalInput(CardGridModal_t* modal) {
 
     if (mouse_over_close && app.mouse.pressed) {
         return true;  // Request close
+    }
+
+    // Update hovered card index (for hover-to-enlarge effect)
+    modal->hovered_card_index = -1;
+    if (modal->cards && modal->cards->count > 0) {
+        // Calculate actual grid width for centering
+        int actual_grid_width = CARD_GRID_COLS * CARD_GRID_CARD_WIDTH + (CARD_GRID_COLS - 1) * CARD_GRID_SPACING;
+        int grid_x = modal_x + (MODAL_WIDTH - SCROLLBAR_WIDTH - 20 - actual_grid_width) / 2;
+        int grid_y = modal_y + MODAL_HEADER_HEIGHT + CARD_GRID_PADDING;
+        int mx = app.mouse.x;
+        int my = app.mouse.y;
+
+        int card_count = (int)modal->cards->count;
+        for (int i = 0; i < card_count; i++) {
+            int col = i % CARD_GRID_COLS;
+            int row = i / CARD_GRID_COLS;
+            int x = grid_x + col * (CARD_GRID_CARD_WIDTH + CARD_GRID_SPACING);
+            int y = grid_y + row * (CARD_GRID_CARD_HEIGHT + CARD_GRID_SPACING) - modal->scroll_offset;
+
+            // Check if mouse is over this card
+            if (mx >= x && mx <= x + CARD_GRID_CARD_WIDTH &&
+                my >= y && my <= y + CARD_GRID_CARD_HEIGHT) {
+                modal->hovered_card_index = i;
+                break;
+            }
+        }
     }
 
     // Calculate scrollbar bounds
@@ -207,8 +258,18 @@ bool HandleCardGridModalInput(CardGridModal_t* modal) {
         }
 
         // Mouse wheel scrolling
-        // Note: Archimedes doesn't expose mouse wheel directly, but we can add it if needed
-        // For now, draggable scrollbar only
+        if (app.mouse.wheel != 0) {
+            // Scroll by ~3 cards per wheel tick
+            int scroll_speed = (CARD_GRID_CARD_HEIGHT + CARD_GRID_SPACING) * 3;
+            modal->scroll_offset -= app.mouse.wheel * scroll_speed;  // Negative wheel = scroll down
+
+            // Clamp scroll offset
+            if (modal->scroll_offset < 0) modal->scroll_offset = 0;
+            if (modal->scroll_offset > modal->max_scroll) modal->scroll_offset = modal->max_scroll;
+
+            // Reset wheel (consume the event)
+            app.mouse.wheel = 0;
+        }
     }
 
     return false;  // Don't close
@@ -225,8 +286,8 @@ void RenderCardGridModal(CardGridModal_t* modal) {
     a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
                      COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b, COLOR_OVERLAY.a);
 
-    // Centered modal panel
-    int modal_x = (SCREEN_WIDTH - MODAL_WIDTH) / 2;
+    // Modal panel (shifted 96px right from center, matching reward modal)
+    int modal_x = ((SCREEN_WIDTH - MODAL_WIDTH) / 2) + 96;
     int modal_y = (SCREEN_HEIGHT - MODAL_HEIGHT) / 2;
 
     // Draw panel body
@@ -241,9 +302,10 @@ void RenderCardGridModal(CardGridModal_t* modal) {
     a_DrawRect(modal_x, modal_y, MODAL_WIDTH, MODAL_HEADER_HEIGHT,
                COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, COLOR_HEADER_BORDER.a);
 
-    // Draw title
+    // Draw title (centered on modal panel, not screen)
+    int title_center_x = modal_x + (MODAL_WIDTH / 2);
     // Cast safe: a_DrawText is read-only, using fixed char buffer
-    a_DrawText((char*)modal->title, SCREEN_WIDTH / 2, modal_y + 12,
+    a_DrawText((char*)modal->title, title_center_x, modal_y + 12,
                COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b,
                FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
 
@@ -260,12 +322,18 @@ void RenderCardGridModal(CardGridModal_t* modal) {
     aColor_t close_color = mouse_over_close ? COLOR_CLOSE_HOVER : COLOR_CLOSE_BUTTON;
     a_DrawFilledRect(close_button_x, close_button_y, close_button_size, close_button_size,
                      close_color.r, close_color.g, close_color.b, close_color.a);
-    a_DrawText("X", close_button_x + close_button_size / 2, close_button_y + 5,
+    // Center X text vertically in button
+    a_DrawText("X", close_button_x + close_button_size / 2, close_button_y + 3,
                255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
 
     // Draw card grid with clipping
     if (modal->cards && modal->cards->count > 0) {
-        int grid_x = modal_x + CARD_GRID_PADDING;
+        // Calculate actual grid width for centering
+        // Grid: 6 cols * 75px cards + 5 * 10px spacing = 500px
+        int actual_grid_width = CARD_GRID_COLS * CARD_GRID_CARD_WIDTH + (CARD_GRID_COLS - 1) * CARD_GRID_SPACING;
+
+        // Center grid horizontally in modal (leaving room for scrollbar)
+        int grid_x = modal_x + (MODAL_WIDTH - SCROLLBAR_WIDTH - 20 - actual_grid_width) / 2;
         int grid_y = panel_body_y + CARD_GRID_PADDING;
         int visible_height = panel_body_height - CARD_GRID_PADDING * 2;
 
@@ -273,13 +341,17 @@ void RenderCardGridModal(CardGridModal_t* modal) {
         SDL_Rect clip_rect = {
             modal_x,
             panel_body_y,
-            MODAL_WIDTH - SCROLLBAR_WIDTH - 20,
+            MODAL_WIDTH - SCROLLBAR_WIDTH - 10,
             panel_body_height
         };
         SDL_RenderSetClipRect(app.renderer, &clip_rect);
 
         int card_count = (int)modal->cards->count;
+
+        // First pass: Draw non-hovered cards
         for (int i = 0; i < card_count; i++) {
+            if (i == modal->hovered_card_index) continue;  // Skip hovered card, draw it last
+
             // Get actual card index (shuffled or ordered)
             int card_idx = modal->should_shuffle_display ? modal->shuffled_indices[i] : i;
             Card_t* card = (Card_t*)d_IndexDataFromArray(modal->cards, card_idx);
@@ -307,17 +379,134 @@ void RenderCardGridModal(CardGridModal_t* modal) {
             // Draw card - ALWAYS show face (ignore card->face_up, this is a viewer)
             SDL_Rect dst = {x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT};
             if (card->texture) {
-                // Always render the card face texture in modal view
                 SDL_RenderCopy(app.renderer, card->texture, NULL, &dst);
             } else {
-                // Fallback
                 a_DrawFilledRect(x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT, 200, 200, 200, 255);
                 a_DrawRect(x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT, 100, 100, 100, 255);
             }
+
+            // Draw tag badge on top-right of card
+            const dArray_t* tags = GetCardTags(card->card_id);
+            if (tags && tags->count > 0) {
+                CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, 0);
+                const char* tag_text = GetCardTagName(*tag);
+
+                int r, g, b;
+                GetCardTagColor(*tag, &r, &g, &b);
+
+                // Minimum width: 16px less than current CARD_GRID_TAG_BADGE_W (80px)
+                int badge_w = 64;  // 80 - 16 = 64px min width
+                int badge_h = CARD_GRID_TAG_BADGE_H;
+                int badge_x = x + CARD_GRID_CARD_WIDTH - badge_w - 3 + 12;  // +12px right (was +8px)
+                int badge_y = y - badge_h - 3 + 24;  // +24px down (was +16px)
+
+                if (badge_y >= panel_body_y) {
+                    a_DrawFilledRect(badge_x, badge_y, badge_w, badge_h, r, g, b, 255);
+                    a_DrawRect(badge_x, badge_y, badge_w, badge_h, 0, 0, 0, 255);
+
+                    // Truncate tag text to first 3 letters
+                    char truncated[4] = {0};
+                    strncpy(truncated, tag_text, 3);
+                    truncated[3] = '\0';
+
+                    aFontConfig_t tag_config = {
+                        .type = FONT_ENTER_COMMAND,
+                        .color = {0, 0, 0, 180},
+                        .align = TEXT_ALIGN_CENTER,
+                        .scale = 0.7f
+                    };
+                    a_DrawTextStyled(truncated, badge_x + badge_w / 2, badge_y - 3, &tag_config);
+                }
+            }
         }
 
-        // Disable scissor
+        // Disable scissor temporarily for hovered card (so it can render on top)
         SDL_RenderSetClipRect(app.renderer, NULL);
+
+        // Second pass: Draw hovered card enlarged and on top
+        if (modal->hovered_card_index >= 0 && modal->hovered_card_index < card_count) {
+            int i = modal->hovered_card_index;
+            int card_idx = modal->should_shuffle_display ? modal->shuffled_indices[i] : i;
+            Card_t* card = (Card_t*)d_IndexDataFromArray(modal->cards, card_idx);
+
+            if (card && card->texture) {
+                // Calculate base position in grid
+                int col = i % CARD_GRID_COLS;
+                int row = i / CARD_GRID_COLS;
+                int base_x = grid_x + col * (CARD_GRID_CARD_WIDTH + CARD_GRID_SPACING);
+                int base_y = grid_y + row * (CARD_GRID_CARD_HEIGHT + CARD_GRID_SPACING) - modal->scroll_offset;
+
+                // Enlarged size (1.5x scale, like hand hover)
+                int hover_w = (int)(CARD_GRID_CARD_WIDTH * HOVER_CARD_SCALE);
+                int hover_h = (int)(CARD_GRID_CARD_HEIGHT * HOVER_CARD_SCALE);
+
+                // Center enlarged card on its base position (not mouse)
+                int hover_x = base_x + (CARD_GRID_CARD_WIDTH - hover_w) / 2;
+                int hover_y = base_y + (CARD_GRID_CARD_HEIGHT - hover_h) / 2;
+
+                // Draw enlarged card
+                SDL_Rect hover_dst = {hover_x, hover_y, hover_w, hover_h};
+                SDL_RenderCopy(app.renderer, card->texture, NULL, &hover_dst);
+
+                // Draw tag badge on enlarged card
+                const dArray_t* tags = GetCardTags(card->card_id);
+                if (tags && tags->count > 0) {
+                    CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, 0);
+                    const char* tag_text = GetCardTagName(*tag);
+
+                    int r, g, b;
+                    GetCardTagColor(*tag, &r, &g, &b);
+
+                    // Scale badge with card (use 64px base width)
+                    int hover_badge_w = (int)(64 * HOVER_CARD_SCALE);  // 64px min width scaled
+                    int hover_badge_h = (int)(CARD_GRID_TAG_BADGE_H * HOVER_CARD_SCALE);
+                    int hover_badge_x = hover_x + hover_w - hover_badge_w - 5 + (int)(12 * HOVER_CARD_SCALE);  // +12px right (scaled)
+                    int hover_badge_y = hover_y - hover_badge_h - 5 + (int)(24 * HOVER_CARD_SCALE);  // +24px down (scaled)
+
+                    a_DrawFilledRect(hover_badge_x, hover_badge_y, hover_badge_w, hover_badge_h, r, g, b, 255);
+                    a_DrawRect(hover_badge_x, hover_badge_y, hover_badge_w, hover_badge_h, 0, 0, 0, 255);
+
+                    // Truncate tag text to first 3 letters
+                    char truncated[4] = {0};
+                    strncpy(truncated, tag_text, 3);
+                    truncated[3] = '\0';
+
+                    aFontConfig_t hover_tag_config = {
+                        .type = FONT_ENTER_COMMAND,
+                        .color = {0, 0, 0, 200},
+                        .align = TEXT_ALIGN_CENTER,
+                        .scale = 0.7f * HOVER_CARD_SCALE
+                    };
+                    a_DrawTextStyled(truncated, hover_badge_x + hover_badge_w / 2, hover_badge_y + (int)(3 * HOVER_CARD_SCALE) - 10, &hover_tag_config);
+                }
+            }
+        }
+
+        // Show/hide tooltip for hovered card
+        if (modal->hovered_card_index >= 0 && modal->hovered_card_index < card_count && modal->tooltip) {
+            int i = modal->hovered_card_index;
+            int card_idx = modal->should_shuffle_display ? modal->shuffled_indices[i] : i;
+            Card_t* card = (Card_t*)d_IndexDataFromArray(modal->cards, card_idx);
+
+            if (card) {
+                // Calculate card position in grid
+                int col = i % CARD_GRID_COLS;
+                int row = i / CARD_GRID_COLS;
+                int card_x = grid_x + col * (CARD_GRID_CARD_WIDTH + CARD_GRID_SPACING);
+                int card_y = grid_y + row * (CARD_GRID_CARD_HEIGHT + CARD_GRID_SPACING) - modal->scroll_offset;
+
+                // Flip tooltip left for last 2 columns (columns 4 and 5 in 6-column grid)
+                bool force_left = (col >= CARD_GRID_COLS - 2);
+                ShowCardTooltipModalWithSide(modal->tooltip, card, card_x, card_y, force_left);
+            }
+        } else if (modal->tooltip) {
+            HideCardTooltipModal(modal->tooltip);
+        }
+
+        // Render tooltip (on top of everything)
+        if (modal->tooltip) {
+            RenderCardTooltipModal(modal->tooltip);
+        }
 
         // Draw scrollbar if needed
         if (modal->max_scroll > 0) {
@@ -352,8 +541,9 @@ void RenderCardGridModal(CardGridModal_t* modal) {
                              handle_color.r, handle_color.g, handle_color.b, handle_color.a);
         }
     } else {
-        // No cards message
-        a_DrawText("No cards to display", SCREEN_WIDTH / 2, modal_y + MODAL_HEIGHT / 2,
+        // No cards message (centered on modal panel)
+        int msg_center_x = modal_x + (MODAL_WIDTH / 2);
+        a_DrawText("No cards to display", msg_center_x, modal_y + MODAL_HEIGHT / 2,
                    200, 200, 200, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
     }
 }

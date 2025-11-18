@@ -9,18 +9,22 @@
 
 #include "../../common.h"
 #include "../../deck.h"
+#include "cardTooltipModal.h"
 
-// Layout constants
-#define MODAL_WIDTH              600
-#define MODAL_HEIGHT             500
+// Layout constants (matching reward modal sizing)
+#define MODAL_WIDTH              900  // Match reward modal width
+#define MODAL_HEIGHT             700  // Match reward modal height
 #define MODAL_HEADER_HEIGHT      50
-#define CARD_GRID_COLS           5
-#define CARD_GRID_PADDING        10
-#define CARD_GRID_CARD_WIDTH     80   // Scaled down from 100
-#define CARD_GRID_CARD_HEIGHT    112  // Scaled down from 140
+#define CARD_GRID_COLS           6    // 6 columns (back to original)
+#define CARD_GRID_PADDING        15
+#define CARD_GRID_CARD_WIDTH     75   // Card width in grid
+#define CARD_GRID_CARD_HEIGHT    105  // Card height in grid
 #define CARD_GRID_SPACING        10   // Space between cards
+#define CARD_GRID_TAG_BADGE_W    80   // Tag badge width (smaller than reward modal's 125px)
+#define CARD_GRID_TAG_BADGE_H    25   // Tag badge height (smaller than reward modal's 35px)
 #define SCROLLBAR_WIDTH          20
 #define SCROLLBAR_MIN_HANDLE_HEIGHT  40
+#define HOVER_CARD_SCALE         1.5f // Scale factor for hovered card (like hand)
 
 typedef struct CardGridModal {
     char title[256];                // Static modal title (e.g., "Draw Pile (Randomized)")
@@ -33,6 +37,8 @@ typedef struct CardGridModal {
     bool dragging_scrollbar;        // Whether user is dragging scrollbar
     int drag_start_y;               // Mouse Y when drag started
     int drag_start_scroll;          // Scroll offset when drag started
+    int hovered_card_index;         // -1 = none, 0+ = which card is hovered (enlarges on hover)
+    CardTooltipModal_t* tooltip;    // Owned tooltip for showing card info on hover
 } CardGridModal_t;
 
 // Lifecycle

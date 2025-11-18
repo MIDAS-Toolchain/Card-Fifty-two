@@ -124,6 +124,22 @@ bool IsHandBust(const Hand_t* hand);
 bool IsHandBlackjack(const Hand_t* hand);
 
 // ============================================================================
+// ACE VALUE QUERIES
+// ============================================================================
+
+/**
+ * GetAceValue - Determine how an ace is currently counting in hand
+ *
+ * @param hand Hand containing the ace
+ * @param ace_index Index of the ace in the hand (0-based)
+ * @return 11 if ace counts as 11, 1 if optimized to 1, 0 if not an ace
+ *
+ * Use case: Visual indicator to show players whether ace is "soft" (11) or "hard" (1)
+ * Calculates hand without this ace, then checks if adding 11 would bust
+ */
+int GetAceValue(const Hand_t* hand, size_t ace_index);
+
+// ============================================================================
 // HAND UTILITIES
 // ============================================================================
 

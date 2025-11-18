@@ -7,6 +7,9 @@
 #include "card.h"
 #include "deck.h"
 #include "hand.h"
+#include "cardTags.h"
+#include "trinket.h"
+#include "stats.h"
 #include "scenes/sceneMenu.h"
 
 // ============================================================================
@@ -24,6 +27,13 @@ dTable_t* g_portraits = NULL;
 
 // Card back texture (defined in common.h, declared here)
 SDL_Texture* g_card_back_texture = NULL;
+
+// Sound effects (defined in common.h, declared here)
+aAudioClip_t g_push_chips_sound;
+aAudioClip_t g_victory_sound;
+
+// Ability icon textures (defined in common.h, declared here)
+dTable_t* g_ability_icons = NULL;
 
 // Test deck (for demonstration)
 // Constitutional pattern: Deck_t is value type, not pointer
@@ -90,6 +100,13 @@ void Initialize(void) {
 
     d_LogInfo("Archimedes initialized successfully");
 
+    // Initialize audio system
+    if (a_InitAudio() != 0) {
+        d_LogError("Failed to initialize audio system");
+    } else {
+        d_LogInfo("Audio system initialized");
+    }
+
     // Initialize global tables (Constitutional: Store Player_t by value, not pointer)
     g_players = d_InitTable(sizeof(int), sizeof(Player_t),
                             d_HashInt, d_CompareInt, 16);
@@ -100,7 +117,10 @@ void Initialize(void) {
     g_portraits = d_InitTable(sizeof(int), sizeof(SDL_Texture*),
                               d_HashInt, d_CompareInt, 16);
 
-    if (!g_players || !g_card_textures || !g_portraits) {
+    g_ability_icons = d_InitTable(sizeof(int), sizeof(SDL_Texture*),
+                                   d_HashInt, d_CompareInt, 8);
+
+    if (!g_players || !g_card_textures || !g_portraits || !g_ability_icons) {
         fprintf(stderr, "Failed to initialize global tables\n");
         a_Quit();
         exit(1);
@@ -113,6 +133,11 @@ void Initialize(void) {
     } else {
         d_LogInfo("Card back texture loaded");
     }
+
+    // Load sound effects
+    a_LoadSounds("resources/audio/sound_effects/push_chips.wav", &g_push_chips_sound);
+    a_LoadSounds("resources/audio/sound_effects/victory_sound.wav", &g_victory_sound);
+    d_LogInfo("Sound effects loaded");
 
     // Load 52 card face textures from PNG files (0.png - 51.png)
     // Card ID mapping: 0-12 Hearts, 13-25 Diamonds, 26-38 Spades, 39-51 Clubs
@@ -132,6 +157,15 @@ void Initialize(void) {
 
     d_LogInfoF("Loaded %d card textures", (int)g_card_textures->count);
 
+    // Initialize card metadata system
+    InitCardMetadata();
+
+    // Initialize trinket system
+    InitTrinketSystem();
+
+    // Initialize global stats system
+    Stats_Init();
+
     d_LogInfo("Global tables initialized");
     d_LogInfoF("Screen size: %dx%d", SCREEN_WIDTH, SCREEN_HEIGHT);
 }
@@ -149,15 +183,74 @@ void Cleanup(void) {
         d_LogInfo("Player registry destroyed");
     }
 
+    // Destroy card back texture
+    if (g_card_back_texture) {
+        SDL_DestroyTexture(g_card_back_texture);
+        g_card_back_texture = NULL;
+    }
+
+    // Free all card textures before destroying table
     if (g_card_textures) {
+        dArray_t* card_ids = d_GetAllKeysFromTable(g_card_textures);
+        if (card_ids) {
+            for (size_t i = 0; i < card_ids->count; i++) {
+                int* card_id = (int*)d_IndexDataFromArray(card_ids, i);
+                if (card_id) {
+                    SDL_Texture** tex_ptr = (SDL_Texture**)d_GetDataFromTable(g_card_textures, card_id);
+                    if (tex_ptr && *tex_ptr) {
+                        SDL_DestroyTexture(*tex_ptr);
+                    }
+                }
+            }
+            d_DestroyArray(card_ids);
+        }
         d_DestroyTable(&g_card_textures);
         d_LogInfo("Texture cache destroyed");
     }
 
+    // Free all portrait textures before destroying table
     if (g_portraits) {
+        dArray_t* player_ids = d_GetAllKeysFromTable(g_portraits);
+        if (player_ids) {
+            for (size_t i = 0; i < player_ids->count; i++) {
+                int* player_id = (int*)d_IndexDataFromArray(player_ids, i);
+                if (player_id) {
+                    SDL_Texture** tex_ptr = (SDL_Texture**)d_GetDataFromTable(g_portraits, player_id);
+                    if (tex_ptr && *tex_ptr) {
+                        SDL_DestroyTexture(*tex_ptr);
+                    }
+                }
+            }
+            d_DestroyArray(player_ids);
+        }
         d_DestroyTable(&g_portraits);
         d_LogInfo("Portrait cache destroyed");
     }
+
+    // Free all ability icon textures before destroying table
+    if (g_ability_icons) {
+        dArray_t* keys = d_GetAllKeysFromTable(g_ability_icons);
+        if (keys) {
+            for (size_t i = 0; i < keys->count; i++) {
+                int* ability_id = (int*)d_IndexDataFromArray(keys, i);
+                if (ability_id) {
+                    SDL_Texture** tex_ptr = (SDL_Texture**)d_GetDataFromTable(g_ability_icons, ability_id);
+                    if (tex_ptr && *tex_ptr) {
+                        SDL_DestroyTexture(*tex_ptr);
+                    }
+                }
+            }
+            d_DestroyArray(keys);
+        }
+        d_DestroyTable(&g_ability_icons);
+        d_LogInfo("Ability icon cache destroyed");
+    }
+
+    // Cleanup card metadata system
+    CleanupCardMetadata();
+
+    // Cleanup trinket system
+    CleanupTrinketSystem();
 
     // Quit Archimedes
     a_Quit();
@@ -228,50 +321,6 @@ static void SceneLogic(float dt) {
 
     a_DoInput();
 
-    // ESC to quit
-    if (app.keyboard[SDL_SCANCODE_ESCAPE]) {
-        d_LogInfo("ESC pressed - quitting");
-        app.running = 0;
-    }
-
-    // S - Shuffle deck
-    if (app.keyboard[SDL_SCANCODE_S]) {
-        app.keyboard[SDL_SCANCODE_S] = 0;  // Reset key state
-        ShuffleDeck(&g_test_deck);
-        d_LogInfo("Deck shuffled manually");
-    }
-
-    // D - Deal card to player hand
-    if (app.keyboard[SDL_SCANCODE_D]) {
-        app.keyboard[SDL_SCANCODE_D] = 0;  // Reset key state
-        if (!IsDeckEmpty(&g_test_deck)) {
-            Card_t card = DealCard(&g_test_deck);
-            if (card.card_id != -1) {
-                // Set card to face up and load texture
-                card.face_up = true;
-                LoadCardTexture(&card);
-
-                // Add to player hand
-                AddCardToHand(&g_player_hand, card);
-
-                dString_t* card_str = d_StringInit();
-                CardToString(&card, card_str);
-                d_LogInfoF("Dealt card to hand: %s (Hand value: %d)",
-                          d_StringPeek(card_str), g_player_hand.total_value);
-                d_StringDestroy(card_str);
-            }
-        } else {
-            d_LogInfo("Deck is empty - press R to reset");
-        }
-    }
-
-    // R - Reset deck and hand
-    if (app.keyboard[SDL_SCANCODE_R]) {
-        app.keyboard[SDL_SCANCODE_R] = 0;  // Reset key state
-        ClearHand(&g_player_hand, &g_test_deck);  // Discard cards to deck first
-        ResetDeck(&g_test_deck);  // Then reset deck (regenerates 52 cards)
-        d_LogInfo("Deck and hand reset manually");
-    }
 }
 
 static void SceneDraw(float dt) {
@@ -367,7 +416,7 @@ void MainLoop(void) {
 
 int main(void) {
     // Initialize Daedalus Logger (MUST be first!)
-    dLogConfig_t config = { .default_level = D_LOG_LEVEL_DEBUG };
+    dLogConfig_t config = { .default_level = D_LOG_LEVEL_INFO };
     dLogger_t* logger = d_CreateLogger(config);
     d_SetGlobalLogger(logger);
 

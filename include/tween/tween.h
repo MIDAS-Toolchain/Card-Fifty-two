@@ -14,6 +14,7 @@
 #define TWEEN_H
 
 #include <stdbool.h>
+#include <stddef.h>  // For size_t and offsetof
 
 // ============================================================================
 // CONFIGURATION
@@ -44,9 +45,26 @@ typedef enum TweenEasing {
 
 typedef void (*TweenCallback_t)(void* user_data);
 
+typedef enum {
+    TWEEN_TARGET_DIRECT,      // Direct pointer (for stack/static variables)
+    TWEEN_TARGET_ARRAY_ELEM   // Array element (needs recalculation to avoid dangling pointers)
+} TweenTargetType_t;
+
 typedef struct Tween {
     bool active;              // Is this slot in use?
-    float* target;            // Pointer to value being tweened
+
+    // Target type (determines how to resolve pointer)
+    TweenTargetType_t target_type;
+
+    // For DIRECT targets (stack variables, static variables, heap-allocated structs)
+    float* direct_target;
+
+    // For ARRAY_ELEM targets (elements inside dArray_t - safe from reallocation)
+    void* array_ptr;          // Pointer to dArray_t* (e.g., &manager->active_effects)
+    size_t element_index;     // Index in array
+    size_t float_offset;      // Byte offset to the float field (use offsetof)
+
+    // Tween parameters
     float start_value;        // Starting value
     float end_value;          // Target value
     float duration;           // Total duration (seconds)
@@ -94,6 +112,9 @@ void CleanupTweenManager(TweenManager_t* manager);
 /**
  * TweenFloat - Animate a float value from current to target
  *
+ * Use this for stack variables, static variables, or heap-allocated structs.
+ * For floats inside dArray elements, use TweenFloatInArray instead.
+ *
  * @param manager - Tween manager
  * @param target - Pointer to float value to animate
  * @param end_value - Target value
@@ -107,6 +128,34 @@ void CleanupTweenManager(TweenManager_t* manager);
  */
 bool TweenFloat(TweenManager_t* manager, float* target, float end_value,
                 float duration, TweenEasing_t easing);
+
+/**
+ * TweenFloatInArray - Animate a float inside a dArray element (SAFE from reallocation)
+ *
+ * Use this when tweening floats inside structs stored in dArray_t.
+ * Recalculates pointer each frame to avoid dangling pointers if array reallocates.
+ *
+ * @param manager - Tween manager
+ * @param array_ptr - Pointer to the dArray_t* (e.g., &manager->active_effects)
+ * @param element_index - Index of element in array
+ * @param float_offset - Byte offset to float field (use offsetof(struct, field))
+ * @param end_value - Target value
+ * @param duration - Duration in seconds
+ * @param easing - Easing function
+ * @return true if tween was created, false if pool is full
+ *
+ * Example:
+ *   TweenFloatInArray(&mgr, &manager->active_effects, 0,
+ *                     offsetof(StatusEffectInstance_t, shake_offset_x),
+ *                     5.0f, 0.15f, TWEEN_EASE_OUT_ELASTIC);
+ */
+bool TweenFloatInArray(TweenManager_t* manager,
+                       void* array_ptr,
+                       size_t element_index,
+                       size_t float_offset,
+                       float end_value,
+                       float duration,
+                       TweenEasing_t easing);
 
 /**
  * TweenFloatWithCallback - Animate float with completion callback

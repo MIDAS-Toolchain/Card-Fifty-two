@@ -4,6 +4,10 @@
  */
 
 #include "player.h"
+#include "trinket.h"
+#include "statusEffects.h"
+#include "stats.h"
+#include "scenes/sceneBlackjack.h"
 
 // ============================================================================
 // PLAYER LIFECYCLE
@@ -47,6 +51,38 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
     player.sanity = 100;
     player.max_sanity = 100;
 
+    // Initialize status effects manager (heap-allocated)
+    player.status_effects = CreateStatusEffectManager();
+    if (!player.status_effects) {
+        d_LogError("CreatePlayer: Failed to create status effect manager");
+        d_StringDestroy(player.name);
+        CleanupHand(&player.hand);
+        return false;
+    }
+
+    // Initialize class system (Constitutional: no class by default)
+    player.class = PLAYER_CLASS_NONE;
+    player.class_trinket = NULL;  // No class trinket until class is set
+
+    // Initialize trinket slots (Constitutional: dArray_t* of Trinket_t* pointers, 6 slots)
+    // d_InitArray(capacity, element_size) - capacity FIRST!
+    player.trinket_slots = d_InitArray(6, sizeof(Trinket_t*));  // Array of pointers
+    if (!player.trinket_slots) {
+        d_LogError("CreatePlayer: Failed to create trinket slots");
+        d_StringDestroy(player.name);
+        CleanupHand(&player.hand);
+        DestroyStatusEffectManager(&player.status_effects);
+        return false;
+    }
+
+    // Pre-populate with 6 NULL pointers (creates count=6, all slots empty)
+    Trinket_t* null_trinket = NULL;
+    for (int i = 0; i < 6; i++) {
+        d_AppendDataToArray(player.trinket_slots, &null_trinket);
+    }
+
+    d_LogInfoF("Initialized %d trinket slots for player", (int)player.trinket_slots->count);
+
     // Register in global players table (store by value)
     d_SetDataInTable(g_players, &player.player_id, &player);
 
@@ -85,6 +121,20 @@ void DestroyPlayer(int player_id) {
         player->portrait_texture = NULL;
     }
 
+    // Destroy status effects manager (heap-allocated)
+    if (player->status_effects) {
+        DestroyStatusEffectManager(&player->status_effects);
+    }
+
+    // Class trinket is owned by g_trinket_templates registry - just NULL the pointer
+    player->class_trinket = NULL;
+
+    // Destroy trinket slots array (Constitutional: just destroy array, trinkets owned by g_trinkets registry)
+    if (player->trinket_slots) {
+        d_DestroyArray(player->trinket_slots);
+        player->trinket_slots = NULL;
+    }
+
     // Remove from global players table (Daedalus frees the Player_t value)
     d_RemoveDataFromTable(g_players, &player_id);
 
@@ -113,12 +163,29 @@ bool PlaceBet(Player_t* player, int amount) {
         return false;
     }
 
-    // Deduct bet from chips
-    player->chips -= amount;
-    player->current_bet = amount;
+    // Check if this is a new bet (current_bet should be 0) or a double-down
+    bool is_double_down = (player->current_bet > 0);
 
-    d_LogInfoF("%s placed bet: %d (remaining chips: %d)",
-               d_StringPeek(player->name), amount, player->chips);
+    if (is_double_down) {
+        // Double-down: ADD to existing bet
+        int old_bet = player->current_bet;
+        player->current_bet += amount;
+
+        // Update peak with TOTAL bet (chips_bet will be recorded on round resolution)
+        Stats_UpdateBetPeak(player->current_bet);
+
+        d_LogInfoF("%s doubled bet: %d → %d (current chips: %d)",
+                   d_StringPeek(player->name), old_bet, player->current_bet, player->chips);
+    } else {
+        // New bet: SET current_bet (should be 0 already, but just in case)
+        player->current_bet = amount;
+
+        // Update peak (chips_bet will be recorded on round resolution)
+        Stats_UpdateBetPeak(amount);
+
+        d_LogInfoF("%s placed bet: %d (current chips: %d)",
+                   d_StringPeek(player->name), amount, player->chips);
+    }
 
     return true;
 }
@@ -133,6 +200,7 @@ void WinBet(Player_t* player, float multiplier) {
     // Calculate winnings: bet + (bet * multiplier)
     int winnings = (int)(player->current_bet * (1.0f + multiplier));
     player->chips += winnings;
+    Stats_UpdateChipsPeak(player->chips);
 
     d_LogInfoF("%s won bet! Bet: %d, Multiplier: %.1fx, Winnings: %d, Total chips: %d",
                d_StringPeek(player->name), player->current_bet,
@@ -148,10 +216,13 @@ void LoseBet(Player_t* player) {
         return;
     }
 
+    // Deduct bet from chips (happens at round resolution, not at bet time)
+    player->chips -= player->current_bet;
+    Stats_UpdateChipsPeak(player->chips);
+
     d_LogInfoF("%s lost bet: %d (chips remaining: %d)",
                d_StringPeek(player->name), player->current_bet, player->chips);
 
-    // Bet already deducted in PlaceBet, just reset
     player->current_bet = 0;
 }
 
@@ -162,9 +233,7 @@ void ReturnBet(Player_t* player) {
         return;
     }
 
-    // Return bet to chips
-    player->chips += player->current_bet;
-
+    // Push - no change to chips (bet was never deducted)
     d_LogInfoF("%s push - bet returned: %d (chips: %d)",
                d_StringPeek(player->name), player->current_bet, player->chips);
 

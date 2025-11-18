@@ -57,6 +57,18 @@
 // Overlay opacity
 #define OVERLAY_ALPHA           180
 
+// Trinket UI (class trinket + 3x2 grid, bottom-right corner)
+#define TRINKET_SLOT_SIZE       64
+#define TRINKET_SLOT_GAP        8
+#define CLASS_TRINKET_SIZE      96
+#define CLASS_TRINKET_GAP       12
+#define TRINKET_UI_PADDING      20
+// Class trinket on LEFT, then gap, then 3x2 grid
+#define CLASS_TRINKET_X         (SCREEN_WIDTH - CLASS_TRINKET_SIZE - CLASS_TRINKET_GAP - (3 * TRINKET_SLOT_SIZE) - (2 * TRINKET_SLOT_GAP) - TRINKET_UI_PADDING)
+#define CLASS_TRINKET_Y         (SCREEN_HEIGHT - (2 * TRINKET_SLOT_SIZE) - TRINKET_SLOT_GAP - TRINKET_UI_PADDING)
+#define TRINKET_UI_X            (CLASS_TRINKET_X + CLASS_TRINKET_SIZE + CLASS_TRINKET_GAP)
+#define TRINKET_UI_Y            (SCREEN_HEIGHT - (2 * TRINKET_SLOT_SIZE) - TRINKET_SLOT_GAP - TRINKET_UI_PADDING)
+
 // ============================================================================
 // CARD LAYOUT HELPERS
 // ============================================================================
@@ -180,5 +192,37 @@ struct CardTransitionManager* GetCardTransitionManager(void);
  * @return Pointer to global tween manager
  */
 struct TweenManager* GetTweenManager(void);
+
+/**
+ * SetStatusEffectDrainAmount - Track chip drain from status effects
+ *
+ * Called by statusEffects.c when CHIP_DRAIN is processed.
+ * Used to display "token bleed" animation on result screen.
+ *
+ * @param drain_amount - Amount of chips lost to status effects
+ */
+void SetStatusEffectDrainAmount(int drain_amount);
+
+/**
+ * TriggerSidebarBetAnimation - Show floating damage number when bet is placed
+ *
+ * Called by player.c when PlaceBet() succeeds.
+ * Shows red "-N chips" text that floats up from chip counter in sidebar.
+ *
+ * @param bet_amount - Amount of bet placed
+ */
+void TriggerSidebarBetAnimation(int bet_amount);
+
+/**
+ * IsCardValidTarget - Check if a card can be targeted by active trinket
+ *
+ * Used by playerSection and dealerSection to highlight valid/invalid targets.
+ * Checks trinket-specific targeting rules (e.g., Degenerate's Gambit: rank ≤ 5)
+ *
+ * @param card - Card to check
+ * @param trinket_slot - Trinket slot index (-1 for class trinket, 0-5 for regular slots)
+ * @return true if card can be targeted by this trinket
+ */
+bool IsCardValidTarget(const struct Card* card, int trinket_slot);
 
 #endif // SCENE_BLACKJACK_H

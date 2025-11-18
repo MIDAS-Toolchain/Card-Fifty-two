@@ -5,6 +5,8 @@
 
 #include "hand.h"
 #include "deck.h"  // For DiscardCard()
+#include "cardTags.h"  // For HasCardTag(), RemoveCardTag()
+#include "stats.h"  // For Stats_IncrementCardsDrawn()
 
 // ============================================================================
 // HAND LIFECYCLE
@@ -76,6 +78,9 @@ void AddCardToHand(Hand_t* hand, Card_t card) {
     // Constitutional pattern: Card_t copied by value into array
     d_AppendDataToArray(hand->cards, &card);
 
+    // Track card drawn in global stats
+    Stats_IncrementCardsDrawn();
+
     // DEBUG: What did we just store?
     d_LogInfoF("AddCardToHand: Stored card - rank=%d, suit=%d, card_id=%d",
                card.rank, card.suit, card.card_id);
@@ -92,6 +97,15 @@ void ClearHand(Hand_t* hand, Deck_t* deck) {
     if (!hand || !hand->cards) {
         d_LogError("ClearHand: NULL pointer passed");
         return;
+    }
+
+    // Remove DOUBLED tags from all cards before clearing (cleanup at end of turn)
+    for (size_t i = 0; i < hand->cards->count; i++) {
+        Card_t* card = (Card_t*)d_IndexDataFromArray(hand->cards, i);
+        if (card && HasCardTag(card->card_id, CARD_TAG_DOUBLED)) {
+            RemoveCardTag(card->card_id, CARD_TAG_DOUBLED);
+            d_LogInfoF("Removed DOUBLED tag from card %d", card->card_id);
+        }
     }
 
     // If deck provided, discard all cards to deck's discard pile
@@ -159,6 +173,16 @@ int CalculateHandValue(Hand_t* hand) {
                 d_LogErrorF("CalculateHandValue: Invalid rank %d", card->rank);
                 value = 0;
                 break;
+        }
+
+        // Check for DOUBLED tag (Degenerate's Gambit active)
+        if (HasCardTag(card->card_id, CARD_TAG_DOUBLED)) {
+            int original_value = value;
+            value *= 2;
+            d_LogInfoF("Card %d doubled: %d → %d", card->card_id, original_value, value);
+
+            // Keep tag for visual feedback - will be removed when hand is cleared
+            // RemoveCardTag(card->card_id, CARD_TAG_DOUBLED);
         }
 
         total += value;
@@ -271,6 +295,78 @@ bool IsHandBlackjack(const Hand_t* hand) {
         return false;
     }
     return hand->is_blackjack;
+}
+
+// ============================================================================
+// ACE VALUE QUERIES
+// ============================================================================
+
+int GetAceValue(const Hand_t* hand, size_t ace_index) {
+    // Check if this is actually an ace
+    if (!hand || !hand->cards || ace_index >= hand->cards->count) {
+        return 0;
+    }
+
+    const Card_t* ace = (const Card_t*)d_IndexDataFromArray(hand->cards, ace_index);
+    if (!ace || ace->rank != RANK_ACE) {
+        return 0;  // Not an ace
+    }
+
+    // Calculate hand value WITHOUT this specific ace
+    int total_without_ace = 0;
+    int other_aces = 0;
+
+    for (size_t i = 0; i < hand->cards->count; i++) {
+        if (i == ace_index) continue;  // Skip the ace we're checking
+
+        const Card_t* card = (const Card_t*)d_IndexDataFromArray(hand->cards, i);
+        if (!card) continue;
+
+        int value = 0;
+        switch (card->rank) {
+            case RANK_ACE:
+                other_aces++;
+                value = 11;
+                break;
+            case RANK_TWO:   value = 2;  break;
+            case RANK_THREE: value = 3;  break;
+            case RANK_FOUR:  value = 4;  break;
+            case RANK_FIVE:  value = 5;  break;
+            case RANK_SIX:   value = 6;  break;
+            case RANK_SEVEN: value = 7;  break;
+            case RANK_EIGHT: value = 8;  break;
+            case RANK_NINE:  value = 9;  break;
+            case RANK_TEN:
+            case RANK_JACK:
+            case RANK_QUEEN:
+            case RANK_KING:
+                value = 10;
+                break;
+            default:
+                value = 0;
+                break;
+        }
+
+        // Check for DOUBLED tag
+        if (HasCardTag(card->card_id, CARD_TAG_DOUBLED)) {
+            value *= 2;
+        }
+
+        total_without_ace += value;
+    }
+
+    // Optimize other aces
+    while (total_without_ace > 21 && other_aces > 0) {
+        total_without_ace -= 10;
+        other_aces--;
+    }
+
+    // Now check if THIS ace can be 11 or must be 1
+    if (total_without_ace + 11 <= 21) {
+        return 11;  // This ace counts as 11
+    } else {
+        return 1;   // This ace must be 1 to avoid bust
+    }
 }
 
 // ============================================================================

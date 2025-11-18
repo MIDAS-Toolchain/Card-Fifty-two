@@ -7,10 +7,15 @@
 #include "../../../include/card.h"
 #include "../../../include/scenes/sceneBlackjack.h"
 #include "../../../include/cardAnimation.h"
+#include "../../../include/trinket.h"
+#include "../../../include/stateStorage.h"
+#include "../../../include/cardTags.h"
 
 // External globals
+extern dTable_t* g_players;
 extern dTable_t* g_card_textures;
 extern SDL_Texture* g_card_back_texture;
+extern GameContext_t g_game;  // For checking targeting state
 
 // ============================================================================
 // HELPER FUNCTIONS (internal to this section)
@@ -85,8 +90,10 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
     int name_y = y + SECTION_PADDING;
     int center_x = GAME_AREA_X + (GAME_AREA_WIDTH / 2);
 
+    // Draw main score (yellow)
     a_DrawText((char*)d_StringPeek(info), center_x, name_y,
                255, 255, 0, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+
     d_StringDestroy(info);
 
     // Cards position: after name + gap
@@ -170,6 +177,82 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
             a_DrawFilledRect(x, y, CARD_WIDTH, CARD_HEIGHT, 200, 200, 200, 255);
             a_DrawRect(x, y, CARD_WIDTH, CARD_HEIGHT, 100, 100, 100, 255);
         }
+
+        // Draw ace value text (1 or 11) on the card itself
+        if (card->face_up && card->rank == RANK_ACE) {
+            int ace_value = GetAceValue(hand, i);
+            dString_t* ace_text = d_StringInit();
+            d_StringFormat(ace_text, "(%d)", ace_value);
+
+            // Top-left corner, 20px down from top
+            int text_x = x + 4;
+            int text_y = y + 20;
+
+            // Lighter blue text (dodger blue)
+            a_DrawText((char*)d_StringPeek(ace_text), text_x, text_y,
+                      30, 144, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+            d_StringDestroy(ace_text);
+        }
+
+        // Draw targeting highlight overlay (if in targeting mode)
+        if (g_game.current_state == STATE_TARGETING) {
+            // Get active trinket slot
+            int trinket_slot = StateData_GetInt(&g_game.state_data, "targeting_trinket_slot", -999);
+
+            // Check both class trinket (-1) and regular trinkets (0-5)
+            if (trinket_slot >= -1 && trinket_slot < 6) {
+                // Use centralized validity check from sceneBlackjack.h
+                bool is_valid = IsCardValidTarget(card, trinket_slot);
+
+                if (is_valid) {
+                    // Green overlay for valid targets
+                    a_DrawFilledRect(x, y, CARD_WIDTH, CARD_HEIGHT, 0, 255, 0, 80);
+                } else {
+                    // Dimmed overlay for invalid targets
+                    a_DrawFilledRect(x, y, CARD_WIDTH, CARD_HEIGHT, 128, 128, 128, 80);
+                }
+            }
+        }
+
+        // Draw card tags in column from top-right (flexible, stackable design)
+        if (card->face_up) {
+            int tag_y_offset = 4;  // Start 4px from top
+            const int tag_padding = 3;
+            const int tag_spacing = 2;
+
+            // DOUBLED tag
+            if (HasCardTag(card->card_id, CARD_TAG_DOUBLED)) {
+                const char* tag_text = "DOUBLED";
+
+                // Measure text to get tag width (approximate: 7px per char at scale 0.6)
+                int text_width = (int)(strlen(tag_text) * 7 * 0.6f);
+                int tag_width = text_width + (tag_padding * 2);
+                int tag_height = 16;
+
+                // Position from top-right
+                int tag_x = x + CARD_WIDTH - tag_width - 4;
+                int tag_y = y + tag_y_offset;
+
+                // Gold background with dark border
+                a_DrawFilledRect(tag_x, tag_y, tag_width, tag_height, 0, 0, 0, 200);  // Dark border
+                a_DrawFilledRect(tag_x + 1, tag_y + 1, tag_width - 2, tag_height - 2, 255, 215, 0, 240);  // Gold fill
+
+                // Black text, left-aligned within tag
+                aFontConfig_t tag_config = {
+                    .type = FONT_ENTER_COMMAND,
+                    .color = {0, 0, 0, 255},
+                    .align = TEXT_ALIGN_LEFT,
+                    .scale = 0.6f
+                };
+                a_DrawTextStyled(tag_text, tag_x + tag_padding, tag_y + 2, &tag_config);
+
+                // Move Y offset down for next tag
+                tag_y_offset += tag_height + tag_spacing;
+            }
+
+            // Future tags would go here (e.g., BURNING, FROZEN, etc.)
+            // Each tag increments tag_y_offset to stack vertically
+        }
     }
 
     // Pass 2: Render hovered card with scale + lift (using Archimedes scaled blit)
@@ -203,6 +286,84 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
             } else {
                 a_DrawFilledRect(scaled_x, scaled_y, scaled_width, scaled_height, 200, 200, 200, 255);
                 a_DrawRect(scaled_x, scaled_y, scaled_width, scaled_height, 100, 100, 100, 255);
+            }
+
+            // Draw ace value text (1 or 11) on hovered card
+            if (card->face_up && card->rank == RANK_ACE) {
+                int ace_value = GetAceValue(hand, (size_t)hovered_index);
+                dString_t* ace_text = d_StringInit();
+                d_StringFormat(ace_text, "(%d)", ace_value);
+
+                // Top-left corner, 20px down from top (scaled)
+                int text_x = scaled_x + (int)(4 * scale);
+                int text_y = scaled_y + (int)(20 * scale);
+
+                // Lighter blue text (dodger blue)
+                a_DrawText((char*)d_StringPeek(ace_text), text_x, text_y,
+                          30, 144, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                d_StringDestroy(ace_text);
+            }
+
+            // ADR-11: Draw targeting highlight on hovered card (bright border shows selection preview)
+            if (g_game.current_state == STATE_TARGETING) {
+                int trinket_slot = StateData_GetInt(&g_game.state_data, "targeting_trinket_slot", -999);
+                if (trinket_slot >= -1 && trinket_slot < 6) {
+                    bool is_valid = IsCardValidTarget(card, trinket_slot);
+
+                    // Draw bright border to indicate this card will be selected on click
+                    int border_thickness = (int)(3 * scale);  // Thicker border for visibility
+                    if (is_valid) {
+                        // Bright green border (valid target + hovered = selectable)
+                        for (int i = 0; i < border_thickness; i++) {
+                            a_DrawRect(scaled_x - i, scaled_y - i,
+                                      scaled_width + (i * 2), scaled_height + (i * 2),
+                                      0, 255, 0, 255 - (i * 40));  // Fade outer layers
+                        }
+                    } else {
+                        // Red border (invalid target + hovered = not selectable)
+                        for (int i = 0; i < border_thickness; i++) {
+                            a_DrawRect(scaled_x - i, scaled_y - i,
+                                      scaled_width + (i * 2), scaled_height + (i * 2),
+                                      255, 50, 50, 255 - (i * 40));  // Fade outer layers
+                        }
+                    }
+                }
+            }
+
+            // Draw card tags on hovered card (scaled, column from top-right)
+            if (card->face_up) {
+                int tag_y_offset = (int)(4 * scale);
+                const int tag_padding = (int)(3 * scale);
+                const int tag_spacing = (int)(2 * scale);
+
+                // DOUBLED tag
+                if (HasCardTag(card->card_id, CARD_TAG_DOUBLED)) {
+                    const char* tag_text = "DOUBLED";
+
+                    // Measure text (scaled)
+                    int text_width = (int)(strlen(tag_text) * 7 * 0.6f * scale);
+                    int tag_width = text_width + (tag_padding * 2);
+                    int tag_height = (int)(16 * scale);
+
+                    // Position from top-right (scaled)
+                    int tag_x = scaled_x + scaled_width - tag_width - (int)(4 * scale);
+                    int tag_y = scaled_y + tag_y_offset;
+
+                    // Gold background with dark border
+                    a_DrawFilledRect(tag_x, tag_y, tag_width, tag_height, 0, 0, 0, 200);
+                    a_DrawFilledRect(tag_x + 1, tag_y + 1, tag_width - 2, tag_height - 2, 255, 215, 0, 240);
+
+                    // Black text, left-aligned
+                    aFontConfig_t tag_config = {
+                        .type = FONT_ENTER_COMMAND,
+                        .color = {0, 0, 0, 255},
+                        .align = TEXT_ALIGN_LEFT,
+                        .scale = 0.6f * scale
+                    };
+                    a_DrawTextStyled(tag_text, tag_x + tag_padding, tag_y + (int)(2 * scale), &tag_config);
+
+                    tag_y_offset += tag_height + tag_spacing;
+                }
             }
         }
     }

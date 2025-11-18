@@ -28,10 +28,10 @@
 
 // Card suits
 typedef enum {
-    SUIT_HEARTS = 0,    // ♥
-    SUIT_DIAMONDS,      // ♦
-    SUIT_CLUBS,         // ♣
-    SUIT_SPADES,        // ♠
+    SUIT_HEARTS = 0,    // ♥ (0-12)
+    SUIT_DIAMONDS,      // ♦ (13-25)
+    SUIT_SPADES,        // ♠ (26-38)
+    SUIT_CLUBS,         // ♣ (39-51)
     SUIT_MAX
 } CardSuit_t;
 
@@ -52,8 +52,11 @@ typedef enum {
     STATE_PLAYER_TURN,   // Player actions (hit/stand)
     STATE_DEALER_TURN,   // Dealer plays by rules
     STATE_SHOWDOWN,      // Compare hands, payout
-    STATE_ROUND_END,     // Display results
-    STATE_COMBAT_VICTORY // Enemy defeated, show victory screen
+    STATE_ROUND_END,     // Display results for THIS round
+    STATE_COMBAT_VICTORY,// Enemy defeated celebration
+    STATE_REWARD_SCREEN, // Card selection/rewards
+    STATE_EVENT,         // Event encounter (dialogue/choices)
+    STATE_TARGETING      // Trinket active targeting (select card target)
 } GameState_t;
 
 // Player states
@@ -84,5 +87,14 @@ typedef enum {
     DEALER_PHASE_ACTION,        // Execute action (hit or stand-with-reveal)
     DEALER_PHASE_WAIT           // Wait 0.5s before next decision
 } DealerPhase_t;
+
+// Player classes
+typedef enum {
+    PLAYER_CLASS_NONE,        // Uninitialized
+    PLAYER_CLASS_DEGENERATE,  // Tutorial starter class (risk/reward gambler)
+    PLAYER_CLASS_DEALER,      // Unlock: TBD (control/manipulation)
+    PLAYER_CLASS_DETECTIVE,   // Unlock: TBD (information/prediction)
+    PLAYER_CLASS_DREAMER      // Unlock: TBD (luck/chaos)
+} PlayerClass_t;
 
 #endif // DEFS_H

@@ -49,6 +49,14 @@ extern dTable_t* g_portraits;
 // Card back texture
 extern SDL_Texture* g_card_back_texture;
 
+// Sound effects
+extern aAudioClip_t g_push_chips_sound;
+extern aAudioClip_t g_victory_sound;
+
+// Ability icon textures: Key = int (EnemyAbility_t), Value = SDL_Texture*
+// Falls back to text abbreviations if texture is NULL
+extern dTable_t* g_ability_icons;
+
 // ============================================================================
 // GLOBAL FONT STYLES (defined in main.c)
 // ============================================================================
