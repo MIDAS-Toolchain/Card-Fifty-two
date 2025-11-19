@@ -144,6 +144,16 @@ Enemy_t* CreateEnemy(const char* name, int max_hp, int chip_threat);
 Enemy_t* CreateTheDidact(void);
 
 /**
+ * CreateTheDaemon - Create second enemy "The Daemon"
+ *
+ * @return Enemy_t* - Elite enemy with 5000 HP
+ *
+ * Currently reuses The Didact's abilities (placeholder).
+ * Will be customized with unique abilities later.
+ */
+Enemy_t* CreateTheDaemon(void);
+
+/**
  * DestroyEnemy - Free enemy resources
  *
  * @param enemy - Pointer to enemy pointer (double pointer for nulling)

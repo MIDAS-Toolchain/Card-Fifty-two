@@ -17,6 +17,10 @@
 #include "../../include/scenes/components/deckButton.h"
 #include "../../include/scenes/components/sidebarButton.h"
 #include "../../include/scenes/components/rewardModal.h"
+#include "../../include/scenes/components/eventPreviewModal.h"
+#include "../../include/scenes/components/eventModal.h"
+#include "../../include/eventPool.h"
+#include "../../include/act.h"
 #include "../../include/scenes/sections/topBarSection.h"
 #include "../../include/scenes/sections/pauseMenuSection.h"
 #include "../../include/scenes/sections/titleSection.h"
@@ -73,9 +77,12 @@ static SDL_Texture* g_table_texture = NULL;
 static DrawPileModalSection_t* g_draw_pile_modal = NULL;
 static DiscardPileModalSection_t* g_discard_pile_modal = NULL;
 static RewardModal_t* g_reward_modal = NULL;
+static EventPreviewModal_t* g_event_preview_modal = NULL;
+static EventModal_t* g_event_modal = NULL;
 
-// Current event encounter
+// Event system
 static EventEncounter_t* g_current_event = NULL;
+static EventPool_t* g_tutorial_event_pool = NULL;
 
 // Trinket hover state
 static int g_hovered_trinket_slot = -1;  // -1 = none, 0-5 = slot index
@@ -121,6 +128,7 @@ static CardTransitionManager_t g_card_transition_manager;
 
 typedef struct DamageNumber {
     bool active;
+    uint32_t generation;  // Incremented on each reuse to invalidate stale callbacks
     float x, y;           // Position
     float alpha;          // Opacity (1.0 = opaque, 0.0 = invisible)
     int damage;           // Damage amount to display
@@ -128,6 +136,22 @@ typedef struct DamageNumber {
 } DamageNumber_t;
 
 static DamageNumber_t g_damage_numbers[MAX_DAMAGE_NUMBERS];
+
+// Callback user data for damage numbers (includes generation to prevent stale callbacks)
+typedef struct DamageNumberCallbackData {
+    DamageNumber_t* dmg;
+    uint32_t generation;  // Generation at time of tween creation
+} DamageNumberCallbackData_t;
+
+static DamageNumberCallbackData_t g_damage_callback_data[MAX_DAMAGE_NUMBERS];
+
+// ============================================================================
+// SCREEN SHAKE (for tag effects, critical hits, etc.)
+// ============================================================================
+
+static float g_screen_shake_x = 0.0f;  // Screen shake offset X
+static float g_screen_shake_y = 0.0f;  // Screen shake offset Y
+static float g_screen_shake_cooldown = 0.0f;  // Cooldown to prevent shake spam (decrements each frame)
 
 // ============================================================================
 // RESULT SCREEN ANIMATIONS
@@ -275,6 +299,12 @@ static void InitializeLayout(void) {
     // Create reward modal
     g_reward_modal = CreateRewardModal();
 
+    // Create event modal
+    g_event_modal = CreateEventModal();
+
+    // Create tutorial event pool
+    g_tutorial_event_pool = CreateTutorialEventPool();
+
     d_LogInfo("Section-based layout initialized");
 }
 
@@ -317,6 +347,17 @@ static void CleanupLayout(void) {
     }
     if (g_reward_modal) {
         DestroyRewardModal(&g_reward_modal);
+    }
+    if (g_event_preview_modal) {
+        DestroyEventPreviewModal(&g_event_preview_modal);
+    }
+    if (g_event_modal) {
+        DestroyEventModal(&g_event_modal);
+    }
+
+    // Destroy event pool
+    if (g_tutorial_event_pool) {
+        DestroyEventPool(&g_tutorial_event_pool);
     }
 
     // Destroy main FlexBox
@@ -427,21 +468,53 @@ void InitBlackjackScene(void) {
         d_LogInfo("Tutorial started");
     }
 
-    // Create first enemy: The Didact (tutorial enemy with 3 teaching abilities)
-    Enemy_t* enemy = CreateTheDidact();
-    if (enemy) {
+    // Create tutorial act (2 combats, 2 events)
+    g_game.current_act = CreateTutorialAct();
+    if (!g_game.current_act) {
+        d_LogError("Failed to create tutorial act!");
+        return;
+    }
+
+    // Start first encounter (should be NORMAL: The Didact)
+    Encounter_t* first_encounter = GetCurrentEncounter(g_game.current_act);
+    if (!first_encounter) {
+        d_LogError("Tutorial act has no first encounter!");
+        return;
+    }
+
+    d_LogInfoF("Starting tutorial act - First encounter: %s",
+              GetEncounterTypeName(first_encounter->type));
+
+    // Spawn first enemy
+    if (first_encounter->type == ENCOUNTER_NORMAL ||
+        first_encounter->type == ENCOUNTER_ELITE ||
+        first_encounter->type == ENCOUNTER_BOSS) {
+
+        if (!first_encounter->enemy_factory) {
+            d_LogError("Combat encounter has no enemy factory!");
+            return;
+        }
+
+        Enemy_t* enemy = first_encounter->enemy_factory();
+        if (!enemy) {
+            d_LogError("Failed to create enemy from factory!");
+            return;
+        }
+
         // Load enemy portrait
-        if (!LoadEnemyPortrait(enemy, "resources/enemies/didact.png")) {
-            d_LogError("Failed to load The Didact portrait");
+        if (first_encounter->portrait_path[0] != '\0') {
+            if (!LoadEnemyPortrait(enemy, first_encounter->portrait_path)) {
+                d_LogErrorF("Failed to load enemy portrait: %s", first_encounter->portrait_path);
+            }
         }
 
         g_game.current_enemy = enemy;
         g_game.is_combat_mode = true;
 
-        // Fire ROUND_START event on combat initialization
+        // Fire COMBAT_START event
         Game_TriggerEvent(&g_game, GAME_EVENT_COMBAT_START);
 
-        d_LogInfo("Combat initialized: The Didact (100 HP, 10 chip threat, 3 abilities)");
+        d_LogInfoF("Combat initialized: %s", GetEnemyName(enemy));
     }
 
     // Start in betting state
@@ -481,6 +554,11 @@ static void CleanupBlackjackScene(void) {
         g_game.is_combat_mode = false;
     }
 
+    // Cleanup current act
+    if (g_game.current_act) {
+        DestroyAct(&g_game.current_act);
+    }
+
     // Cleanup game context (destroys internal tables/arrays)
     State_CleanupContext(&g_game);
 
@@ -497,43 +575,105 @@ static void CleanupBlackjackScene(void) {
     // Cleanup deck
     CleanupDeck(&g_test_deck);
 
+    // Reset card metadata for new game session
+    // Tags applied during this run should NOT persist to next run
+    CleanupCardMetadata();
+    InitCardMetadata();
+    d_LogInfo("Card metadata reset for new session");
+
     d_LogInfo("Blackjack scene cleanup complete");
 }
 
 // ============================================================================
-// EVENT GENERATION
+// EVENT GENERATION (using EventPool system)
 // ============================================================================
 
 static EventEncounter_t* CreatePostCombatEvent(void) {
-    // Simple post-combat event with 2 choices
-    EventEncounter_t* event = CreateEvent(
-        "Victory Spoils",
-        "You search through the defeated enemy's belongings. "
-        "Among scattered cards and chips, you find something interesting...",
-        EVENT_TYPE_CHOICE
-    );
-
-    if (!event) {
-        d_LogError("Failed to create post-combat event");
+    // Use tutorial event pool for random selection
+    if (!g_tutorial_event_pool) {
+        d_LogError("CreatePostCombatEvent: Tutorial event pool not initialized!");
         return NULL;
     }
 
-    // Choice 1: Take chips (safe)
-    AddEventChoice(event,
-                   "Take the chips (+15 chips)",
-                   "You pocket the chips and move on.",
-                   15,  // +15 chips
-                   0);  // No sanity change
+    EventEncounter_t* event = GetRandomEventFromPool(g_tutorial_event_pool);
+    if (!event) {
+        d_LogError("Failed to get event from pool");
+        return NULL;
+    }
 
-    // Choice 2: Rest and recover (risky sanity cost for chip bonus)
-    AddEventChoice(event,
-                   "Rest at the table (+25 chips, risky)",
-                   "You take a moment to rest, but something feels... off. Still, the chips are worth it.",
-                   25,  // +25 chips
-                   0);  // No sanity change (for now)
-
-    d_LogInfo("Created post-combat event with 2 choices");
+    d_LogInfoF("Selected event from pool: %s", d_StringPeek(event->title));
     return event;
+}
+
+/**
+ * StartNextEncounter - Spawn next enemy or handle event encounter
+ *
+ * Called after completing reward/event to progress act.
+ * Checks current encounter type and spawns enemy if needed.
+ */
+static void StartNextEncounter(void) {
+    if (!g_game.current_act) {
+        d_LogError("StartNextEncounter: No current act!");
+        return;
+    }
+
+    Encounter_t* encounter = GetCurrentEncounter(g_game.current_act);
+    if (!encounter) {
+        d_LogError("StartNextEncounter: No current encounter (act complete?)");
+        return;
+    }
+
+    d_LogInfoF("Starting encounter: %s", GetEncounterTypeName(encounter->type));
+
+    // Handle combat encounters (NORMAL, ELITE, BOSS)
+    if (encounter->type == ENCOUNTER_NORMAL ||
+        encounter->type == ENCOUNTER_ELITE ||
+        encounter->type == ENCOUNTER_BOSS) {
+
+        // Destroy previous enemy (if any)
+        if (g_game.current_enemy) {
+            DestroyEnemy(&g_game.current_enemy);
+        }
+
+        // Spawn new enemy
+        if (!encounter->enemy_factory) {
+            d_LogError("Combat encounter has no enemy factory!");
+            return;
+        }
+
+        Enemy_t* enemy = encounter->enemy_factory();
+        if (!enemy) {
+            d_LogError("Failed to create enemy from factory!");
+            return;
+        }
+
+        // Load portrait
+        if (encounter->portrait_path[0] != '\0') {
+            if (!LoadEnemyPortrait(enemy, encounter->portrait_path)) {
+                d_LogErrorF("Failed to load enemy portrait: %s", encounter->portrait_path);
+            }
+        }
+
+        g_game.current_enemy = enemy;
+        g_game.is_combat_mode = true;
+
+        // Fire COMBAT_START event
+        Game_TriggerEvent(&g_game, GAME_EVENT_COMBAT_START);
+
+        d_LogInfoF("New combat: %s (%d/%d HP)",
+                  GetEnemyName(enemy),
+                  enemy->current_hp,
+                  enemy->max_hp);
+
+        // Start new round and begin betting
+        Game_StartNewRound(&g_game);
+        State_Transition(&g_game, STATE_BETTING);
+    }
+    else if (encounter->type == ENCOUNTER_EVENT) {
+        // EVENT encounters are handled by the reward->event flow
+        // This function shouldn't be called for EVENT type
+        d_LogWarning("StartNextEncounter called for EVENT type (should be handled by reward flow)");
+    }
 }
 
 // ============================================================================
@@ -548,6 +688,14 @@ static void BlackjackLogic(float dt) {
 
     // Update card transitions (must happen AFTER UpdateTweens for flip timing)
     UpdateCardTransitions(&g_card_transition_manager, dt);
+
+    // Update screen shake cooldown
+    if (g_screen_shake_cooldown > 0.0f) {
+        g_screen_shake_cooldown -= dt;
+        if (g_screen_shake_cooldown < 0.0f) {
+            g_screen_shake_cooldown = 0.0f;
+        }
+    }
 
     // Update popup notification (fade out and float up)
     if (g_popup_active) {
@@ -802,10 +950,39 @@ static void BlackjackLogic(float dt) {
             // Modal wants to close
             HideRewardModal(g_reward_modal);
 
-            // After combat victory rewards, transition to event encounter
+            // After combat victory rewards, advance to next encounter
             if (g_game.is_combat_mode && g_game.current_enemy && g_game.current_enemy->is_defeated) {
-                d_LogInfo("Combat victory complete - transitioning to post-combat event");
-                State_Transition(&g_game, STATE_EVENT);
+                if (!g_game.current_act) {
+                    d_LogError("Combat victory but no act!");
+                    return;
+                }
+
+                // Advance to next encounter
+                AdvanceEncounter(g_game.current_act);
+
+                // Check if act is complete
+                if (IsActComplete(g_game.current_act)) {
+                    d_LogInfo("Act complete! Returning to menu.");
+                    State_Transition(&g_game, STATE_MENU);
+                    return;
+                }
+
+                // Get next encounter
+                Encounter_t* next = GetCurrentEncounter(g_game.current_act);
+                if (!next) {
+                    d_LogError("Failed to get next encounter");
+                    return;
+                }
+
+                d_LogInfoF("Next encounter: %s", GetEncounterTypeName(next->type));
+
+                // If next is EVENT, show event preview
+                if (next->type == ENCOUNTER_EVENT) {
+                    State_Transition(&g_game, STATE_EVENT_PREVIEW);
+                } else {
+                    // Next is combat - spawn enemy
+                    StartNextEncounter();
+                }
             } else {
                 // Practice mode - start new round
                 Game_StartNewRound(&g_game);
@@ -814,8 +991,8 @@ static void BlackjackLogic(float dt) {
         }
     }
 
-    // Create event when entering STATE_EVENT
-    if (previous_state != STATE_EVENT && g_game.current_state == STATE_EVENT) {
+    // Create event preview when entering STATE_EVENT_PREVIEW
+    if (previous_state != STATE_EVENT_PREVIEW && g_game.current_state == STATE_EVENT_PREVIEW) {
         // Clean up any previous event
         if (g_current_event) {
             DestroyEvent(&g_current_event);
@@ -827,51 +1004,200 @@ static void BlackjackLogic(float dt) {
             d_LogError("Failed to create event - skipping to next round");
             Game_StartNewRound(&g_game);
             State_Transition(&g_game, STATE_BETTING);
+            return;
+        }
+
+        // Create event preview modal
+        if (g_event_preview_modal) {
+            DestroyEventPreviewModal(&g_event_preview_modal);
+        }
+        g_event_preview_modal = CreateEventPreviewModal(&g_game, d_StringPeek(g_current_event->title));
+        if (!g_event_preview_modal) {
+            d_LogError("Failed to create event preview modal - skipping to event");
+            State_Transition(&g_game, STATE_EVENT);
+            return;
+        }
+
+        // Initialize preview state
+        g_game.event_preview_timer = 3.0f;      // 3 second countdown
+        g_game.event_reroll_cost = g_game.event_reroll_base_cost;  // Reset to base cost
+        g_game.event_rerolls_used = 0;          // Reset reroll counter
+
+        d_LogInfoF("DEBUG: Initialized reroll cost - base_cost=%d, cost=%d",
+                  g_game.event_reroll_base_cost, g_game.event_reroll_cost);
+
+        // Show modal
+        ShowEventPreviewModal(g_event_preview_modal);
+        UpdateEventPreviewModalCost(g_event_preview_modal, g_game.event_reroll_cost);
+        d_LogInfoF("Event preview started: '%s' (3.0s timer)", d_StringPeek(g_current_event->title));
+    }
+
+    // Handle event preview modal input
+    if (g_game.current_state == STATE_EVENT_PREVIEW && g_event_preview_modal && IsEventPreviewModalVisible(g_event_preview_modal)) {
+        // Update fade animation
+        UpdateEventPreviewModal(g_event_preview_modal, dt);
+
+        // Check for button clicks (IsButtonClicked handles press/release detection internally)
+        // Reroll button
+        if (IsButtonClicked(g_event_preview_modal->reroll_button)) {
+                Player_t* player = Game_GetPlayerByID(1);  // Human player
+                if (player && player->chips >= g_game.event_reroll_cost) {
+                    // Deduct chips and track stats
+                    int cost = g_game.event_reroll_cost;
+                    player->chips -= cost;
+                    Stats_RecordChipsSpentEventReroll(cost);
+                    g_game.event_rerolls_used++;
+
+                    d_LogInfoF("Event rerolled (cost: %d chips, total rerolls: %d)",
+                              cost, g_game.event_rerolls_used);
+
+                    // Double reroll cost for next reroll
+                    g_game.event_reroll_cost *= 2;
+                    d_LogInfoF("DEBUG: After doubling, cost is now %d", g_game.event_reroll_cost);
+
+                    // Regenerate event (avoid repeating same event immediately)
+                    // Copy previous title before destroying event (avoid use-after-free)
+                    char previous_title[256] = {0};
+                    if (g_current_event && g_current_event->title) {
+                        strncpy(previous_title, d_StringPeek(g_current_event->title), sizeof(previous_title) - 1);
+                    }
+
+                    if (g_current_event) {
+                        DestroyEvent(&g_current_event);
+                    }
+
+                    // Use GetDifferentEventFromPool to avoid immediate repeat
+                    if (!g_tutorial_event_pool) {
+                        d_LogError("Event reroll: Tutorial event pool not initialized!");
+                        g_current_event = NULL;
+                    } else {
+                        const char* prev = (previous_title[0] != '\0') ? previous_title : NULL;
+                        g_current_event = GetDifferentEventFromPool(g_tutorial_event_pool, prev);
+                    }
+
+                    // Recreate modal with new title
+                    DestroyEventPreviewModal(&g_event_preview_modal);
+                    g_event_preview_modal = CreateEventPreviewModal(&g_game, d_StringPeek(g_current_event->title));
+                    ShowEventPreviewModal(g_event_preview_modal);
+                    UpdateEventPreviewModalCost(g_event_preview_modal, g_game.event_reroll_cost);
+
+                    // Reset timer
+                    g_game.event_preview_timer = 3.0f;
+
+                    d_LogInfoF("New event: '%s' (next reroll cost: %d chips)",
+                              d_StringPeek(g_current_event->title), g_game.event_reroll_cost);
+            } else {
+                d_LogWarning("Not enough chips to reroll event");
+                // TODO: Show popup notification
+            }
+        }
+
+        // Continue button (skip timer, proceed immediately)
+        if (IsButtonClicked(g_event_preview_modal->continue_button)) {
+            d_LogInfo("Continue button clicked - proceeding to event");
+            HideEventPreviewModal(g_event_preview_modal);
+            State_Transition(&g_game, STATE_EVENT);
         }
     }
 
-    // Handle event input (click choices)
-    if (g_game.current_state == STATE_EVENT && g_current_event) {
-        if (app.mouse.pressed) {
+    // Entering STATE_EVENT (event already created by preview, or fallback if skipped preview)
+    if (previous_state != STATE_EVENT && g_game.current_state == STATE_EVENT) {
+        // Hide event preview modal (if it was shown)
+        if (g_event_preview_modal && IsEventPreviewModalVisible(g_event_preview_modal)) {
+            HideEventPreviewModal(g_event_preview_modal);
+            d_LogInfo("Event preview modal hidden - transitioning to event");
+        }
 
-            int mx = app.mouse.x;
-            int my = app.mouse.y;
+        // Event should already exist from preview phase
+        if (!g_current_event) {
+            d_LogWarning("Entering STATE_EVENT without event (preview skipped?) - creating fallback");
+            g_current_event = CreatePostCombatEvent();
+            if (!g_current_event) {
+                d_LogError("Failed to create fallback event - skipping to next round");
+                Game_StartNewRound(&g_game);
+                State_Transition(&g_game, STATE_BETTING);
+                return;
+            }
+        }
 
-            // Check if clicked on any choice button
-            int panel_height = 500;
-            int panel_y = (SCREEN_HEIGHT - panel_height) / 2;
-            int button_width = 500;
-            int button_height = 60;
-            int button_spacing = 20;
-            int choices_start_y = panel_y + 250;
+        // Show event modal
+        if (g_event_modal && g_current_event) {
+            ShowEventModal(g_event_modal, g_current_event);
+            d_LogInfo("Event modal shown");
+        }
+    }
 
-            int choice_count = (int)g_current_event->choices->count;
-            for (int i = 0; i < choice_count; i++) {
-                int button_y = choices_start_y + i * (button_height + button_spacing);
-                int button_x = (SCREEN_WIDTH - button_width) / 2;
+    // Handle event modal input
+    if (g_game.current_state == STATE_EVENT && g_event_modal && IsEventModalVisible(g_event_modal)) {
+        if (HandleEventModalInput(g_event_modal, dt)) {
+            // Choice was selected
+            int choice_idx = GetSelectedChoiceIndex(g_event_modal);
+            if (choice_idx >= 0 && g_current_event && g_human_player) {
+                EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(g_current_event->choices, choice_idx);
+                if (choice) {
+                    d_LogInfoF("Event choice selected: %s", d_StringPeek(choice->text));
 
-                if (mx >= button_x && mx <= button_x + button_width &&
-                    my >= button_y && my <= button_y + button_height) {
-                    // Clicked this choice!
-                    EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(g_current_event->choices, i);
-                    if (choice) {
-                        d_LogInfoF("Event choice selected: %s", d_StringPeek(choice->text));
+                    // Apply chips delta
+                    if (choice->chips_delta != 0) {
+                        g_human_player->chips += choice->chips_delta;
+                        d_LogInfoF("Chips changed by %d (now: %d)",
+                                   choice->chips_delta, g_human_player->chips);
+                    }
 
-                        // Apply outcome
-                        if (choice->chips_delta != 0 && g_human_player) {
-                            g_human_player->chips += choice->chips_delta;
-                            d_LogInfoF("Chips changed by %d (now: %d)",
-                                       choice->chips_delta, g_human_player->chips);
+                    // Apply sanity delta
+                    if (choice->sanity_delta != 0) {
+                        g_human_player->sanity += choice->sanity_delta;
+                        // Clamp sanity to [0, max_sanity]
+                        if (g_human_player->sanity < 0) g_human_player->sanity = 0;
+                        if (g_human_player->sanity > g_human_player->max_sanity) {
+                            g_human_player->sanity = g_human_player->max_sanity;
                         }
-
-                        // Clean up event
-                        DestroyEvent(&g_current_event);
-
-                        // Start new round and return to betting
-                        Game_StartNewRound(&g_game);
-                        State_Transition(&g_game, STATE_BETTING);
+                        d_LogInfoF("Sanity changed by %d (now: %d/%d)",
+                                   choice->sanity_delta, g_human_player->sanity, g_human_player->max_sanity);
                     }
                 }
+            }
+
+            // Hide modal
+            HideEventModal(g_event_modal);
+
+            // Clean up event
+            if (g_current_event) {
+                DestroyEvent(&g_current_event);
+            }
+
+            // Event complete - advance to next encounter
+            if (!g_game.current_act) {
+                d_LogError("Event complete but no act!");
+                return;
+            }
+
+            AdvanceEncounter(g_game.current_act);
+
+            // Check if act is complete
+            if (IsActComplete(g_game.current_act)) {
+                d_LogInfo("Tutorial act complete! Returning to menu.");
+                State_Transition(&g_game, STATE_MENU);
+                return;
+            }
+
+            // Get next encounter and start it
+            Encounter_t* next = GetCurrentEncounter(g_game.current_act);
+            if (!next) {
+                d_LogError("Failed to get next encounter after event");
+                return;
+            }
+
+            d_LogInfoF("After event, next encounter: %s", GetEncounterTypeName(next->type));
+
+            // Start next encounter (should be combat)
+            if (next->type == ENCOUNTER_NORMAL ||
+                next->type == ENCOUNTER_ELITE ||
+                next->type == ENCOUNTER_BOSS) {
+                StartNextEncounter();
+            } else {
+                d_LogWarning("Next encounter after event is not combat (unexpected)");
+                State_Transition(&g_game, STATE_BETTING);
             }
         }
     }
@@ -1486,36 +1812,108 @@ TweenManager_t* GetTweenManager(void) {
 // ============================================================================
 
 static void OnDamageNumberComplete(void* user_data) {
-    // Mark damage number slot as free
-    DamageNumber_t* dmg = (DamageNumber_t*)user_data;
-    if (dmg) {
+    // Mark damage number slot as free (only if generation matches)
+    DamageNumberCallbackData_t* callback_data = (DamageNumberCallbackData_t*)user_data;
+    if (callback_data && callback_data->dmg) {
+        DamageNumber_t* dmg = callback_data->dmg;
+
+        // Check if this callback is stale (slot was reused with new generation)
+        if (dmg->generation != callback_data->generation) {
+            d_LogInfoF("Damage number callback IGNORED (stale generation): callback_gen=%u, current_gen=%u",
+                      callback_data->generation, dmg->generation);
+            return;
+        }
+
+        d_LogInfoF("Damage number complete callback fired, marking inactive (damage=%d, is_healing=%d, alpha=%.2f, gen=%u)",
+                  dmg->damage, dmg->is_healing, dmg->alpha, dmg->generation);
         dmg->active = false;
+        dmg->alpha = 0.0f;  // Force alpha to 0 just in case
     }
 }
 
+void TriggerScreenShake(float intensity, float duration) {
+    // Cooldown check: prevent shake spam (max once per 0.2s)
+    if (g_screen_shake_cooldown > 0.0f) {
+        return;  // Still on cooldown, skip this shake
+    }
+
+    // Stop any existing shake tweens
+    StopTweensForTarget(&g_tween_manager, &g_screen_shake_x);
+    StopTweensForTarget(&g_tween_manager, &g_screen_shake_y);
+
+    // Random shake direction for natural feel
+    float dir_x = (rand() % 2 == 0) ? 1.0f : -1.0f;
+    float dir_y = (rand() % 2 == 0) ? 1.0f : -1.0f;
+
+    // Set initial shake offset
+    g_screen_shake_x = intensity * dir_x;
+    g_screen_shake_y = intensity * dir_y * 0.5f;  // Less vertical shake
+
+    // Tween back to 0 with elastic easing for bounce effect
+    TweenFloat(&g_tween_manager, &g_screen_shake_x, 0.0f, duration, TWEEN_EASE_OUT_ELASTIC);
+    TweenFloat(&g_tween_manager, &g_screen_shake_y, 0.0f, duration, TWEEN_EASE_OUT_ELASTIC);
+
+    // Set cooldown (0.2 seconds)
+    g_screen_shake_cooldown = 0.2f;
+
+    d_LogDebugF("Screen shake triggered: intensity=%.1f, duration=%.2f", intensity, duration);
+}
+
 void SpawnDamageNumber(int damage, float world_x, float world_y, bool is_healing) {
+    // Count how many active damage numbers are near this spawn position
+    // (to offset Y so they don't perfectly overlap)
+    int nearby_count = 0;
+    const float NEARBY_THRESHOLD = 50.0f;  // Within 50px horizontally
+    const float Y_OFFSET_PER_NUMBER = 30.0f;  // Stack vertically by 30px each
+
+    for (int i = 0; i < MAX_DAMAGE_NUMBERS; i++) {
+        if (g_damage_numbers[i].active) {
+            float dx = g_damage_numbers[i].x - world_x;
+            if (fabs(dx) < NEARBY_THRESHOLD) {
+                nearby_count++;
+            }
+        }
+    }
+
     // Find free slot
     for (int i = 0; i < MAX_DAMAGE_NUMBERS; i++) {
         if (!g_damage_numbers[i].active) {
             DamageNumber_t* dmg = &g_damage_numbers[i];
 
-            // Initialize damage number
+            // Increment generation to invalidate any stale callbacks
+            dmg->generation++;
+
+            // Mark inactive first (in case StopTweens prevents callback from firing)
+            dmg->active = false;
+            dmg->alpha = 0.0f;
+
+            // Stop any existing tweens targeting this slot (in case of premature reuse)
+            StopTweensForTarget(&g_tween_manager, &dmg->y);
+            StopTweensForTarget(&g_tween_manager, &dmg->alpha);
+
+            // Initialize damage number with Y offset based on nearby count
             dmg->active = true;
             dmg->x = world_x;
-            dmg->y = world_y;
+            dmg->y = world_y - (nearby_count * Y_OFFSET_PER_NUMBER);  // Offset upward
             dmg->alpha = 1.0f;
             dmg->damage = damage;
             dmg->is_healing = is_healing;
 
-            // Tween Y position (rise 50px over 1.0s)
-            TweenFloat(&g_tween_manager, &dmg->y, world_y - 50.0f,
+            // Setup callback data with current generation
+            g_damage_callback_data[i].dmg = dmg;
+            g_damage_callback_data[i].generation = dmg->generation;
+
+            // Tween Y position (rise 50px over 1.0s from offset position)
+            TweenFloat(&g_tween_manager, &dmg->y, dmg->y - 50.0f,
                        1.0f, TWEEN_EASE_OUT_CUBIC);
 
             // Tween alpha (fade out over 1.0s)
             TweenFloatWithCallback(&g_tween_manager, &dmg->alpha, 0.0f,
                                    1.0f, TWEEN_LINEAR,
-                                   OnDamageNumberComplete, dmg);
+                                   OnDamageNumberComplete, &g_damage_callback_data[i]);
 
+            d_LogInfoF("Spawned damage number: slot=%d, damage=%d, x=%.1f, y=%.1f, is_healing=%d, gen=%u",
+                      i, damage, dmg->x, dmg->y, is_healing, dmg->generation);
             return;  // Spawned successfully
         }
     }
@@ -2013,6 +2411,17 @@ static void RenderTrinketUI(void) {
 static void BlackjackDraw(float dt) {
     (void)dt;
 
+    // Apply screen shake offset to entire viewport
+    if (g_screen_shake_x != 0.0f || g_screen_shake_y != 0.0f) {
+        SDL_Rect viewport = {
+            (int)g_screen_shake_x,
+            (int)g_screen_shake_y,
+            SCREEN_WIDTH,
+            SCREEN_HEIGHT
+        };
+        SDL_RenderSetViewport(app.renderer, &viewport);
+    }
+
     // Draw full-screen background texture first
     if (g_background_texture) {
         a_BlitTextureScaled(g_background_texture, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
@@ -2157,6 +2566,14 @@ static void BlackjackDraw(float dt) {
     // Render trinket UI (before pause menu/terminal so they overlay it)
     RenderTrinketUI();
 
+    // Render card tooltips AFTER trinket UI for proper z-ordering
+    if (g_dealer_section) {
+        RenderDealerSectionTooltip(g_dealer_section);
+    }
+    if (g_player_section) {
+        RenderPlayerSectionTooltip(g_player_section);
+    }
+
     // Render targeting arrow (if in targeting mode)
     RenderTargetingArrow();
 
@@ -2214,6 +2631,11 @@ static void BlackjackDraw(float dt) {
         RenderRewardModal(g_reward_modal);
     }
 
+    // Render event preview modal (if visible) - BEFORE pause menu
+    if (g_event_preview_modal) {
+        RenderEventPreviewModal(g_event_preview_modal, &g_game);
+    }
+
     // Render deck/discard modals
     if (g_draw_pile_modal) {
         RenderDrawPileModalSection(g_draw_pile_modal);
@@ -2227,86 +2649,9 @@ static void BlackjackDraw(float dt) {
         RenderPauseMenuSection(g_pause_menu);
     }
 
-    // Render event screen (if in STATE_EVENT)
-    if (g_game.current_state == STATE_EVENT && g_current_event) {
-        // Dark overlay
-        a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, 220);
-
-        // Event panel (centered modal)
-        int panel_width = 700;
-        int panel_height = 500;
-        int panel_x = (SCREEN_WIDTH - panel_width) / 2;
-        int panel_y = (SCREEN_HEIGHT - panel_height) / 2;
-
-        // Panel background
-        a_DrawFilledRect(panel_x, panel_y, panel_width, panel_height, 20, 20, 30, 240);
-        a_DrawRect(panel_x, panel_y, panel_width, panel_height, 255, 255, 255, 255);
-
-        // Event title
-        aFontConfig_t title_config = {
-            .type = FONT_ENTER_COMMAND,
-            .color = {232, 193, 112, 255},  // Gold
-            .align = TEXT_ALIGN_CENTER,
-            .wrap_width = 0,
-            .scale = 1.3f
-        };
-        a_DrawTextStyled((char*)d_StringPeek(g_current_event->title),
-                         SCREEN_WIDTH / 2, panel_y + 40, &title_config);
-
-        // Event description
-        aFontConfig_t desc_config = {
-            .type = FONT_ENTER_COMMAND,
-            .color = {235, 237, 233, 255},  // Off-white
-            .align = TEXT_ALIGN_CENTER,
-            .wrap_width = panel_width - 80,
-            .scale = 1.0f
-        };
-        a_DrawTextStyled((char*)d_StringPeek(g_current_event->description),
-                         SCREEN_WIDTH / 2, panel_y + 100, &desc_config);
-
-        // Choice buttons
-        int choice_count = (int)g_current_event->choices->count;
-        int button_width = 500;
-        int button_height = 60;
-        int button_spacing = 20;
-        int choices_start_y = panel_y + 250;
-
-        for (int i = 0; i < choice_count; i++) {
-            EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(g_current_event->choices, i);
-            if (!choice || !choice->text) continue;
-
-            int button_y = choices_start_y + i * (button_height + button_spacing);
-            int button_x = (SCREEN_WIDTH - button_width) / 2;
-
-            // Button background
-            a_DrawFilledRect(button_x, button_y, button_width, button_height, 50, 50, 60, 255);
-            a_DrawRect(button_x, button_y, button_width, button_height, 200, 200, 200, 255);
-
-            // Choice text
-            const char* choice_text = d_StringPeek(choice->text);
-            if (!choice_text) continue;
-
-            aFontConfig_t choice_config = {
-                .type = FONT_ENTER_COMMAND,
-                .color = {255, 255, 255, 255},
-                .align = TEXT_ALIGN_CENTER,
-                .wrap_width = button_width - 40,
-                .scale = 0.9f
-            };
-            a_DrawTextStyled((char*)choice_text,
-                             SCREEN_WIDTH / 2, button_y + 20, &choice_config);
-        }
-
-        // Instruction text
-        aFontConfig_t instruction_config = {
-            .type = FONT_ENTER_COMMAND,
-            .color = {180, 180, 180, 255},
-            .align = TEXT_ALIGN_CENTER,
-            .wrap_width = 0,
-            .scale = 0.8f
-        };
-        a_DrawTextStyled("Click a choice to continue",
-                         SCREEN_WIDTH / 2, panel_y + panel_height - 40, &instruction_config);
+    // Render event modal (if visible) - matches RewardModal pattern
+    if (g_event_modal) {
+        RenderEventModal(g_event_modal);
     }
 
     // Render tutorial if active (absolute top layer)
@@ -2318,6 +2663,16 @@ static void BlackjackDraw(float dt) {
     for (int i = 0; i < MAX_DAMAGE_NUMBERS; i++) {
         DamageNumber_t* dmg = &g_damage_numbers[i];
         if (!dmg->active) continue;
+
+        // Debug: log rendering of healing numbers
+        if (dmg->is_healing) {
+            d_LogRateLimitedF(D_LOG_RATE_LIMIT_FLAG_HASH_FORMAT_STRING, D_LOG_LEVEL_INFO,
+                             1, 0.5,  // 1 log per 0.5 seconds
+                             "Rendering healing number: slot=%d, damage=%d, alpha=%.2f, active=%d",
+                             i, dmg->damage, dmg->alpha, dmg->active);
+        }
+
+        if (dmg->alpha < 0.01f) continue;  // Skip if fully faded
 
         // Choose color based on type (red for damage, green for healing)
         aColor_t color;
@@ -2567,4 +2922,9 @@ static void RenderResultOverlay(void) {
         .wrap_width = 0,
         .scale = 1.0f
     };
+
+    // Reset viewport after screen shake
+    if (g_screen_shake_x != 0.0f || g_screen_shake_y != 0.0f) {
+        SDL_RenderSetViewport(app.renderer, NULL);  // NULL = reset to default
+    }
 }

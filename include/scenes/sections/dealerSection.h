@@ -13,6 +13,7 @@
 #include "../components/enemyHealthBar.h"
 #include "../components/abilityDisplay.h"
 #include "../components/abilityTooltipModal.h"
+#include "../components/cardTooltipModal.h"
 
 // ============================================================================
 // DEALER SECTION
@@ -23,6 +24,7 @@ typedef struct DealerSection {
     EnemyHealthBar_t* enemy_hp_bar;          // Enemy health bar component (owned)
     AbilityDisplay_t* ability_display;       // Enemy ability display component (owned)
     AbilityTooltipModal_t* ability_tooltip;  // Ability hover tooltip modal (owned)
+    CardTooltipModal_t* card_tooltip;        // Card hover tooltip modal (owned)
     CardHoverState_t hover_state;            // Card hover animation state
     float ability_hover_timer;               // Timer for tutorial ability hover tracking
     int abilities_hovered_count;             // Number of unique abilities hovered (for tutorial)
@@ -56,8 +58,21 @@ void DestroyDealerSection(DealerSection_t** section);
  * - Dealer name with "X + ?" score for hidden cards
  * - Enemy health bar next to dealer name (if in combat)
  * - Centered card rendering
+ * - Updates card tooltip state (but doesn't render it - see RenderDealerSectionTooltip)
+ *
+ * NOTE: Card tooltip rendering separated for z-ordering (must render after trinket menu)
  */
 void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* enemy, int y);
+
+/**
+ * RenderDealerSectionTooltip - Render dealer hand card tooltip
+ *
+ * @param section - Dealer section component
+ *
+ * Renders tooltip on top of everything (including trinket menu).
+ * Must be called AFTER RenderTrinketUI() in scene rendering order.
+ */
+void RenderDealerSectionTooltip(DealerSection_t* section);
 
 /**
  * UpdateDealerAbilityHoverTracking - Update ability hover tracking for tutorial

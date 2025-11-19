@@ -94,6 +94,9 @@ typedef struct StatusEffectManager StatusEffectManager_t;
 // Forward declare Trinket_t (defined in trinket.h)
 typedef struct Trinket Trinket_t;
 
+// Forward declare Act_t (defined in act.h)
+typedef struct Act Act_t;
+
 // ============================================================================
 // PLAYER STRUCTURE
 // ============================================================================
@@ -170,6 +173,15 @@ typedef struct GameContext {
     // Combat system
     Enemy_t* current_enemy;         // Current combat enemy (NULL if not in combat)
     bool is_combat_mode;            // true if currently in combat encounter
+
+    // Act progression system (roguelike structure)
+    Act_t* current_act;             // Current act with encounter sequence (NULL if not started)
+
+    // Event preview system (reroll mechanic)
+    int event_reroll_base_cost;     // Base reroll cost (50 chips, configurable)
+    int event_reroll_cost;          // Current reroll cost (doubles each use: 50→100→200→400)
+    int event_rerolls_used;         // Reroll count for this preview (stats tracking)
+    float event_preview_timer;      // 3.0 → 0.0 countdown (auto-proceed when 0)
 } GameContext_t;
 
 #endif // STRUCTS_H

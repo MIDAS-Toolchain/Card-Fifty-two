@@ -32,6 +32,8 @@ typedef enum {
     GAME_EVENT_DEALER_BUST,          // Dealer busts
     GAME_EVENT_CARD_DRAWN,           // Player draws card (hit)
     GAME_EVENT_PLAYER_ACTION_END,    // Player's action ends (stand/bust/blackjack/double)
+    GAME_EVENT_CARD_TAG_CURSED,      // CURSED tag activated (10 damage to enemy)
+    GAME_EVENT_CARD_TAG_VAMPIRIC,    // VAMPIRIC tag activated (5 damage + 5 chips)
 } GameEvent_t;
 
 /**

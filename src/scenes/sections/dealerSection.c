@@ -82,6 +82,17 @@ DealerSection_t* CreateDealerSection(void) {
         return NULL;
     }
 
+    // Create card tooltip modal
+    section->card_tooltip = CreateCardTooltipModal();
+    if (!section->card_tooltip) {
+        DestroyAbilityTooltipModal(&section->ability_tooltip);
+        DestroyAbilityDisplay(&section->ability_display);
+        DestroyEnemyHealthBar(&section->enemy_hp_bar);
+        free(section);
+        d_LogFatal("Failed to create card tooltip modal");
+        return NULL;
+    }
+
     d_LogInfo("DealerSection created");
     return section;
 }
@@ -103,6 +114,10 @@ void DestroyDealerSection(DealerSection_t** section) {
 
     if ((*section)->ability_tooltip) {
         DestroyAbilityTooltipModal(&(*section)->ability_tooltip);
+    }
+
+    if ((*section)->card_tooltip) {
+        DestroyCardTooltipModal(&(*section)->card_tooltip);
     }
 
     free(*section);
@@ -207,6 +222,9 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
         const Card_t* card = GetCardFromHand(hand, (size_t)i);
         if (!card) continue;
 
+        // Only allow hovering face-up cards
+        if (!card->face_up) continue;
+
         // Get card position
         int x, y_pos;
         CardTransition_t* trans = GetCardTransition(anim_mgr, hand, (size_t)i);
@@ -310,44 +328,44 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
             }
         }
 
-        // Draw card tags in column from top-right (flexible, stackable design)
+        // Draw card tags in column from top-right (universal tag system)
         if (card->face_up) {
-            int tag_y_offset = 4;  // Start 4px from top
-            const int tag_padding = 3;
-            const int tag_spacing = 2;
+            const dArray_t* tags = GetCardTags(card->card_id);
 
-            // DOUBLED tag
-            if (HasCardTag(card->card_id, CARD_TAG_DOUBLED)) {
-                const char* tag_text = "DOUBLED";
+            if (tags && tags->count > 0) {
+                const int badge_w = 64;  // Fixed width (prevents covering card rank)
+                const int badge_h = 25;
 
-                // Measure text to get tag width (approximate: 7px per char at scale 0.6)
-                int text_width = (int)(strlen(tag_text) * 7 * 0.6f);
-                int tag_width = text_width + (tag_padding * 2);
-                int tag_height = 16;
+                for (size_t t = 0; t < tags->count; t++) {
+                    CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, t);
+                    if (!tag) continue;
 
-                // Position from top-right
-                int tag_x = x + CARD_WIDTH - tag_width - 4;
-                int tag_y = y_pos + tag_y_offset;
+                    // Position from top-right, offset by 12px right and 24px down
+                    int badge_x = x + CARD_WIDTH - badge_w - 3 + 12;
+                    int badge_y = y_pos - badge_h - 3 + 24 + ((int)t * (badge_h + 2));  // Stack vertically
 
-                // Gold background with dark border
-                a_DrawFilledRect(tag_x, tag_y, tag_width, tag_height, 0, 0, 0, 200);  // Dark border
-                a_DrawFilledRect(tag_x + 1, tag_y + 1, tag_width - 2, tag_height - 2, 255, 215, 0, 240);  // Gold fill
+                    // Get tag color
+                    int r, g, b;
+                    GetCardTagColor(*tag, &r, &g, &b);
+                    a_DrawFilledRect(badge_x, badge_y, badge_w, badge_h, r, g, b, 255);
+                    a_DrawRect(badge_x, badge_y, badge_w, badge_h, 0, 0, 0, 255);
 
-                // Black text, left-aligned within tag
-                aFontConfig_t tag_config = {
-                    .type = FONT_ENTER_COMMAND,
-                    .color = {0, 0, 0, 255},
-                    .align = TEXT_ALIGN_LEFT,
-                    .scale = 0.6f
-                };
-                a_DrawTextStyled(tag_text, tag_x + tag_padding, tag_y + 2, &tag_config);
+                    // Truncate tag text to first 3 letters
+                    const char* full_tag_text = GetCardTagName(*tag);
+                    char truncated[4] = {0};
+                    strncpy(truncated, full_tag_text, 3);
+                    truncated[3] = '\0';
 
-                // Move Y offset down for next tag
-                tag_y_offset += tag_height + tag_spacing;
+                    // Black text, centered
+                    aFontConfig_t tag_config = {
+                        .type = FONT_ENTER_COMMAND,
+                        .color = {0, 0, 0, 255},
+                        .align = TEXT_ALIGN_CENTER,
+                        .scale = 0.7f
+                    };
+                    a_DrawTextStyled(truncated, badge_x + badge_w / 2, badge_y + 3, &tag_config);
+                }
             }
-
-            // Future tags would go here (e.g., BURNING, FROZEN, etc.)
-            // Each tag increments tag_y_offset to stack vertically
         }
     }
 
@@ -428,8 +446,67 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
                     }
                 }
             }
+
+            // Draw card tags on hovered card (scaled, universal tag system)
+            if (card->face_up) {
+                const dArray_t* tags = GetCardTags(card->card_id);
+
+                if (tags && tags->count > 0) {
+                    const int badge_w = (int)(64 * scale);  // Scaled width
+                    const int badge_h = (int)(25 * scale);
+
+                    for (size_t t = 0; t < tags->count; t++) {
+                        CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, t);
+                        if (!tag) continue;
+
+                        // Position from top-right, offset by 12px right and 24px down (scaled)
+                        int badge_x = scaled_x + scaled_width - badge_w - (int)(3 * scale) + (int)(12 * scale);
+                        int badge_y = scaled_y - badge_h - (int)(3 * scale) + (int)(24 * scale) + ((int)t * (badge_h + (int)(2 * scale)));
+
+                        // Get tag color
+                        int r, g, b;
+                        GetCardTagColor(*tag, &r, &g, &b);
+                        a_DrawFilledRect(badge_x, badge_y, badge_w, badge_h, r, g, b, 255);
+                        a_DrawRect(badge_x, badge_y, badge_w, badge_h, 0, 0, 0, 255);
+
+                        // Truncate tag text to first 3 letters
+                        const char* full_tag_text = GetCardTagName(*tag);
+                        char truncated[4] = {0};
+                        strncpy(truncated, full_tag_text, 3);
+                        truncated[3] = '\0';
+
+                        // Black text, centered
+                        aFontConfig_t tag_config = {
+                            .type = FONT_ENTER_COMMAND,
+                            .color = {0, 0, 0, 255},
+                            .align = TEXT_ALIGN_CENTER,
+                            .scale = 0.7f * scale
+                        };
+                        a_DrawTextStyled(truncated, badge_x + badge_w / 2, badge_y + (int)(3 * scale), &tag_config);
+                    }
+                }
+            }
+
+            // Show tooltip for hovered card (positioned at scaled card location)
+            // NOTE: Tooltip is shown but NOT rendered here - rendering happens separately
+            // in RenderDealerSectionTooltip() for proper z-ordering above trinket menu
+            if (section->card_tooltip) {
+                ShowCardTooltipModal(section->card_tooltip, card, scaled_x, scaled_y);
+            }
         }
     }
+
+    // Hide tooltip if no card is hovered
+    if (hovered_index < 0 && section->card_tooltip) {
+        HideCardTooltipModal(section->card_tooltip);
+    }
+}
+
+void RenderDealerSectionTooltip(DealerSection_t* section) {
+    if (!section || !section->card_tooltip) return;
+
+    // Render tooltip on top of everything (including trinket menu)
+    RenderCardTooltipModal(section->card_tooltip);
 }
 
 // ============================================================================

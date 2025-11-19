@@ -4,6 +4,13 @@
  */
 
 #include "cardTags.h"
+#include "card.h"
+#include "game.h"
+#include "player.h"
+#include "enemy.h"
+#include "stats.h"
+#include "scenes/sceneBlackjack.h"  // For SpawnDamageNumber, TweenEnemyHP, TriggerEnemyDamageEffect
+#include "tween/tween.h"
 
 // ============================================================================
 // GLOBAL REGISTRY
@@ -320,5 +327,104 @@ const char* GetCardTagDescription(CardTag_t tag) {
             return "Counts twice for hand value";
         default:
             return "Unknown tag";
+    }
+}
+
+// ============================================================================
+// TAG EFFECT PROCESSING
+// ============================================================================
+
+void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* drawer) {
+    if (!card || !game || !drawer) {
+        d_LogInfo("ProcessCardTagEffects: NULL parameter detected");
+        return;
+    }
+
+    // Only trigger in combat mode
+    if (!game->is_combat_mode || !game->current_enemy) {
+        d_LogInfoF("ProcessCardTagEffects: Skipping - combat_mode=%d", game->is_combat_mode);
+        return;
+    }
+
+    d_LogInfoF("ProcessCardTagEffects: Checking card %d for tags...", card->card_id);
+
+    // Check for CURSED tag: 10 damage to enemy
+    if (HasCardTag(card->card_id, CARD_TAG_CURSED)) {
+        int damage = 10;
+
+        // Apply damage using existing funnel
+        TakeDamage(game->current_enemy, damage);
+
+        // Track stats
+        Stats_RecordDamage(DAMAGE_SOURCE_CARD_TAG, damage);
+
+        // Visual feedback (matches Degenerate's Gambit pattern)
+        TweenEnemyHP(game->current_enemy);  // Smooth HP bar animation
+        TweenManager_t* tween_mgr = GetTweenManager();
+        if (tween_mgr) {
+            TriggerEnemyDamageEffect(game->current_enemy, tween_mgr);  // Enemy shake + red flash
+        }
+
+        // Screen shake for dramatic impact
+        TriggerScreenShake(15.0f, 0.4f);  // 15px intensity, 0.4s duration
+
+        // Spawn damage number (red, on enemy)
+        SpawnDamageNumber(damage,
+                         SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
+                         ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                         false);  // false = damage (not healing)
+
+        // Fire tag-specific event
+        Game_TriggerEvent(game, GAME_EVENT_CARD_TAG_CURSED);
+
+        d_LogInfoF("💀 CURSED tag! %s of %s dealt %d damage to %s",
+                   GetRankString(card->rank), GetSuitString(card->suit),
+                   damage, game->current_enemy->name);
+    }
+
+    // Check for VAMPIRIC tag: 5 damage + 5 chips
+    if (HasCardTag(card->card_id, CARD_TAG_VAMPIRIC)) {
+        int damage = 5;
+        int chip_gain = 5;
+
+        // Apply damage using existing funnel
+        TakeDamage(game->current_enemy, damage);
+
+        // Track stats
+        Stats_RecordDamage(DAMAGE_SOURCE_CARD_TAG, damage);
+
+        // Grant chips to drawer
+        drawer->chips += chip_gain;
+
+        // Visual feedback (matches Degenerate's Gambit pattern)
+        TweenEnemyHP(game->current_enemy);  // Smooth HP bar animation
+        TweenManager_t* tween_mgr = GetTweenManager();
+        if (tween_mgr) {
+            TriggerEnemyDamageEffect(game->current_enemy, tween_mgr);  // Enemy shake + red flash
+        }
+
+        // Screen shake for dramatic impact (lighter than CURSED)
+        TriggerScreenShake(10.0f, 0.3f);  // 10px intensity, 0.3s duration
+
+        // Spawn damage number (red, on enemy)
+        SpawnDamageNumber(damage,
+                         SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
+                         ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                         false);  // false = damage (not healing)
+
+        // Spawn chip gain number (green, near chips display on left sidebar)
+        // Left sidebar: x=0, width=280, center=140
+        // Chips display is at top of sidebar (approx y=110 based on layout)
+        SpawnDamageNumber(chip_gain,
+                         140,   // Center of left sidebar
+                         110,   // Near "Betting Power" / chips display
+                         true); // true = healing/positive (green)
+
+        // Fire tag-specific event
+        Game_TriggerEvent(game, GAME_EVENT_CARD_TAG_VAMPIRIC);
+
+        d_LogInfoF("🩸 VAMPIRIC tag! %s of %s dealt %d damage and gained %d chips",
+                   GetRankString(card->rank), GetSuitString(card->suit),
+                   damage, chip_gain);
     }
 }

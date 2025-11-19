@@ -53,6 +53,7 @@ void State_UpdateShowdown(GameContext_t* game);
 void State_UpdateRoundEnd(GameContext_t* game);
 void State_UpdateCombatVictory(GameContext_t* game);
 void State_UpdateRewardScreen(GameContext_t* game);
+void State_UpdateEventPreview(GameContext_t* game, float dt);
 void State_UpdateEvent(GameContext_t* game);
 
 #endif // STATE_H

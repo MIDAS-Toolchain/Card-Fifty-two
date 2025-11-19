@@ -139,6 +139,14 @@ void Stats_RecordChipsDrained(int amount) {
     }
 }
 
+void Stats_RecordChipsSpentEventReroll(int amount) {
+    if (amount > 0) {
+        g_stats.chips_spent_event_reroll += amount;
+        d_LogInfoF("📊 Stats: Event reroll cost %d chips (total spent: %llu)",
+                   amount, g_stats.chips_spent_event_reroll);
+    }
+}
+
 void Stats_UpdateChipsPeak(int current_chips) {
     // Update highest chips
     if (current_chips > g_stats.highest_chips) {

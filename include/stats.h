@@ -14,6 +14,7 @@ typedef enum {
     DAMAGE_SOURCE_TRINKET_PASSIVE,  // Damage from trinket passive effects
     DAMAGE_SOURCE_TRINKET_ACTIVE,   // Damage from trinket active abilities
     DAMAGE_SOURCE_ABILITY,          // Damage from player abilities (future)
+    DAMAGE_SOURCE_CARD_TAG,         // Damage from card tags (CURSED, VAMPIRIC, etc.)
     DAMAGE_SOURCE_MAX
 } DamageSource_t;
 
@@ -43,6 +44,7 @@ typedef struct {
     uint64_t chips_won;             // Total chips won from hands
     uint64_t chips_lost;            // Total chips lost from losing hands
     uint64_t chips_drained;         // Total chips lost to status effect drains
+    uint64_t chips_spent_event_reroll;  // Total chips spent on event rerolls
 
     // Chip peak tracking
     int highest_chips;              // Highest chip count reached this run
@@ -96,6 +98,7 @@ void Stats_RecordChipsBet(int amount);
 void Stats_RecordChipsWon(int amount);
 void Stats_RecordChipsLost(int amount);
 void Stats_RecordChipsDrained(int amount);
+void Stats_RecordChipsSpentEventReroll(int amount);
 
 /**
  * Update chip peak tracking (highest/lowest).

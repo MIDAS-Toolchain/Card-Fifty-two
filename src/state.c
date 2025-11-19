@@ -10,6 +10,9 @@
 #include "enemy.h"
 #include "random.h"
 #include "trinket.h"
+#include "cardTags.h"
+#include "hand.h"
+#include "stats.h"
 #include <Daedalus.h>
 
 // ============================================================================
@@ -53,7 +56,13 @@ void State_InitContext(GameContext_t* game, Deck_t* deck) {
     game->current_enemy = NULL;
     game->is_combat_mode = false;
 
-    d_LogInfo("GameContext initialized successfully");
+    // Initialize event preview system
+    game->event_reroll_base_cost = 50;  // Base cost (configurable)
+    game->event_reroll_cost = 50;       // Current cost (reset each preview)
+    game->event_rerolls_used = 0;       // Reroll counter
+    game->event_preview_timer = 0.0f;   // Timer (set to 3.0 when entering STATE_EVENT_PREVIEW)
+
+    d_LogInfoF("GameContext initialized - event_reroll_base_cost=%d", game->event_reroll_base_cost);
 }
 
 void State_CleanupContext(GameContext_t* game) {
@@ -89,6 +98,7 @@ const char* State_ToString(GameState_t state) {
         case STATE_ROUND_END: return "ROUND_END";
         case STATE_COMBAT_VICTORY: return "COMBAT_VICTORY";
         case STATE_REWARD_SCREEN: return "REWARD_SCREEN";
+        case STATE_EVENT_PREVIEW: return "EVENT_PREVIEW";
         case STATE_EVENT: return "EVENT";
         case STATE_TARGETING: return "TARGETING";
         default: return "UNKNOWN";
@@ -233,6 +243,10 @@ void State_UpdateLogic(GameContext_t* game, float dt) {
 
         case STATE_REWARD_SCREEN:
             State_UpdateRewardScreen(game);
+            break;
+
+        case STATE_EVENT_PREVIEW:
+            State_UpdateEventPreview(game, dt);
             break;
 
         case STATE_EVENT:
@@ -434,6 +448,9 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
                                 hidden->face_up = true;
                                 d_LogInfoF("Dealer reveals hidden card (player stood) - total: %d",
                                           dealer->hand.total_value);
+
+                                // Process card tag effects for revealed card
+                                ProcessCardTagEffects(hidden, game, dealer);
                             }
                         }
 
@@ -470,6 +487,12 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
                     // HIT: Deal a card with animation
                     if (Game_DealCardWithAnimation(game->deck, &dealer->hand, dealer, true)) {
                         d_LogInfoF("Dealer hits - new total: %d", dealer->hand.total_value);
+
+                        // Process card tag effects for dealer draws
+                        const Card_t* last_card = GetCardFromHand(&dealer->hand, dealer->hand.cards->count - 1);
+                        if (last_card && last_card->face_up) {
+                            ProcessCardTagEffects(last_card, game, dealer);
+                        }
                     }
                 } else {
                     // STAND: Reveal hidden card if not already revealed
@@ -478,6 +501,9 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
                         if (hidden && !hidden->face_up) {
                             hidden->face_up = true;
                             d_LogInfo("Dealer reveals hidden card on STAND");
+
+                            // Process card tag effects for revealed card
+                            ProcessCardTagEffects(hidden, game, dealer);
                         }
                     }
                 }
@@ -519,24 +545,43 @@ void State_UpdateShowdown(GameContext_t* game) {
     // Showdown executed in State_Transition entry action
 
     // Check if enemy was defeated in combat
-    if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
-        State_Transition(game, STATE_COMBAT_VICTORY);
-    } else {
-        // Normal round end
-        State_Transition(game, STATE_ROUND_END);
+    // Also check HP directly as safety (in case is_defeated flag wasn't set)
+    if (game->is_combat_mode && game->current_enemy) {
+        if (game->current_enemy->is_defeated || game->current_enemy->current_hp <= 0) {
+            // Force is_defeated flag if HP is 0 (safety check)
+            if (!game->current_enemy->is_defeated && game->current_enemy->current_hp <= 0) {
+                d_LogWarning("Enemy at 0 HP but is_defeated not set! Forcing victory.");
+                game->current_enemy->is_defeated = true;
+                Stats_RecordCombatWon();
+            }
+            State_Transition(game, STATE_COMBAT_VICTORY);
+            return;
+        }
     }
+
+    // Normal round end
+    State_Transition(game, STATE_ROUND_END);
 }
 
 void State_UpdateRoundEnd(GameContext_t* game) {
     // Display results for THIS round (2 seconds)
     if (game->state_timer > 2.0f) {
-        if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
-            // Enemy defeated - transition to victory celebration
-            State_Transition(game, STATE_COMBAT_VICTORY);
-        } else if (game->is_combat_mode) {
-            // Combat continues - next round
-            Game_StartNewRound(game);
-            State_Transition(game, STATE_BETTING);
+        if (game->is_combat_mode && game->current_enemy) {
+            // Check both is_defeated flag AND HP (safety check)
+            if (game->current_enemy->is_defeated || game->current_enemy->current_hp <= 0) {
+                // Force is_defeated flag if HP is 0 (safety check)
+                if (!game->current_enemy->is_defeated && game->current_enemy->current_hp <= 0) {
+                    d_LogWarning("ROUND_END: Enemy at 0 HP but is_defeated not set! Forcing victory.");
+                    game->current_enemy->is_defeated = true;
+                    Stats_RecordCombatWon();
+                }
+                // Enemy defeated - transition to victory celebration
+                State_Transition(game, STATE_COMBAT_VICTORY);
+            } else {
+                // Combat continues - next round
+                Game_StartNewRound(game);
+                State_Transition(game, STATE_BETTING);
+            }
         } else {
             // Practice mode - next round
             Game_StartNewRound(game);
@@ -557,6 +602,23 @@ void State_UpdateRewardScreen(GameContext_t* game) {
     // Reward modal handles its own lifecycle and transitions via sceneBlackjack.c
     // This state just waits for the modal to close and trigger the next state
     (void)game;  // No auto-advance - modal controls transition
+}
+
+void State_UpdateEventPreview(GameContext_t* game, float dt) {
+    // Event preview timer countdown
+    if (game->event_preview_timer > 0.0f) {
+        game->event_preview_timer -= dt;
+
+        // Auto-proceed when timer hits 0
+        if (game->event_preview_timer <= 0.0f) {
+            game->event_preview_timer = 0.0f;
+            d_LogInfo("Event preview timer expired - auto-proceeding to event");
+            State_Transition(game, STATE_EVENT);
+        }
+    }
+
+    // Event preview modal handles button clicks (reroll/continue) in sceneBlackjack.c
+    // This state just manages the auto-proceed timer
 }
 
 void State_UpdateEvent(GameContext_t* game) {

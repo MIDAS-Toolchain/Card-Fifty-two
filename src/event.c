@@ -508,3 +508,115 @@ EventEncounter_t* CreateDataBrokerEvent(void) {
 
     return event;
 }
+
+// ============================================================================
+// TUTORIAL EVENTS (for EventPool system)
+// ============================================================================
+
+/**
+ * CreateSanityTradeEvent - Tutorial event teaching sanity mechanic
+ *
+ * @return EventEncounter_t* - Event with 3 choices (safe/gain/trade)
+ *
+ * Theme: Risk/reward with sanity as resource
+ * Design: Simple 3-choice structure for tutorial clarity
+ */
+EventEncounter_t* CreateSanityTradeEvent(void) {
+    EventEncounter_t* event = CreateEvent(
+        "The Gambler's Dilemma",
+        "A mysterious figure at the table offers you a deal. "
+        "\"Gain resources now... but at what cost to your mind?\"\n\n"
+        "They slide chips and a strange device across the felt.",
+        EVENT_TYPE_CHOICE
+    );
+
+    if (!event) {
+        d_LogError("Failed to create SanityTradeEvent");
+        return NULL;
+    }
+
+    // Choice 1: Walk away (safe - no risk, no reward)
+    AddEventChoice(event,
+                   "Walk away (no change)",
+                   "You shake your head and decline the offer.\n"
+                   "The figure shrugs and vanishes into the shadows.\n\n"
+                   "Sometimes the safest bet is no bet at all.",
+                   0,    // +0 chips
+                   0);   // +0 sanity
+
+    // Choice 2: Accept the deal (+100 chips, -100 sanity)
+    AddEventChoice(event,
+                   "Accept the deal (+100 chips, -100 sanity)",
+                   "The device hums. Your vision blurs momentarily.\n"
+                   "The chips feel heavy in your pocket.\n\n"
+                   "\"A fair exchange,\" the figure whispers before fading away.\n\n"
+                   "[WARNING: Sanity depleted - betting restrictions active!]",
+                   100,  // +100 chips
+                   -100); // -100 sanity (complete depletion)
+
+    // Choice 3: Counter-offer (-50 chips, +50 sanity)
+    AddEventChoice(event,
+                   "Counter-offer (-50 chips, +50 sanity)",
+                   "You slide chips across the table.\n"
+                   "The figure's eyes widen, then they laugh.\n\n"
+                   "\"Buying clarity with coin? How... pragmatic.\"\n\n"
+                   "The world feels sharper. More real.",
+                   -50,  // -50 chips (you pay them)
+                   50);  // +50 sanity (you restore mental state)
+
+    d_LogInfo("Created SanityTradeEvent (tutorial)");
+    return event;
+}
+
+/**
+ * CreateChipGambleEvent - Tutorial event with simple chip outcomes
+ *
+ * @return EventEncounter_t* - Event with 3 choices (safe/risky/balanced)
+ *
+ * Theme: Classic risk/reward without sanity complexity
+ * Design: Pure chips for simplicity (alternate tutorial path)
+ */
+EventEncounter_t* CreateChipGambleEvent(void) {
+    EventEncounter_t* event = CreateEvent(
+        "Victory Spoils",
+        "You search through the defeated enemy's belongings.\n\n"
+        "Among scattered cards and chips, you find a locked box.\n"
+        "Three keys lie beside it, each with a different symbol.",
+        EVENT_TYPE_CHOICE
+    );
+
+    if (!event) {
+        d_LogError("Failed to create ChipGambleEvent");
+        return NULL;
+    }
+
+    // Choice 1: Conservative choice (safe +15 chips)
+    AddEventChoice(event,
+                   "Take the marked chips (+15 chips)",
+                   "You pocket the chips without touching the box.\n"
+                   "Sometimes the safest loot is the visible loot.\n\n"
+                   "The box remains locked.",
+                   15,  // +15 chips
+                   0);  // No sanity change
+
+    // Choice 2: Risky choice (+25 chips, no sanity)
+    AddEventChoice(event,
+                   "Try the golden key (+25 chips, risky)",
+                   "*CLICK* The box opens.\n\n"
+                   "Inside: a pile of high-value chips.\n"
+                   "But something feels... off about them.\n\n"
+                   "You take them anyway. What could go wrong?",
+                   25,  // +25 chips
+                   0);  // No sanity change
+
+    // Choice 3: Leave empty-handed (no gain, no loss)
+    AddEventChoice(event,
+                   "Leave everything (no change)",
+                   "You walk away from the box and the chips.\n\n"
+                   "Sometimes greed is a bigger gamble than you can afford.",
+                   0,  // No chips
+                   0); // No sanity change
+
+    d_LogInfo("Created ChipGambleEvent (tutorial)");
+    return event;
+}

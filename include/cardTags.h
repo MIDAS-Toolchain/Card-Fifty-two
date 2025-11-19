@@ -241,4 +241,32 @@ void GetCardRarityColor(CardRarity_t rarity, int* out_r, int* out_g, int* out_b)
  */
 const char* GetCardTagDescription(CardTag_t tag);
 
+// ============================================================================
+// TAG EFFECT PROCESSING
+// ============================================================================
+
+// Forward declarations
+struct Card;
+struct GameContext;
+struct Player;
+
+/**
+ * ProcessCardTagEffects - Trigger immediate tag effects (CURSED, VAMPIRIC)
+ *
+ * @param card - Card that was drawn or flipped face-up
+ * @param game - Game context (for enemy damage)
+ * @param drawer - Player who drew/owns the card (for chip gain)
+ *
+ * Called when:
+ * - Card is drawn from deck (face-up)
+ * - Card is flipped from face-down to face-up
+ *
+ * Effects:
+ * - CURSED: 10 damage to enemy + visual feedback
+ * - VAMPIRIC: 5 damage to enemy + 5 chips to drawer + visual feedback
+ *
+ * Pattern: Uses existing TakeDamage() funnel, SpawnDamageNumber(), TweenEnemyHP()
+ */
+void ProcessCardTagEffects(const struct Card* card, struct GameContext* game, struct Player* drawer);
+
 #endif // CARD_TAGS_H

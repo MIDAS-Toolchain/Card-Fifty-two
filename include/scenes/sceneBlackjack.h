@@ -175,6 +175,17 @@ void TweenPlayerHP(Player_t* player);
 void SpawnDamageNumber(int damage, float world_x, float world_y, bool is_healing);
 
 /**
+ * TriggerScreenShake - Shake the entire screen (for tag effects, critical hits)
+ *
+ * Creates a screen shake effect by tweening global shake offsets.
+ * All rendering is offset during shake for maximum impact.
+ *
+ * @param intensity - Shake magnitude in pixels (try 10-20)
+ * @param duration - Shake duration in seconds (try 0.3-0.5)
+ */
+void TriggerScreenShake(float intensity, float duration);
+
+/**
  * GetCardTransitionManager - Get pointer to global card transition manager
  *
  * Used by sections (playerSection, dealerSection) to query card animations

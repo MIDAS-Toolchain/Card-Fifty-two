@@ -139,45 +139,86 @@ void DestroyRewardModal(RewardModal_t** modal) {
 bool ShowRewardModal(RewardModal_t* modal) {
     if (!modal) return false;
 
-    // Find pool of untagged cards
-    int untagged_cards[52];
+    // Find pool of cards that can accept new tags (0 or 1 tag, max 2 tags per card)
+    int eligible_cards[52];
     int count = 0;
 
     for (int card_id = 0; card_id < 52; card_id++) {
         const dArray_t* tags = GetCardTags(card_id);
-        if (!tags || tags->count == 0) {
-            untagged_cards[count++] = card_id;
+        int tag_count = tags ? (int)tags->count : 0;
+
+        // Card can accept tags if it has 0 or 1 tag (max 2 total)
+        if (tag_count < 2) {
+            eligible_cards[count++] = card_id;
         }
     }
 
-    // Need at least 3 untagged cards
+    // Need at least 3 eligible cards
     if (count < 3) {
-        d_LogWarning("ShowRewardModal: Not enough untagged cards (need 3)");
+        d_LogWarning("ShowRewardModal: Not enough eligible cards (need 3, all cards have 2 tags)");
         return false;
     }
 
-    // Pick 3 random untagged cards (no duplicates)
+    // Pick 3 random eligible cards (no duplicates)
     for (int i = 0; i < 3; i++) {
         int random_idx = GetRandomInt(0, count - 1);
-        modal->card_ids[i] = untagged_cards[random_idx];
+        modal->card_ids[i] = eligible_cards[random_idx];
 
         // Remove from pool to avoid duplicates
-        untagged_cards[random_idx] = untagged_cards[count - 1];
+        eligible_cards[random_idx] = eligible_cards[count - 1];
         count--;
     }
 
-    // Assign random tags to each card (ADR-06)
+    // All available tags
     CardTag_t available_tags[] = {
         CARD_TAG_CURSED,   // 10 damage to enemy when drawn
         CARD_TAG_VAMPIRIC, // 5 damage + 5 chips when drawn
         CARD_TAG_LUCKY,    // +10% crit while in any hand
         CARD_TAG_BRUTAL    // +10% damage while in any hand
     };
-    int tag_count = sizeof(available_tags) / sizeof(available_tags[0]);
+    int all_tags_count = sizeof(available_tags) / sizeof(available_tags[0]);
 
+    // Assign random tags to each card, excluding tags they already have
     for (int i = 0; i < 3; i++) {
-        int tag_idx = GetRandomInt(0, tag_count - 1);
-        modal->tags[i] = available_tags[tag_idx];
+        int card_id = modal->card_ids[i];
+        const dArray_t* existing_tags = GetCardTags(card_id);
+
+        // Build list of tags this card doesn't have
+        CardTag_t valid_tags[4];  // Max 4 tag types
+        int valid_count = 0;
+
+        for (int t = 0; t < all_tags_count; t++) {
+            CardTag_t tag = available_tags[t];
+
+            // Check if card already has this tag
+            bool already_has = false;
+            if (existing_tags) {
+                for (size_t e = 0; e < existing_tags->count; e++) {
+                    CardTag_t* existing = (CardTag_t*)d_IndexDataFromArray((dArray_t*)existing_tags, e);
+                    if (existing && *existing == tag) {
+                        already_has = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!already_has) {
+                valid_tags[valid_count++] = tag;
+            }
+        }
+
+        // Pick random tag from valid options
+        if (valid_count > 0) {
+            int tag_idx = GetRandomInt(0, valid_count - 1);
+            modal->tags[i] = valid_tags[tag_idx];
+            d_LogInfoF("Card %d: Offering tag %d (has %zu existing tags, %d valid options)",
+                      card_id, modal->tags[i],
+                      existing_tags ? existing_tags->count : 0, valid_count);
+        } else {
+            // Fallback (shouldn't happen if eligible_cards logic is correct)
+            d_LogWarning("Card has no valid tag options (shouldn't happen)");
+            modal->tags[i] = CARD_TAG_LUCKY;
+        }
     }
 
     // Reset state

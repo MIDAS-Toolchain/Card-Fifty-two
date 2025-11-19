@@ -89,7 +89,7 @@ Enemy_t* CreateEnemy(const char* name, int max_hp, int chip_threat) {
 
 Enemy_t* CreateTheDidact(void) {
     // Create base enemy (moderate stats for tutorial)
-    int didact_maxhp = 10;
+    int didact_maxhp = 500;
     Enemy_t* didact = CreateEnemy("The Didact", didact_maxhp, 10);
     if (!didact) return NULL;
 
@@ -107,6 +107,26 @@ Enemy_t* CreateTheDidact(void) {
 
     d_LogInfo("The Didact created with 3 teaching abilities");
     return didact;
+}
+
+Enemy_t* CreateTheDaemon(void) {
+    // Create elite enemy (5000 HP for second encounter)
+    int daemon_maxhp = 5000;
+    Enemy_t* daemon = CreateEnemy("The Daemon", daemon_maxhp, 10);
+    if (!daemon) return NULL;
+
+    // For now, reuse The Didact's abilities (will be customized later)
+    // Ability 1: The House Remembers (On player blackjack → GREED for 2 rounds)
+    AddEventAbility(daemon, ABILITY_THE_HOUSE_REMEMBERS, GAME_EVENT_PLAYER_BLACKJACK);
+
+    // Ability 2: Irregularity Detected (Every 5 cards drawn → CHIP_DRAIN 5 chips/round for 3 rounds)
+    AddCounterAbility(daemon, ABILITY_IRREGULARITY_DETECTED, GAME_EVENT_CARD_DRAWN, 5);
+
+    // Ability 3: System Override (Below 30% HP once → Heal 50 HP + Force Shuffle)
+    AddActiveAbility(daemon, ABILITY_SYSTEM_OVERRIDE, TRIGGER_HP_THRESHOLD, 0.3f);
+
+    d_LogInfo("The Daemon created with 5000 HP (reusing Didact abilities)");
+    return daemon;
 }
 
 void DestroyEnemy(Enemy_t** enemy) {

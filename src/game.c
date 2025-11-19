@@ -13,6 +13,7 @@
 #include "../include/scenes/sceneBlackjack.h"
 #include "../include/cardAnimation.h"
 #include "../include/tween/tween.h"
+#include "../include/cardTags.h"
 #include "../include/stateStorage.h"
 #include "../include/statusEffects.h"
 #include "../include/trinket.h"
@@ -37,6 +38,8 @@ const char* GameEventToString(GameEvent_t event) {
         case GAME_EVENT_DEALER_BUST:         return "DEALER_BUST";
         case GAME_EVENT_CARD_DRAWN:          return "CARD_DRAWN";
         case GAME_EVENT_PLAYER_ACTION_END:   return "PLAYER_ACTION_END";
+        case GAME_EVENT_CARD_TAG_CURSED:     return "CARD_TAG_CURSED";
+        case GAME_EVENT_CARD_TAG_VAMPIRIC:   return "CARD_TAG_VAMPIRIC";
         default:                             return "UNKNOWN_EVENT";
     }
 }
@@ -86,6 +89,21 @@ void Game_ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerActio
                 // ✅ NEW: Fire event
                 Game_TriggerEvent(game, GAME_EVENT_CARD_DRAWN);
 
+                // Process card tag effects (CURSED, VAMPIRIC)
+                const Card_t* last_card = GetCardFromHand(&player->hand, player->hand.cards->count - 1);
+                if (last_card && last_card->face_up) {
+                    ProcessCardTagEffects(last_card, game, player);
+                }
+
+                // Check for enemy defeat from trinket/tag damage during card draw
+                if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
+                    d_LogInfo("COMBAT VICTORY (mid-turn trinket/tag kill)!");
+                    player->state = PLAYER_STATE_STAND;  // Force end player turn
+                    game->current_player_index++;
+                    Game_TriggerEvent(game, GAME_EVENT_PLAYER_ACTION_END);
+                    return;
+                }
+
                 if (player->hand.is_bust) {
                     player->state = PLAYER_STATE_BUST;
                     game->current_player_index++;
@@ -116,6 +134,21 @@ void Game_ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerActio
 
                 // ✅ NEW: Fire event (double also draws a card)
                 Game_TriggerEvent(game, GAME_EVENT_CARD_DRAWN);
+
+                // Process card tag effects (CURSED, VAMPIRIC)
+                const Card_t* last_card = GetCardFromHand(&player->hand, player->hand.cards->count - 1);
+                if (last_card && last_card->face_up) {
+                    ProcessCardTagEffects(last_card, game, player);
+                }
+
+                // Check for enemy defeat from trinket/tag damage during double down
+                if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
+                    d_LogInfo("COMBAT VICTORY (double down trinket/tag kill)!");
+                    player->state = player->hand.is_bust ? PLAYER_STATE_BUST : PLAYER_STATE_STAND;
+                    game->current_player_index++;
+                    Game_TriggerEvent(game, GAME_EVENT_PLAYER_ACTION_END);
+                    return;
+                }
 
                 player->state = player->hand.is_bust ? PLAYER_STATE_BUST : PLAYER_STATE_STAND;
                 game->current_player_index++;
@@ -274,12 +307,38 @@ void Game_DealerTurn(GameContext_t* game) {
         Card_t* hidden = (Card_t*)d_IndexDataFromArray(dealer->hand.cards, 0);
         if (hidden) {
             hidden->face_up = true;
+
+            // Process card tag effects for flipped card (CURSED, VAMPIRIC)
+            ProcessCardTagEffects(hidden, game, dealer);
+
+            // Check for enemy defeat from tag damage (hidden card reveal)
+            if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
+                d_LogInfo("COMBAT VICTORY (tag kill on dealer hidden card reveal)!");
+                return;  // Early exit - enemy defeated
+            }
         }
     }
 
     // Dealer hits on 16 or less (with animations)
     while (dealer->hand.total_value < 17) {
         Game_DealCardWithAnimation(game->deck, &dealer->hand, dealer, true);
+
+        // Process card tag effects for dealer draws
+        const Card_t* last_card = GetCardFromHand(&dealer->hand, dealer->hand.cards->count - 1);
+        if (last_card && last_card->face_up) {
+            d_LogInfoF("DealerTurn: Processing tags for dealer card %d (face_up=%d)",
+                      last_card->card_id, last_card->face_up);
+            ProcessCardTagEffects(last_card, game, dealer);
+
+            // Check for enemy defeat from tag damage (dealer hit)
+            if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
+                d_LogInfo("COMBAT VICTORY (tag kill during dealer hit)!");
+                return;  // Early exit - enemy defeated
+            }
+        } else {
+            d_LogInfoF("DealerTurn: Skipping tags - last_card=%p face_up=%d",
+                      (void*)last_card, last_card ? last_card->face_up : -1);
+        }
     }
 
     d_LogInfoF("Dealer finishes with %d", dealer->hand.total_value);
@@ -384,6 +443,18 @@ void Game_DealInitialHands(GameContext_t* game) {
             // Trigger CARD_DRAWN event for ability counters (only for non-dealer)
             if (!player->is_dealer) {
                 Game_TriggerEvent(game, GAME_EVENT_CARD_DRAWN);
+            }
+
+            // Process card tag effects (CURSED, VAMPIRIC) for all players, only if face-up
+            const Card_t* last_card = GetCardFromHand(&player->hand, player->hand.cards->count - 1);
+            if (last_card && last_card->face_up) {
+                ProcessCardTagEffects(last_card, game, player);
+
+                // Check for enemy defeat from tag damage during initial deal (rare but possible)
+                if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
+                    d_LogInfo("COMBAT VICTORY (tag kill during initial deal)!");
+                    return;  // Early exit - enemy defeated
+                }
             }
         }
     }

@@ -248,4 +248,32 @@ EventEncounter_t* CreateBrokenSlotMachineEvent(void);
  */
 EventEncounter_t* CreateDataBrokerEvent(void);
 
+/**
+ * CreateSanityTradeEvent - Create "The Gambler's Dilemma" tutorial event
+ *
+ * @return EventEncounter_t* - Tutorial event teaching sanity mechanic
+ *
+ * Theme: Risk/reward with sanity as resource (simpler than DataBroker)
+ * - Option 1: Walk away (safe - no change)
+ * - Option 2: Accept deal (+100 chips, -100 sanity)
+ * - Option 3: Counter-offer (-50 chips, +50 sanity)
+ *
+ * Design: Simple 3-choice tutorial for EventPool system
+ */
+EventEncounter_t* CreateSanityTradeEvent(void);
+
+/**
+ * CreateChipGambleEvent - Create "Victory Spoils" tutorial event
+ *
+ * @return EventEncounter_t* - Tutorial event with pure chip outcomes
+ *
+ * Theme: Classic risk/reward without sanity complexity
+ * - Option 1: Take marked chips (+15 chips, safe)
+ * - Option 2: Try golden key (+25 chips, risky flavor)
+ * - Option 3: Leave everything (no change)
+ *
+ * Design: Alternative tutorial event for variety
+ */
+EventEncounter_t* CreateChipGambleEvent(void);
+
 #endif // EVENT_H
