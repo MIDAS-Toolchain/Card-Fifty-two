@@ -9,7 +9,8 @@
 #include "player.h"
 #include "enemy.h"
 #include "stats.h"
-#include "scenes/sceneBlackjack.h"  // For SpawnDamageNumber, TweenEnemyHP, TriggerEnemyDamageEffect
+#include "scenes/sceneBlackjack.h"  // For GetVisualEffects, TweenEnemyHP, TriggerEnemyDamageEffect
+#include "scenes/components/visualEffects.h"
 #include "tween/tween.h"
 
 // ============================================================================
@@ -365,14 +366,15 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
             TriggerEnemyDamageEffect(game->current_enemy, tween_mgr);  // Enemy shake + red flash
         }
 
-        // Screen shake for dramatic impact
-        TriggerScreenShake(15.0f, 0.4f);  // 15px intensity, 0.4s duration
-
-        // Spawn damage number (red, on enemy)
-        SpawnDamageNumber(damage,
-                         SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
-                         ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                         false);  // false = damage (not healing)
+        // Screen shake and damage number via visual effects component
+        VisualEffects_t* vfx = GetVisualEffects();
+        if (vfx) {
+            VFX_TriggerScreenShake(vfx, 15.0f, 0.4f);  // 15px intensity, 0.4s duration
+            VFX_SpawnDamageNumber(vfx, damage,
+                                 SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
+                                 ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                                 false);  // false = damage (not healing)
+        }
 
         // Fire tag-specific event
         Game_TriggerEvent(game, GAME_EVENT_CARD_TAG_CURSED);
@@ -403,22 +405,25 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
             TriggerEnemyDamageEffect(game->current_enemy, tween_mgr);  // Enemy shake + red flash
         }
 
-        // Screen shake for dramatic impact (lighter than CURSED)
-        TriggerScreenShake(10.0f, 0.3f);  // 10px intensity, 0.3s duration
+        // Screen shake and damage numbers via visual effects component
+        VisualEffects_t* vfx = GetVisualEffects();
+        if (vfx) {
+            VFX_TriggerScreenShake(vfx, 10.0f, 0.3f);  // 10px intensity, 0.3s duration (lighter than CURSED)
 
-        // Spawn damage number (red, on enemy)
-        SpawnDamageNumber(damage,
-                         SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
-                         ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                         false);  // false = damage (not healing)
+            // Spawn damage number (red, on enemy)
+            VFX_SpawnDamageNumber(vfx, damage,
+                                 SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
+                                 ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                                 false);  // false = damage (not healing)
 
-        // Spawn chip gain number (green, near chips display on left sidebar)
-        // Left sidebar: x=0, width=280, center=140
-        // Chips display is at top of sidebar (approx y=110 based on layout)
-        SpawnDamageNumber(chip_gain,
-                         140,   // Center of left sidebar
-                         110,   // Near "Betting Power" / chips display
-                         true); // true = healing/positive (green)
+            // Spawn chip gain number (green, near chips display on left sidebar)
+            // Left sidebar: x=0, width=280, center=140
+            // Chips display is at top of sidebar (approx y=110 based on layout)
+            VFX_SpawnDamageNumber(vfx, chip_gain,
+                                 140,   // Center of left sidebar
+                                 110,   // Near "Betting Power" / chips display
+                                 true); // true = healing/positive (green)
+        }
 
         // Fire tag-specific event
         Game_TriggerEvent(game, GAME_EVENT_CARD_TAG_VAMPIRIC);

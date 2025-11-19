@@ -11,6 +11,7 @@
 #include "../include/enemy.h"
 #include "../include/stats.h"
 #include "../include/scenes/sceneBlackjack.h"
+#include "../include/scenes/components/visualEffects.h"
 #include "../include/cardAnimation.h"
 #include "../include/tween/tween.h"
 #include "../include/cardTags.h"
@@ -698,10 +699,13 @@ void Game_ResolveRound(GameContext_t* game) {
 
                 // Spawn floating damage number (centered, above HP bar)
                 // Position using constants from sceneBlackjack.h
-                SpawnDamageNumber(damage_dealt,
-                                  SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
-                                  ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                                  false);
+                VisualEffects_t* vfx = GetVisualEffects();
+                if (vfx) {
+                    VFX_SpawnDamageNumber(vfx, damage_dealt,
+                                          SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
+                                          ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                                          false);
+                }
 
                 d_LogInfoF("Combat: %s deals %d damage to %s (HP: %d/%d)",
                           GetPlayerName(player), damage_dealt,

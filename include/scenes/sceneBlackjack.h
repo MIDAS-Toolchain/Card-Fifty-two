@@ -162,28 +162,14 @@ void TweenEnemyHP(Enemy_t* enemy);
 void TweenPlayerHP(Player_t* player);
 
 /**
- * SpawnDamageNumber - Create floating damage/healing number
+ * GetVisualEffects - Get pointer to visual effects component
  *
- * Spawns a floating text number that rises and fades over 1.0s
- * Numbers are rendered above enemy portrait
+ * Used by game.c, cardTags.c, and trinkets to spawn damage numbers
+ * and trigger screen shake effects.
  *
- * @param damage - Amount to display (absolute value)
- * @param world_x - X position to spawn at (center of text)
- * @param world_y - Y position to spawn at (will rise 50px)
- * @param is_healing - true for green "+X", false for red "-X"
+ * @return Pointer to global visual effects component
  */
-void SpawnDamageNumber(int damage, float world_x, float world_y, bool is_healing);
-
-/**
- * TriggerScreenShake - Shake the entire screen (for tag effects, critical hits)
- *
- * Creates a screen shake effect by tweening global shake offsets.
- * All rendering is offset during shake for maximum impact.
- *
- * @param intensity - Shake magnitude in pixels (try 10-20)
- * @param duration - Shake duration in seconds (try 0.3-0.5)
- */
-void TriggerScreenShake(float intensity, float duration);
+struct VisualEffects* GetVisualEffects(void);
 
 /**
  * GetCardTransitionManager - Get pointer to global card transition manager

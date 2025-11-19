@@ -13,7 +13,8 @@
 #include "../../include/card.h"
 #include "../../include/hand.h"                   // For CalculateHandValue
 #include "../../include/stats.h"                  // For Stats_RecordDamage
-#include "../../include/scenes/sceneBlackjack.h"  // For TweenEnemyHP, GetTweenManager
+#include "../../include/scenes/sceneBlackjack.h"  // For TweenEnemyHP, GetTweenManager, GetVisualEffects
+#include "../../include/scenes/components/visualEffects.h"
 #include "../../include/tween/tween.h"            // For TweenFloat, TWEEN_EASE_*
 
 // ============================================================================
@@ -78,11 +79,14 @@ void DegenerateGambitPassive(Player_t* player, GameContext_t* game, Trinket_t* s
             TweenFloat(tween_mgr, &self->flash_alpha, 0.0f, 0.5f, TWEEN_EASE_OUT_QUAD);
         }
 
-        // Spawn damage number (white text, trinket name)
-        SpawnDamageNumber(damage,
-                         SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
-                         ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                         false);  // false = damage (not healing)
+        // Spawn damage number via visual effects component
+        VisualEffects_t* vfx = GetVisualEffects();
+        if (vfx) {
+            VFX_SpawnDamageNumber(vfx, damage,
+                                 SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
+                                 ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                                 false);  // false = damage (not healing)
+        }
 
         d_LogInfoF("⚡ Degenerate's Gambit (Passive): Reckless hit at %d! Dealt %d damage",
                    player->hand.total_value, damage);
