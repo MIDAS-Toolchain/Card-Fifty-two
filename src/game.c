@@ -485,7 +485,7 @@ void Game_ResolveRound(GameContext_t* game) {
         return;
     }
 
-    // ✅ NEW: Process status effects at round start (chip drain, etc.)
+    // Process status effects at round start (chip drain, etc.)
     for (size_t i = 0; i < game->active_players->count; i++) {
         int* id = (int*)d_IndexDataFromArray(game->active_players, i);
         Player_t* player = Game_GetPlayerByID(*id);
@@ -503,7 +503,7 @@ void Game_ResolveRound(GameContext_t* game) {
     d_LogInfoF("Resolving round - Dealer: %d%s",
                dealer_value, dealer_bust ? " (BUST)" : "");
 
-    // ✅ NEW: Fire dealer bust event
+    // Fire dealer bust event
     if (dealer_bust) {
         Game_TriggerEvent(game, GAME_EVENT_DEALER_BUST);
     }
@@ -530,7 +530,7 @@ void Game_ResolveRound(GameContext_t* game) {
         if (player->hand.is_bust) {
             LoseBet(player);
 
-            // ✅ NEW: Apply status effect loss modifiers (TILT doubles losses)
+            // Apply status effect loss modifiers (TILT doubles losses)
             if (player->status_effects) {
                 int additional_loss = ModifyLosses(player->status_effects, bet_amount);
                 if (additional_loss > 0) {
@@ -548,7 +548,7 @@ void Game_ResolveRound(GameContext_t* game) {
             Stats_RecordTurnLost();
             Stats_RecordChipsLost(bet_amount);
 
-            // ✅ NEW: Fire event
+            // Fire event
             Game_TriggerEvent(game, GAME_EVENT_PLAYER_BUST);
 
         } else if (player->hand.is_blackjack) {
@@ -564,13 +564,13 @@ void Game_ResolveRound(GameContext_t* game) {
                 // Track push in stats
                 Stats_RecordTurnPushed();
 
-                // ✅ NEW: Fire event
+                // Fire event
                 Game_TriggerEvent(game, GAME_EVENT_PLAYER_PUSH);
             } else {
                 // Calculate base winnings (net profit only)
                 int base_winnings = (int)(bet_amount * 1.5f);
 
-                // ✅ NEW: Apply status effect win modifiers (GREED caps at 50% of bet)
+                // Apply status effect win modifiers (GREED caps at 50% of bet)
                 if (player->status_effects) {
                     base_winnings = ModifyWinnings(player->status_effects, base_winnings, bet_amount);
                 }
@@ -589,14 +589,14 @@ void Game_ResolveRound(GameContext_t* game) {
                 Stats_RecordTurnWon();
                 Stats_RecordChipsWon(base_winnings);
 
-                // ✅ NEW: Fire event
+                // Fire event
                 Game_TriggerEvent(game, GAME_EVENT_PLAYER_BLACKJACK);
             }
         } else if (dealer_bust) {
             // Calculate base winnings (net profit only)
             int base_winnings = bet_amount;
 
-            // ✅ NEW: Apply status effect win modifiers (GREED caps at 50% of bet)
+            // Apply status effect win modifiers (GREED caps at 50% of bet)
             if (player->status_effects) {
                 base_winnings = ModifyWinnings(player->status_effects, base_winnings, bet_amount);
             }

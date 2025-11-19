@@ -155,7 +155,8 @@ bool HandleEventModalInput(EventModal_t* modal, float dt) {
     // Calculate modal bounds
     int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 96;
     int modal_y = (SCREEN_HEIGHT - EVENT_MODAL_HEIGHT) / 2;
-    int choice_start_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + 140;
+    int content_row_height = 282;  // Match rendering
+    int choice_start_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + content_row_height + 20;  // Match rendering position
 
     // Mouse position
     int mx = app.mouse.x;
@@ -248,20 +249,37 @@ void RenderEventModal(const EventModal_t* modal) {
     a_DrawTextStyled((char*)d_StringPeek(modal->current_event->title),
                      title_center_x, modal_y + 10, &title_config);
 
-    // Draw description (wrapped text, centered on modal panel)
+    // Content row: Two-column layout (image left 1/3, description right 2/3)
+    int content_row_y = modal_y + EVENT_MODAL_HEADER_HEIGHT;
+    int content_row_height = 282;  // Taller to fill space (250 + 32px)
+
+    // Left column: Image placeholder (1/3 width)
+    int image_col_x = modal_x + EVENT_MODAL_PADDING;
+    int image_col_width = (EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 3)) / 3;
+    int image_col_height = content_row_height - (EVENT_MODAL_PADDING * 2);
+
+    // Black square placeholder for event image
+    a_DrawFilledRect(image_col_x, content_row_y + EVENT_MODAL_PADDING,
+                     image_col_width, image_col_height,
+                     0, 0, 0, fade_alpha);
+
+    // Right column: Description text (2/3 width)
+    int desc_col_x = image_col_x + image_col_width + EVENT_MODAL_PADDING;
+    int desc_col_width = ((EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 3)) * 2) / 3;
+
     aFontConfig_t desc_config = {
         .type = FONT_ENTER_COMMAND,
         .color = {COLOR_EVENT_INFO_TEXT.r, COLOR_EVENT_INFO_TEXT.g, COLOR_EVENT_INFO_TEXT.b, fade_alpha},
-        .align = TEXT_ALIGN_CENTER,
-        .wrap_width = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2),
-        .scale = 0.85f  // Smaller to fit more text
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = desc_col_width,  // Use full width (no extra padding subtraction)
+        .scale = 0.85f
     };
     a_DrawTextStyled((char*)d_StringPeek(modal->current_event->description),
-                     title_center_x, modal_y + EVENT_MODAL_HEADER_HEIGHT + 15, &desc_config);
+                     desc_col_x, content_row_y + EVENT_MODAL_PADDING, &desc_config);
 
-    // Draw choice buttons (list items with hover highlight)
+    // Draw choice buttons (pushed down below the taller content row)
     int choice_count = (int)modal->current_event->choices->count;
-    int choice_start_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + 200;  // More space for description (180 → 200)
+    int choice_start_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + content_row_height + 20;
 
     for (int i = 0; i < choice_count; i++) {
         EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, i);
