@@ -51,6 +51,25 @@ TrinketUI_t* CreateTrinketUI(void);
 void DestroyTrinketUI(TrinketUI_t** ui);
 
 // ============================================================================
+// HOVER STATE UPDATE
+// ============================================================================
+
+/**
+ * UpdateTrinketUIHover - Update hover state based on mouse position
+ *
+ * @param ui - UI component
+ * @param player - Player (unused, kept for API consistency)
+ *
+ * MUST be called BEFORE HandleTrinketUIInput() to ensure input handler
+ * sees current hover state. Updates:
+ * - hovered_class_trinket (true if mouse over class trinket slot)
+ * - hovered_trinket_slot (0-5 if mouse over regular slot, -1 otherwise)
+ *
+ * Called in BlackjackLogic before input handling.
+ */
+void UpdateTrinketUIHover(TrinketUI_t* ui, Player_t* player);
+
+// ============================================================================
 // INPUT HANDLING
 // ============================================================================
 
@@ -65,6 +84,8 @@ void DestroyTrinketUI(TrinketUI_t** ui);
  * - Left-click on activatable trinkets → enter STATE_TARGETING
  * - Cooldown checks (prevent activation if on cooldown)
  * - Target type checks (only TRINKET_TARGET_CARD supported)
+ *
+ * MUST be called AFTER UpdateTrinketUIHover() to see current hover state.
  */
 void HandleTrinketUIInput(TrinketUI_t* ui, Player_t* player, GameContext_t* game);
 

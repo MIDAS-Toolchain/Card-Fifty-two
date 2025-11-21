@@ -66,4 +66,21 @@ void RenderActionPanel(ActionPanel_t* panel, int y);
  */
 void UpdateActionPanelButtons(ActionPanel_t* panel);
 
+/**
+ * RebuildActionPanelLayout - Rebuild FlexBox with only visible buttons
+ *
+ * @param panel - Action panel component
+ * @param button_visible - Array of bools indicating which buttons to show
+ * @param available_width - Total width available for buttons
+ *
+ * Dynamically adjusts button widths based on number of visible buttons.
+ * Hidden buttons are removed from FlexBox layout.
+ *
+ * Example: If 3 buttons with available_width=500 and gap=20:
+ * - 3 visible: each gets (500 - 2*20) / 3 = 153px
+ * - 2 visible: each gets (500 - 1*20) / 2 = 240px
+ * - 1 visible: gets 500px
+ */
+void RebuildActionPanelLayout(ActionPanel_t* panel, bool button_visible[3], int available_width);
+
 #endif // ACTION_PANEL_H

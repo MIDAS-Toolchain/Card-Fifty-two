@@ -177,6 +177,61 @@ void ModifyPlayerSanity(Player_t* player, int amount);
 float GetPlayerSanityPercent(const Player_t* player);
 
 // ============================================================================
+// COMBAT STATS SYSTEM (ADR-09: Dirty-flag aggregation)
+// ============================================================================
+
+/**
+ * CalculatePlayerCombatStats - Recalculate combat stats from hand tags
+ *
+ * @param player Player to calculate stats for
+ *
+ * Scans player->hand for LUCKY/BRUTAL tags:
+ * - LUCKY: +10% crit chance per card
+ * - BRUTAL: +10% damage increase per card
+ *
+ * Resets: damage_flat, damage_percent, crit_chance, crit_bonus
+ * Clears: combat_stats_dirty flag
+ *
+ * Only call when combat_stats_dirty == true (ADR-09 pattern)
+ */
+void CalculatePlayerCombatStats(Player_t* player);
+
+/**
+ * RollForCrit - Check if damage crits based on player stats
+ *
+ * @param player Player to check crit chance for
+ * @param base_damage Original damage amount (before crit)
+ * @param out_damage Pointer to store modified damage (base + crit bonus if crit)
+ * @return bool - true if crit occurred, false otherwise
+ *
+ * Rolls crit based on player->crit_chance (0-100%).
+ * If crit: damage = base + (base × (50% + crit_bonus))
+ * If no crit: damage = base (unchanged)
+ *
+ * Automatically recalculates stats if combat_stats_dirty == true.
+ */
+bool RollForCrit(Player_t* player, int base_damage, int* out_damage);
+
+/**
+ * ApplyPlayerDamageModifiers - Apply ALL combat stat modifiers to damage
+ *
+ * @param player Player whose stats to apply
+ * @param base_damage Original damage amount
+ * @param out_is_crit Pointer to store whether crit occurred (can be NULL)
+ * @return int - Final damage after all modifiers
+ *
+ * Single source of truth for damage modification (ADR-010).
+ * Applies modifiers in correct order:
+ * 1. Percentage damage increase (BRUTAL tag: damage_percent)
+ * 2. Flat damage bonus (damage_flat, currently unused)
+ * 3. Crit roll (LUCKY tag: crit_chance)
+ *
+ * ALL damage sources MUST use this function to ensure consistency.
+ * Automatically recalculates stats if combat_stats_dirty == true.
+ */
+int ApplyPlayerDamageModifiers(Player_t* player, int base_damage, bool* out_is_crit);
+
+// ============================================================================
 // PLAYER UTILITIES
 // ============================================================================
 

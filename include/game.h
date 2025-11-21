@@ -3,6 +3,9 @@
 
 #include "common.h"
 
+// Forward declarations
+struct EventEncounter;
+
 // ============================================================================
 // TIMING CONSTANTS
 // ============================================================================
@@ -163,6 +166,55 @@ void Game_ResolveRound(GameContext_t* game);
  * @param game - Game context
  */
 void Game_StartNewRound(GameContext_t* game);
+
+// ============================================================================
+// EVENT SYSTEM
+// ============================================================================
+
+/**
+ * Game_ApplyEventConsequences - Apply selected event choice consequences
+ *
+ * @param game - Game context
+ * @param event - Event encounter with selected choice
+ * @param player - Player to apply consequences to
+ *
+ * Applies chips/sanity deltas and card tag modifications.
+ * Triggers game events (GAME_EVENT_CHIPS_CHANGED, GAME_EVENT_SANITY_CHANGED).
+ * Should be called once after player confirms event selection.
+ *
+ * Requirements:
+ * - event->selected_choice must be valid (>= 0)
+ * - game->deck must exist for tag application
+ */
+void Game_ApplyEventConsequences(GameContext_t* game, struct EventEncounter* event, Player_t* player);
+
+/**
+ * Game_GetEventRerollCost - Get current event reroll cost
+ *
+ * @param game - Game context
+ * @return int - Current reroll cost in chips
+ */
+int Game_GetEventRerollCost(const GameContext_t* game);
+
+/**
+ * Game_IncrementRerollCost - Double the reroll cost (exponential scaling)
+ *
+ * @param game - Game context
+ *
+ * Doubles game->event_reroll_cost (50 → 100 → 200 → 400...).
+ * Call after successful reroll.
+ */
+void Game_IncrementRerollCost(GameContext_t* game);
+
+/**
+ * Game_ResetRerollCost - Reset reroll cost to base value
+ *
+ * @param game - Game context
+ *
+ * Sets game->event_reroll_cost = game->event_reroll_base_cost (50).
+ * Call at start of new event encounter.
+ */
+void Game_ResetRerollCost(GameContext_t* game);
 
 // ============================================================================
 // PLAYER MANAGEMENT

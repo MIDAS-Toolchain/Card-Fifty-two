@@ -112,18 +112,20 @@ bool IsEventModalVisible(const EventModal_t* modal);
  * HandleEventModalInput - Process input for modal
  *
  * @param modal - Modal to update
+ * @param player - Player to check requirements against (for locked choice detection)
  * @param dt - Delta time
  * @return bool - true if choice was selected (ready to close)
  *
  * Handles:
- * - Mouse hover over choices
- * - Mouse click to select choice
+ * - Mouse hover over choices (skips locked choices)
+ * - Mouse click to select choice (blocks locked choices)
+ * - Keyboard hotkeys (blocks locked choices)
  * - Fade-in animation updates
  *
  * When a choice is selected, returns true and sets modal->selected_choice.
  * Caller should apply consequences and hide modal.
  */
-bool HandleEventModalInput(EventModal_t* modal, float dt);
+bool HandleEventModalInput(EventModal_t* modal, const struct Player* player, float dt);
 
 // ============================================================================
 // RENDERING
@@ -133,6 +135,7 @@ bool HandleEventModalInput(EventModal_t* modal, float dt);
  * RenderEventModal - Draw the modal overlay
  *
  * @param modal - Modal to render
+ * @param player - Player to check requirements against (for locked choice detection)
  *
  * Draws (if is_visible = true):
  * - Full-screen dark overlay
@@ -140,11 +143,13 @@ bool HandleEventModalInput(EventModal_t* modal, float dt);
  * - Event title (gold text in header)
  * - Event description (wrapped text in body)
  * - Choice list (vertical items with hover highlight)
+ * - Locked choices (grayed out with lock icon instead of number)
+ * - Requirement tooltips (on hover over locked choices)
  * - Chips/sanity deltas for each choice (color-coded)
  *
  * Uses same color palette as RewardModal for consistency.
  */
-void RenderEventModal(const EventModal_t* modal);
+void RenderEventModal(const EventModal_t* modal, const struct Player* player);
 
 // ============================================================================
 // QUERIES

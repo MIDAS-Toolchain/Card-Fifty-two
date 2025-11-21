@@ -77,8 +77,8 @@ Enemy_t* CreateEnemy(const char* name, int max_hp, int chip_threat) {
     enemy->shake_offset_y = 0.0f;
     enemy->red_flash_alpha = 0.0f;
 
-    // Initialize defeat animation
-    enemy->defeat_fade_alpha = 1.0f;  // Fully visible by default
+    // Initialize defeat animation (start invisible for spawn fade-in)
+    enemy->defeat_fade_alpha = 0.0f;  // Start invisible, will fade in
     enemy->defeat_scale = 1.0f;       // Normal size by default
 
     d_LogInfoF("Created enemy: %s (HP: %d, Threat: %d)",

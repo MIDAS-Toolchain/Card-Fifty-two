@@ -387,7 +387,7 @@ static void RenderStatsOverlay(void) {
     y += line_height;
 
     // Damage breakdown
-    const char* damage_sources[] = {"Turn Wins", "Trinket Passives", "Trinket Actives", "Abilities"};
+    const char* damage_sources[] = {"Turn Wins", "Turn Pushes", "Trinket Passives", "Trinket Actives", "Abilities", "Card Tags"};
     for (int i = 0; i < DAMAGE_SOURCE_MAX; i++) {
         d_StringFormat(text, "  %s: %llu", damage_sources[i], stats->damage_by_source[i]);
         a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 200, 150, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);

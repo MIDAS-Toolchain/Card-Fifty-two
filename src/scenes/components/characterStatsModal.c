@@ -5,6 +5,7 @@
 
 #include "../../../include/scenes/components/characterStatsModal.h"
 #include "../../../include/scenes/sceneBlackjack.h"
+#include "../../../include/sanityThreshold.h"
 
 // Modern tooltip color scheme (matching status/ability tooltips)
 #define COLOR_BG            ((aColor_t){20, 20, 30, 230})     // Dark background
@@ -80,27 +81,7 @@ static const char* GetClassName(PlayerClass_t class) {
     }
 }
 
-// Helper function to get class-specific sanity threshold effects
-static const char* GetSanityThresholdEffect(PlayerClass_t class, int threshold) {
-    switch (class) {
-        case PLAYER_CLASS_DEGENERATE:
-            switch (threshold) {
-                case 75: return "Risk Bonus: +10% token gain";
-                case 50: return "Shaky Hands: -5% accuracy";
-                case 25: return "Desperate: +20% damage taken";
-                case 0:  return "Broken: Cannot gain tokens";
-                default: return "[Unknown threshold]";
-            }
-        case PLAYER_CLASS_DEALER:
-            return "[Class not implemented]";
-        case PLAYER_CLASS_DETECTIVE:
-            return "[Class not implemented]";
-        case PLAYER_CLASS_DREAMER:
-            return "[Class not implemented]";
-        default:
-            return "[No class selected]";
-    }
-}
+// No longer needed - using GetSanityThresholdDescription from sanityThreshold.h
 
 void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
     if (!modal || !modal->is_visible || !modal->player) return;
@@ -122,14 +103,7 @@ void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
     int sanity_height = a_GetWrappedTextHeight((char*)d_StringPeek(sanity_measure), FONT_GAME, content_width);
     d_StringDestroy(sanity_measure);
 
-    dString_t* chips_measure = d_StringInit();
-    d_StringFormat(chips_measure, "Tokens: %d", modal->player->chips);
-    int chips_height = a_GetWrappedTextHeight((char*)d_StringPeek(chips_measure), FONT_GAME, content_width);
-    d_StringDestroy(chips_measure);
-
     int header_height = a_GetWrappedTextHeight("Sanity Effects:", FONT_ENTER_COMMAND, content_width);
-    int range_height = a_GetWrappedTextHeight("75-100:", FONT_GAME, content_width);
-    int effect_height = a_GetWrappedTextHeight("Risk Bonus: +10% token gain", FONT_GAME, content_width - 10);
 
     // Draw background (modern dark style)
     a_DrawFilledRect(modal->x, modal->y, modal_width, modal_height,
@@ -191,25 +165,6 @@ void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
     current_y += 1 + 8;  // Divider height + spacing
 
     // ========================================================================
-    // Chips Display
-    // ========================================================================
-
-    dString_t* chips_text = d_StringInit();
-    d_StringFormat(chips_text, "Tokens: %d", modal->player->chips);
-
-    aFontConfig_t chips_config = {
-        .type = FONT_GAME,
-        .color = COLOR_TEXT,
-        .align = TEXT_ALIGN_LEFT,
-        .wrap_width = content_width,
-        .scale = 1.0f
-    };
-
-    a_DrawTextStyled((char*)d_StringPeek(chips_text), content_x, current_y, &chips_config);
-    d_StringDestroy(chips_text);
-    current_y += chips_height + 12;  // Actual height + section spacing
-
-    // ========================================================================
     // Sanity Thresholds Section
     // ========================================================================
 
@@ -225,50 +180,99 @@ void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
     a_DrawTextStyled("Sanity Effects:", content_x, current_y, &header_config);
     current_y += header_height + 8;  // Actual height + margin
 
-    // Threshold colors (based on severity)
-    aColor_t threshold_colors[] = {
-        COLOR_SANITY_GOOD,  // 75+ (good)
-        COLOR_TEXT,         // 50-74 (neutral)
-        COLOR_SANITY_LOW,   // 25-49 (warning)
-        (aColor_t){200, 50, 50, 255}  // 0-24 (danger - red)
-    };
-
+    // Correct threshold ranges (matching sanity tier system)
     const char* threshold_ranges[] = {
-        "75-100:",
-        "50-74:",
-        "25-49:",
-        "0-24:"
+        "76-100:",  // SANITY_TIER_HIGH
+        "51-75:",   // SANITY_TIER_MEDIUM
+        "26-50:",   // SANITY_TIER_LOW
+        "1-25:",    // SANITY_TIER_VERY_LOW
+        "0:"        // SANITY_TIER_ZERO
     };
 
-    int threshold_values[] = {75, 50, 25, 0};
+    SanityTier_t threshold_tiers[] = {
+        SANITY_TIER_HIGH,
+        SANITY_TIER_MEDIUM,
+        SANITY_TIER_LOW,
+        SANITY_TIER_VERY_LOW,
+        SANITY_TIER_ZERO
+    };
 
-    // Render each threshold
-    for (int i = 0; i < 4; i++) {
+    // Tier colors (based on severity)
+    aColor_t tier_colors[] = {
+        COLOR_SANITY_GOOD,              // 76-100% (no effect)
+        COLOR_TEXT,                     // 51-75% (first tier)
+        COLOR_SANITY_LOW,               // 26-50% (second tier)
+        (aColor_t){222, 158, 65, 255},  // 1-25% (third tier - orange)
+        (aColor_t){200, 50, 50, 255}    // 0% (final tier - red)
+    };
+
+    // Get current sanity tier for visual highlighting
+    SanityTier_t current_sanity_tier = GetSanityTier(modal->player);
+
+    // Render each threshold (5 tiers now, including 100-76%)
+    for (int i = 0; i < 5; i++) {
+        // Determine visual state of this threshold
+        bool is_current = (threshold_tiers[i] == current_sanity_tier);
+        bool is_past = (threshold_tiers[i] > current_sanity_tier);  // Higher tier number = lower sanity
+
+        // Calculate heights for background box
+        int range_height = a_GetWrappedTextHeight((char*)threshold_ranges[i], FONT_GAME, content_width);
+        const char* effect = GetSanityThresholdDescription(modal->player->class, threshold_tiers[i]);
+        int effect_height = a_GetWrappedTextHeight((char*)effect, FONT_GAME, content_width - 10);
+
+        // Draw gold background highlight for current tier
+        if (is_current) {
+            int highlight_height = range_height + effect_height + 10;
+            a_DrawFilledRect(content_x - 5, current_y - 2,
+                           content_width + 10, highlight_height,
+                           232, 193, 112, 64);  // Gold 25% opacity
+        }
+
+        // Draw bullet indicator for current tier
+        if (is_current) {
+            a_DrawText("●", content_x - 15, current_y,
+                      232, 193, 112,  // Gold bullet (RGB)
+                      FONT_GAME, TEXT_ALIGN_LEFT, 0);
+        }
+
+        // Determine text color based on state
+        aColor_t range_text_color;
+        aColor_t effect_text_color;
+        if (is_current) {
+            // Current tier: GOLD
+            range_text_color = (aColor_t){232, 193, 112, 255};
+            effect_text_color = (aColor_t){232, 193, 112, 255};
+        } else if (is_past) {
+            // Past tier: DIMMED GRAY
+            range_text_color = (aColor_t){150, 150, 150, 255};
+            effect_text_color = (aColor_t){150, 150, 150, 255};
+        } else {
+            // Future tier: severity color for range, normal gray for effect
+            range_text_color = tier_colors[i];
+            effect_text_color = COLOR_TEXT;
+        }
+
         // Threshold range label
         aFontConfig_t range_config = {
             .type = FONT_GAME,
-            .color = threshold_colors[i],
+            .color = range_text_color,
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width,
             .scale = 1.1f  // ADR-008: Consistent readability
         };
 
-        int range_height = a_GetWrappedTextHeight((char*)threshold_ranges[i], FONT_GAME, content_width);
         a_DrawTextStyled((char*)threshold_ranges[i], content_x, current_y, &range_config);
         current_y += range_height + 4;  // Actual height + small spacing
 
         // Effect description (indented slightly)
-        const char* effect = GetSanityThresholdEffect(modal->player->class, threshold_values[i]);
-
         aFontConfig_t effect_config = {
             .type = FONT_GAME,
-            .color = COLOR_TEXT,
+            .color = effect_text_color,
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width - 10,  // Indent effect text
             .scale = 1.1f  // Match ability/status tooltip size for readability
         };
 
-        int effect_height = a_GetWrappedTextHeight((char*)effect, FONT_GAME, content_width - 10);
         a_DrawTextStyled((char*)effect, content_x + 10, current_y, &effect_config);
         current_y += effect_height + 6;  // Actual height + spacing between entries
     }

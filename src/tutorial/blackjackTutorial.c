@@ -32,22 +32,21 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     // Arrow pointing from dialogue bottom to bet buttons center
     TutorialArrow_t bet_buttons_arrow = {
         .enabled = true,
-        .from_x = 250 / 2,  // Center of dialogue width (DIALOGUE_WIDTH / 2)
+        .from_x = (250 / 2) - 32,  // Center of dialogue width minus 32px offset
         .from_y = 200,      // Slightly higher than bottom edge (was 250)
         .to_x = buttons_x + (bet_buttons_width / 2),  // Center of bet buttons
         .to_y = buttons_y
     };
 
     TutorialStep_t* step1 = CreateTutorialStep(
-        "Place your bet!\n\n"
-        "Min/Med/Max at 1, 5, and 10\n\n"
-        "You start with 100 chips.\n"
-        "Place a bet to continue",
+        "Place your bet.\n"
+        "Min (1), Med (2), or Max (3).\n\n"
+        "The dealer is watching.\n\n",
         bet_listener,
         false,  // Not final step
-        0,  // Centered horizontally
+        -32,  // Move 32px to the left
         (SCREEN_HEIGHT - 250) / 2,  // CENTER - vertically center the dialogue
-        1,  // STATE_BETTING - this step shows during betting
+        STATE_BETTING,  // This step shows during betting
         bet_buttons_arrow,
         false  // Don't advance immediately
     );
@@ -56,10 +55,10 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     int action_buttons_width = (ACTION_BUTTON_WIDTH * NUM_ACTION_BUTTONS) + (BUTTON_GAP * (NUM_ACTION_BUTTONS - 1));
 
     // Auto-advance when player takes action (state changes from PLAYER_TURN)
-    // We listen for transition to DEALER_TURN (state 4)
+    // We listen for transition to DEALER_TURN (state 5)
     TutorialListener_t action_listener = {
         .event_type = TUTORIAL_EVENT_STATE_CHANGE,
-        .event_data = (void*)(intptr_t)4,  // STATE_DEALER_TURN
+        .event_data = (void*)(intptr_t)STATE_DEALER_TURN,
         .triggered = false
     };
 
@@ -73,15 +72,14 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     };
 
     TutorialStep_t* step2 = CreateTutorialStep(
-        "HIT: Draw another card (H)\n"
-        "STAND: Keep your current hand (S)\n"
-        "DOUBLE: Double bet + draw one (D)\n\n"
-        "Make your choice",
+        "HIT to draw. (1)\n"
+        "STAND to wait. (2)\n"
+        "DOUBLE to escalate. (3)\n\n",
         action_listener,
         false,  // Not final step
-        0,  // Centered horizontally
-        60,  // TOP - avoid blocking player cards/score
-        3,  // STATE_PLAYER_TURN - this step shows during player turn
+        0,  // Centered horizontally (where step 1 USED to be)
+        (SCREEN_HEIGHT - 250) / 2,  // CENTER - same position step 1 used to have
+        STATE_PLAYER_TURN,  // This step shows during player turn
         action_buttons_arrow,
         false  // Don't advance immediately
     );
@@ -111,14 +109,14 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     };
 
     TutorialStep_t* step3 = CreateTutorialStep(
-        "Chips are your life force\n\n"
-        "Run out and you die\n\n"
-        "Hover to see your chip stats",
+        "Chips are your life force.\n\n"
+        "Don't lose them all.\n"
+        "Hover your chips to learn more.",
         hover_chips_listener,
         false,  // Not final step
         0,  // Centered horizontally
         450,  // Y position (moved up from 550)
-        1,  // STATE_BETTING - this step shows during betting
+        STATE_BETTING,  // This step shows during betting
         chips_arrow,
         false  // Don't advance immediately
     );
@@ -142,21 +140,21 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     // Arrow pointing from dialogue left edge to bet display center (offset right 32px from chips arrow)
     TutorialArrow_t bet_arrow = {
         .enabled = true,
-        .from_x = 32,  // 32px right offset from chips arrow (which was at 0)
+        .from_x = 0,  // 32px right offset from chips arrow (which was at 0)
         .from_y = 125,  // Middle of dialogue height
         .to_x = bet_x + (bet_width / 2),  // Center of bet area
         .to_y = bet_y + (bet_height / 2)
     };
 
     TutorialStep_t* step4 = CreateTutorialStep(
-        "This shows your active bet\n\n"
-        "Hover to see betting stats:\n"
-        "highest, average, total wagered",
+        "Chips are also your betting power.\n\n"
+        "The house tracks everything.\n\n"
+        "Nothing is forgotten.",
         hover_bet_listener,
         false,  // Not final step
         0,  // Centered horizontally
         450,  // Y position
-        1,  // STATE_BETTING - wait for betting state before showing step 5
+        STATE_BETTING,  // Wait for betting state before showing step 4
         bet_arrow,
         false  // Don't advance immediately
     );
@@ -178,23 +176,24 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     // Arrow pointing from dialogue left edge to abilities icons
     TutorialArrow_t abilities_arrow = {
         .enabled = true,
-        .from_x = 64,  // 64px right offset (chips at 0, bet at 32, abilities at 64)
+        .from_x = 0, 
         .from_y = 125,  // Middle of dialogue height
         .to_x = abilities_x + (ABILITY_CARD_WIDTH / 2),  // Center of ability icons
         .to_y = abilities_y + (abilities_height / 2)
     };
 
     TutorialStep_t* step5 = CreateTutorialStep(
-        "Enemy abilities appear here\n\n"
-        "Hover over each to learn\n"
-        "what they do",
+        "The dealer's abilities\n"
+        "trigger automatically.\n\n"
+        "Study them. Each one changes\n"
+        "how you must play.",
         hover_abilities_listener,
         false,  // Not final step
         330,  // Move right 330px
         ((SCREEN_HEIGHT - 250) / 2) + 250,  // Move down 250px from center
-        1,  // STATE_BETTING - show this step during betting (like steps 3 and 4)
+        STATE_BETTING,  // Show this step during betting (like steps 3 and 4)
         abilities_arrow,
-        true  // ADVANCE IMMEDIATELY (adds delay before showing dialogue)
+        false  // Show dialogue immediately on hover (like steps 3 and 4)
     );
 
     // Step 6: Class trinket usage
@@ -219,14 +218,14 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     };
 
     TutorialStep_t* step6 = CreateTutorialStep(
-        "Your class has an active power!\n\n"
-        "Click the class trinket\n"
-        "to use it during your turn",
+        "This power is yours.\n\n"
+        "Use it. You'll need every advantage\n"
+        "to survive what's coming.",
         trinket_listener,
         false,  // Not final step
         0,  // Centered horizontally
         (SCREEN_HEIGHT - 250) / 2,  // Centered vertically
-        3,  // STATE_PLAYER_TURN - show during player turn
+        STATE_PLAYER_TURN,  // Show during player turn
         trinket_arrow,
         true  // ADVANCE IMMEDIATELY (unblock input, but wait for PLAYER_TURN to show dialogue)
     );
@@ -239,14 +238,14 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     };
 
     TutorialStep_t* step7 = CreateTutorialStep(
-        "Congrats, bitch!\n\n"
-        "You're ready to play Blackjack.\n\n"
-        "Press ESC anytime to pause.",
+        "Good.\n\n"
+        "You understand the rules.\n\n"
+        "Now let's see if you can survive them.",
         manual_advance_final,
         true,  // FINAL STEP - shows "Finish" instead of "Skip"
         0,  // Centered horizontally
         (SCREEN_HEIGHT - 200) / 2,  // CENTER - back to center for final message
-        1,  // STATE_BETTING - wait for betting state before showing
+        STATE_BETTING,  // Wait for betting state before showing
         no_arrow,
         true  // ADVANCE IMMEDIATELY (advance from step 6 right away, but wait for BETTING to show)
     );

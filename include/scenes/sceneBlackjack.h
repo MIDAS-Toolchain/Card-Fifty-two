@@ -30,7 +30,7 @@
 // Button dimensions
 #define BUTTON_ROW_HEIGHT       100
 #define BUTTON_GAP              20
-#define BET_BUTTON_WIDTH        100
+#define BET_BUTTON_WIDTH        130  // Increased from 100 to fit "Max (40)" text
 #define BET_BUTTON_HEIGHT       60
 #define ACTION_BUTTON_WIDTH     120
 #define ACTION_BUTTON_HEIGHT    60

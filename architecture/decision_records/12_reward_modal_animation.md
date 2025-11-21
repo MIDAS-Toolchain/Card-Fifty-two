@@ -4,6 +4,7 @@
 **Date**: 2025-11-17
 **Context**: Post-combat reward flow, card tag system integration
 **Depends On**: ADR-04 (Card Metadata), ADR-08 (Modal Design), ADR-09 (Card Tag System)
+**Fitness Function**: FF-012 (architecture/fitness_functions/12_reward_modal_animation.py)
 
 ---
 
@@ -15,7 +16,7 @@ After defeating an enemy, players need a rewarding moment to:
 3. **Understand consequences** - See tag effects before committing
 
 **Requirements**:
-- Show 3 untagged cards from player's deck
+- Show 3 cards with lowest tag count from player's deck (prioritize untagged)
 - Offer random tag for each card
 - Animated selection flow (not instant)
 - Skip option (player may not want tags)
@@ -230,9 +231,10 @@ modal->anim_stage = ANIM_FADE_OUT;  // Start animation sequence
 - **Mitigated**: Clear state transitions, single file implementation
 
 **3. Fixed Constraints**
-- Requires ≥3 untagged cards (fails if deck fully tagged)
 - Fixed 3-card offer (no scaling)
-- **Accepted**: Game design assumes sufficient untagged cards exist
+- Prioritizes lowest-tagged cards (untagged first, then 1-tag, then 2-tag, etc.)
+- If all cards equally tagged, randomly selects 3
+- **Accepted**: Fair distribution - players upgrade least-upgraded cards first
 
 **4. Hardcoded Tag Pool**
 - Tags randomly selected from `all_tags[]` array
@@ -312,13 +314,14 @@ modal->anim_stage = ANIM_FADE_OUT;  // Start animation sequence
 - Parallel arrays for card_ids/tags ✓
 - Heap allocation + proper cleanup ✓
 
-**Future Fitness Function** (architecture/fitness_functions/12_reward_modal.py):
+**Fitness Function** (architecture/fitness_functions/12_reward_modal.py):
 ```python
 # Verify reward modal constitutional compliance
-- ShowRewardModal() only offers untagged cards
-- AddCardTag() called exactly once per selection
+- ShowRewardModal() selects cards with lowest tag count (prioritizes untagged)
 - Animation stages fire in order: FADE_OUT → SCALE_CARD → FADE_IN_TAG → COMPLETE
+- AddCardTag() called exactly once per selection
 - FlexBox cleanup on DestroyRewardModal()
+- Parallel arrays used for card_ids/tags (ADR-03)
 ```
 
 ---

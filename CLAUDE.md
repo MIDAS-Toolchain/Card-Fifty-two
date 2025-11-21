@@ -18,6 +18,8 @@ Location: `architecture/decision_records/*.md`
 
 These docs explain WHY things work the way they do. Violating them causes crashes and multi-day debugging sessions.
 
+run `make verify` in the shell to run all of our fitness functions and ensure the project is stable.
+
 ---
 
 ## Core Patterns (Non-Negotiable)

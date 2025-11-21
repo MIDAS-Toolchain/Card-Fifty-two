@@ -10,6 +10,7 @@
 #include "../include/hand.h"
 #include "../include/enemy.h"
 #include "../include/stats.h"
+#include "../include/event.h"
 #include "../include/scenes/sceneBlackjack.h"
 #include "../include/scenes/components/visualEffects.h"
 #include "../include/cardAnimation.h"
@@ -87,6 +88,9 @@ void Game_ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerActio
                 d_LogInfoF("%s hits (hand value: %d)",
                           GetPlayerName(player), player->hand.total_value);
 
+                // Set dirty flag for combat stat recalculation (ADR-09)
+                player->combat_stats_dirty = true;
+
                 // ✅ NEW: Fire event
                 Game_TriggerEvent(game, GAME_EVENT_CARD_DRAWN);
 
@@ -132,6 +136,9 @@ void Game_ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerActio
             if (CanAffordBet(player, player->current_bet)) {
                 PlaceBet(player, player->current_bet);  // Double the bet
                 Game_DealCardWithAnimation(game->deck, &player->hand, player, true);
+
+                // Set dirty flag for combat stat recalculation (ADR-09)
+                player->combat_stats_dirty = true;
 
                 // ✅ NEW: Fire event (double also draws a card)
                 Game_TriggerEvent(game, GAME_EVENT_CARD_DRAWN);
@@ -309,6 +316,12 @@ void Game_DealerTurn(GameContext_t* game) {
         if (hidden) {
             hidden->face_up = true;
 
+            // Set dirty flag for combat stat recalculation (dealer card revealed - ADR-09)
+            Player_t* human_player = Game_GetPlayerByID(1);
+            if (human_player) {
+                human_player->combat_stats_dirty = true;
+            }
+
             // Process card tag effects for flipped card (CURSED, VAMPIRIC)
             ProcessCardTagEffects(hidden, game, dealer);
 
@@ -323,6 +336,12 @@ void Game_DealerTurn(GameContext_t* game) {
     // Dealer hits on 16 or less (with animations)
     while (dealer->hand.total_value < 17) {
         Game_DealCardWithAnimation(game->deck, &dealer->hand, dealer, true);
+
+        // Set dirty flag for combat stat recalculation (dealer drew card - ADR-09)
+        Player_t* human_player = Game_GetPlayerByID(1);
+        if (human_player) {
+            human_player->combat_stats_dirty = true;
+        }
 
         // Process card tag effects for dealer draws
         const Card_t* last_card = GetCardFromHand(&dealer->hand, dealer->hand.cards->count - 1);
@@ -460,6 +479,13 @@ void Game_DealInitialHands(GameContext_t* game) {
         }
     }
 
+    // Set dirty flag after initial deal (ADR-09: hands changed)
+    Player_t* human_player = Game_GetPlayerByID(1);
+    if (human_player) {
+        human_player->combat_stats_dirty = true;
+        d_LogInfo("Initial hands dealt - combat stats marked dirty");
+    }
+
     // Check for blackjacks
     for (size_t i = 0; i < game->active_players->count; i++) {
         int* id = (int*)d_IndexDataFromArray(game->active_players, i);
@@ -542,6 +568,13 @@ void Game_ResolveRound(GameContext_t* game) {
                 }
             }
 
+            // Apply trinket loss modifiers (Elite Membership 50% refund)
+            int trinket_refund = ModifyLossesWithTrinkets(player, bet_amount, bet_amount);
+            if (trinket_refund > 0) {
+                player->chips += trinket_refund;
+                Stats_UpdateChipsPeak(player->chips);
+            }
+
             player->state = PLAYER_STATE_LOST;
             outcome = "BUST - LOSE";
 
@@ -576,6 +609,9 @@ void Game_ResolveRound(GameContext_t* game) {
                     base_winnings = ModifyWinnings(player->status_effects, base_winnings, bet_amount);
                 }
 
+                // Apply trinket win modifiers (Elite Membership 50% bonus)
+                base_winnings = ModifyWinningsWithTrinkets(player, base_winnings, bet_amount);
+
                 // Award net winnings only (bet was never deducted)
                 player->chips += base_winnings;
                 Stats_UpdateChipsPeak(player->chips);
@@ -602,6 +638,9 @@ void Game_ResolveRound(GameContext_t* game) {
                 base_winnings = ModifyWinnings(player->status_effects, base_winnings, bet_amount);
             }
 
+            // Apply trinket win modifiers (Elite Membership 50% bonus)
+            base_winnings = ModifyWinningsWithTrinkets(player, base_winnings, bet_amount);
+
             // Award net winnings only (bet was never deducted)
             player->chips += base_winnings;
             player->current_bet = 0;
@@ -625,6 +664,9 @@ void Game_ResolveRound(GameContext_t* game) {
             if (player->status_effects) {
                 base_winnings = ModifyWinnings(player->status_effects, base_winnings, bet_amount);
             }
+
+            // Apply trinket win modifiers (Elite Membership 50% bonus)
+            base_winnings = ModifyWinningsWithTrinkets(player, base_winnings, bet_amount);
 
             // Award net winnings only (bet was never deducted)
             player->chips += base_winnings;
@@ -655,6 +697,13 @@ void Game_ResolveRound(GameContext_t* game) {
                 }
             }
 
+            // Apply trinket loss modifiers (Elite Membership 50% refund)
+            int trinket_refund = ModifyLossesWithTrinkets(player, bet_amount, bet_amount);
+            if (trinket_refund > 0) {
+                player->chips += trinket_refund;
+                Stats_UpdateChipsPeak(player->chips);
+            }
+
             player->state = PLAYER_STATE_LOST;
             outcome = "LOSE";
 
@@ -681,8 +730,14 @@ void Game_ResolveRound(GameContext_t* game) {
             Game_TriggerEvent(game, GAME_EVENT_PLAYER_PUSH);
         }
 
-        d_LogInfoF("%s: %s (damage_dealt=%d)",
+        d_LogInfoF("%s: %s (base_damage=%d)",
                    GetPlayerName(player), outcome, damage_dealt);
+
+        // Apply combat stat modifiers (ADR-010: Universal damage modifier)
+        bool is_crit = false;  // Track crit for visual effects
+        if (damage_dealt > 0 && game->is_combat_mode) {
+            damage_dealt = ApplyPlayerDamageModifiers(player, damage_dealt, &is_crit);
+        }
 
         // Apply combat damage to enemy if in combat mode
         if (game->is_combat_mode && game->current_enemy) {
@@ -704,7 +759,7 @@ void Game_ResolveRound(GameContext_t* game) {
                     VFX_SpawnDamageNumber(vfx, damage_dealt,
                                           SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
                                           ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                                          false);
+                                          false, is_crit);  // Pass crit flag
                 }
 
                 d_LogInfoF("Combat: %s deals %d damage to %s (HP: %d/%d)",
@@ -764,6 +819,9 @@ void Game_StartNewRound(GameContext_t* game) {
             ClearHand(&player->hand, game->deck);
             player->current_bet = 0;
             player->state = PLAYER_STATE_WAITING;
+
+            // Set dirty flag for combat stat recalculation (hand was cleared - ADR-09)
+            player->combat_stats_dirty = true;
         }
     }
 
@@ -775,6 +833,73 @@ void Game_StartNewRound(GameContext_t* game) {
 
     game->round_number++;
     game->current_player_index = 0;
+}
+
+// ============================================================================
+// EVENT SYSTEM
+// ============================================================================
+
+void Game_ApplyEventConsequences(GameContext_t* game, EventEncounter_t* event, Player_t* player) {
+    if (!game || !event || !player) {
+        d_LogError("Game_ApplyEventConsequences: NULL parameter");
+        return;
+    }
+
+    if (event->selected_choice < 0) {
+        d_LogWarning("Game_ApplyEventConsequences: No choice selected");
+        return;
+    }
+
+    const EventChoice_t* choice = GetEventChoice(event, event->selected_choice);
+    if (!choice) {
+        d_LogError("Game_ApplyEventConsequences: Invalid selected_choice");
+        return;
+    }
+
+    // Apply consequences using event.c helper
+    ApplyEventConsequences(event, player, game->deck);
+
+    // Apply enemy HP multiplier for next combat (if not default 1.0)
+    if (choice->enemy_hp_multiplier != 1.0f) {
+        game->next_enemy_hp_multiplier = choice->enemy_hp_multiplier;
+        d_LogInfoF("Event consequence: Next enemy HP multiplier set to %.2f", choice->enemy_hp_multiplier);
+    }
+
+    // Trigger game events for any abilities that might react
+    // (Future: enemy abilities could react to chip/sanity changes)
+    if (choice->chips_delta != 0) {
+        d_LogDebugF("Event consequence: chips changed by %+d", choice->chips_delta);
+        // TODO: Add GAME_EVENT_CHIPS_CHANGED to GameEvent_t enum
+        // Game_TriggerEvent(game, GAME_EVENT_CHIPS_CHANGED);
+    }
+
+    if (choice->sanity_delta != 0) {
+        d_LogDebugF("Event consequence: sanity changed by %+d", choice->sanity_delta);
+        // TODO: Add GAME_EVENT_SANITY_CHANGED to GameEvent_t enum
+        // Game_TriggerEvent(game, GAME_EVENT_SANITY_CHANGED);
+    }
+
+    d_LogInfoF("Applied event consequences: chips=%+d, sanity=%+d, tags=%zu/%zu, hp_mult=%.2f",
+               choice->chips_delta, choice->sanity_delta,
+               choice->granted_tags->count, choice->removed_tags->count,
+               choice->enemy_hp_multiplier);
+}
+
+int Game_GetEventRerollCost(const GameContext_t* game) {
+    if (!game) return 50;  // Fallback to default
+    return game->event_reroll_cost;
+}
+
+void Game_IncrementRerollCost(GameContext_t* game) {
+    if (!game) return;
+    game->event_reroll_cost *= 2;
+    d_LogDebugF("Event reroll cost doubled: %d", game->event_reroll_cost);
+}
+
+void Game_ResetRerollCost(GameContext_t* game) {
+    if (!game) return;
+    game->event_reroll_cost = game->event_reroll_base_cost;
+    d_LogDebugF("Event reroll cost reset to base: %d", game->event_reroll_cost);
 }
 
 // ============================================================================

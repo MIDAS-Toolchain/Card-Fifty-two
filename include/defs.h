@@ -47,6 +47,7 @@ typedef enum {
 // Game states
 typedef enum {
     STATE_MENU,          // Main menu
+    STATE_INTRO_NARRATIVE,// Tutorial intro story (before first combat)
     STATE_BETTING,       // Players place bets
     STATE_DEALING,       // Initial card deal
     STATE_PLAYER_TURN,   // Player actions (hit/stand)
@@ -55,6 +56,7 @@ typedef enum {
     STATE_ROUND_END,     // Display results for THIS round
     STATE_COMBAT_VICTORY,// Enemy defeated celebration
     STATE_REWARD_SCREEN, // Card selection/rewards
+    STATE_COMBAT_PREVIEW,// Combat preview for elite/boss (no reroll)
     STATE_EVENT_PREVIEW, // Event preview with reroll system
     STATE_EVENT,         // Event encounter (dialogue/choices)
     STATE_TARGETING      // Trinket active targeting (select card target)

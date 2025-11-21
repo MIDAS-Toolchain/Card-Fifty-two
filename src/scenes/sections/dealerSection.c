@@ -522,32 +522,21 @@ bool UpdateDealerAbilityHoverTracking(DealerSection_t* section, Enemy_t* enemy, 
     size_t ability_count = enemy->active_abilities->count;
     if (ability_count == 0) return false;
 
-    // Check if hovering over any ability
-    if (section->ability_display && section->ability_display->hovered_index >= 0) {
-        int hovered_idx = section->ability_display->hovered_index;
-
+    // Check if hovering over the middle ability (index 1)
+    if (section->ability_display && section->ability_display->hovered_index == 1) {
         // Update timer
         section->ability_hover_timer += dt;
 
-        // After 0.3 seconds of hovering, mark this ability as hovered
-        if (section->ability_hover_timer >= 0.3f && hovered_idx < 8) {
-            if (!section->abilities_hovered[hovered_idx]) {
-                section->abilities_hovered[hovered_idx] = true;
-                section->abilities_hovered_count++;
-                d_LogInfoF("Tutorial: Ability %d hovered (%d/%zu abilities total)",
-                          hovered_idx, section->abilities_hovered_count, ability_count);
-            }
-            section->ability_hover_timer = 0.0f;  // Reset for next ability
+        // After 0.3 seconds of hovering the middle ability, trigger tutorial
+        if (section->ability_hover_timer >= 0.3f) {
+            d_LogInfo("Tutorial: Middle ability (index 1) hovered for 0.3s");
+            section->ability_tutorial_completed = true;  // Mark as completed
+            section->ability_hover_timer = 0.0f;
+            return true;  // Trigger event once
         }
     } else {
-        // Reset timer if not hovering
+        // Reset timer if not hovering middle ability
         section->ability_hover_timer = 0.0f;
-    }
-
-    // Check if all abilities have been hovered
-    if (section->abilities_hovered_count >= (int)ability_count) {
-        section->ability_tutorial_completed = true;  // Mark as completed
-        return true;  // Trigger event once
     }
 
     return false;

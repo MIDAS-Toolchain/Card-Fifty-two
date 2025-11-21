@@ -2,74 +2,14 @@
 #define TRINKET_H
 
 #include "common.h"
-#include "game.h"  // For GameEvent_t
 
-// Forward declarations
-typedef struct Player Player_t;
-typedef struct GameContext GameContext_t;
-typedef struct Trinket Trinket_t;
+// NOTE: Trinket_t, TrinketRarity_t, TrinketTargetType_t are defined in structs.h
+// (moved there to resolve circular dependency: trinket.h → common.h → structs.h → Trinket_t)
 
-// ============================================================================
-// TRINKET ENUMS
-// ============================================================================
-
-/**
- * TrinketTargetType_t - What can trinket actives target?
- */
-typedef enum {
-    TRINKET_TARGET_NONE,        // No targeting (self-buff)
-    TRINKET_TARGET_CARD,        // Target a card (player or dealer)
-    TRINKET_TARGET_ENEMY,       // Target the enemy
-    TRINKET_TARGET_HAND,        // Target entire hand (yours or dealer's)
-} TrinketTargetType_t;
-
-// ============================================================================
-// TRINKET STRUCTURE
-// ============================================================================
-
-/**
- * Trinket_t - Equipment with passive and active effects
- *
- * Constitutional Amendment #1 (2025-11-14): VALUE TYPE (like Card_t, StatusEffectInstance_t)
- * - Global registry (g_trinket_templates) stores templates as VALUES
- * - Players store copies in trinket_slots (dArray_t of Trinket_t)
- * - Equipping COPIES template → player slot (each player has own instance)
- * - Passives triggered by GameEvent_t (reuse existing system)
- * - Actives manually triggered with targeting
- * - Tweening uses TweenFloatInArray() with slot_index (NO dangling pointers!)
- */
-typedef struct Trinket {
-    int trinket_id;                    // Unique ID (0-N)
-    dString_t* name;                   // "Degenerate's Gambit"
-    dString_t* description;            // Full description
-
-    // Passive (event-triggered)
-    GameEvent_t passive_trigger;       // Which event triggers passive?
-    void (*passive_effect)(Player_t* player, GameContext_t* game, Trinket_t* self, size_t slot_index);
-    dString_t* passive_description;    // "When you HIT on 15+: Deal X damage"
-
-    // Active (player-activated)
-    TrinketTargetType_t active_target_type;
-    void (*active_effect)(Player_t* player, GameContext_t* game, void* target, Trinket_t* self, size_t slot_index);
-    int active_cooldown_max;           // Turns until reusable
-    int active_cooldown_current;       // Current cooldown (0 = ready)
-    dString_t* active_description;     // "Double a card ≤5"
-
-    // State tracking (per-trinket scaling)
-    int passive_damage_bonus;          // For Degenerate: +5 per active use
-    int total_damage_dealt;            // Total damage dealt this combat (for stats)
-    // Future: Add more state fields as needed
-
-    // Animation state (for shake/flash on proc - matches status effects/abilities)
-    float shake_offset_x;              // X shake offset (tweened)
-    float shake_offset_y;              // Y shake offset (tweened)
-    float flash_alpha;                 // Red flash alpha (tweened, 0-255)
-
-} Trinket_t;
-
-// Global trinket template registry (Constitutional: value types)
-// Templates copied into player slots - each player has own instance with own state
-extern dTable_t* g_trinket_templates;  // trinket_id → Trinket_t (value type!)
+// Global trinket template registry (Constitutional: value types, NOT pointers!)
+// Templates stored BY VALUE in table - players copy template → their slots
+// Pattern matches g_players (ADR-003): Store by value, return pointer to value in table
+extern dTable_t* g_trinket_templates;  // trinket_id → Trinket_t (stored BY VALUE!)
 
 // ============================================================================
 // LIFECYCLE
@@ -91,25 +31,30 @@ void InitTrinketSystem(void);
 void CleanupTrinketSystem(void);
 
 /**
- * CreateTrinket - Allocate and initialize a trinket
+ * CreateTrinketTemplate - Create and register trinket template
  *
  * @param trinket_id - Unique ID
  * @param name - Trinket name (copied to dString_t)
  * @param description - Full description (copied to dString_t)
- * @return Trinket_t* - Heap-allocated trinket, or NULL on failure
+ * @param rarity - Rarity tier (common/uncommon/rare/legendary)
+ * @return Trinket_t* - Pointer to VALUE in g_trinket_templates table, or NULL on failure
  *
- * Constitutional pattern: Heap-allocated pointer type
+ * Constitutional pattern: Returns pointer to VALUE stored in table (like g_players)
+ * Template is stored BY VALUE in g_trinket_templates, players copy it to their slots
+ * NO malloc() - builds on stack, stores by value via d_SetDataInTable()
  */
-Trinket_t* CreateTrinket(int trinket_id, const char* name, const char* description);
+Trinket_t* CreateTrinketTemplate(int trinket_id, const char* name, const char* description, TrinketRarity_t rarity);
 
 /**
- * DestroyTrinket - Free trinket resources
+ * CleanupTrinketValue - Free dString_t resources inside trinket value
  *
- * @param trinket - Pointer to trinket pointer (double pointer for nulling)
+ * @param trinket - Pointer to trinket value
  *
- * Destroys internal dString_t and frees trinket struct
+ * Frees internal dString_t but NOT the trinket struct itself
+ * (struct is stored by value in table/array, Daedalus owns it)
+ * Pattern matches status effect cleanup
  */
-void DestroyTrinket(Trinket_t** trinket);
+void CleanupTrinketValue(Trinket_t* trinket);
 
 /**
  * GetTrinketByID - Lookup trinket by ID from registry
@@ -187,6 +132,36 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
 void TickTrinketCooldowns(Player_t* player);
 
 // ============================================================================
+// MODIFIER SYSTEM (Called during win/loss resolution like status effects)
+// ============================================================================
+
+/**
+ * ModifyWinningsWithTrinkets - Apply trinket win modifiers (like Elite Membership)
+ *
+ * @param player - Player who won
+ * @param base_winnings - Base winnings before trinket modifiers
+ * @param bet_amount - Original bet amount (for percentage calculations)
+ * @return int - Modified winnings after trinket bonuses
+ *
+ * Called in game.c AFTER status effect modifiers, BEFORE clearing current_bet
+ * Pattern matches ModifyWinnings() from statusEffects.c (ADR-002)
+ */
+int ModifyWinningsWithTrinkets(Player_t* player, int base_winnings, int bet_amount);
+
+/**
+ * ModifyLossesWithTrinkets - Apply trinket loss modifiers (like Elite Membership refund)
+ *
+ * @param player - Player who lost
+ * @param base_loss - Base loss amount (bet amount)
+ * @param bet_amount - Original bet amount (for percentage calculations)
+ * @return int - Chip refund from trinkets (added back to player->chips)
+ *
+ * Called in game.c AFTER status effect modifiers, AFTER LoseBet()
+ * Pattern matches ModifyLosses() from statusEffects.c (ADR-002)
+ */
+int ModifyLossesWithTrinkets(Player_t* player, int base_loss, int bet_amount);
+
+// ============================================================================
 // ACTIVE TARGETING
 // ============================================================================
 
@@ -246,6 +221,22 @@ int GetTrinketCooldown(const Trinket_t* trinket);
  * @return bool - true if cooldown is 0, false otherwise
  */
 bool IsTrinketReady(const Trinket_t* trinket);
+
+/**
+ * GetTrinketRarityName - Get human-readable rarity name
+ *
+ * @param rarity - Rarity tier
+ * @return const char* - "Common", "Uncommon", "Rare", or "Legendary"
+ */
+const char* GetTrinketRarityName(TrinketRarity_t rarity);
+
+/**
+ * GetTrinketRarityColor - Get RGB color for rarity display
+ *
+ * @param rarity - Rarity tier
+ * @param r, g, b - Output color values (0-255)
+ */
+void GetTrinketRarityColor(TrinketRarity_t rarity, int* r, int* g, int* b);
 
 // ============================================================================
 // CLASS TRINKET SYSTEM

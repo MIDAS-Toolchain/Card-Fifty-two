@@ -202,8 +202,8 @@ void UpdateTutorialListeners(TutorialSystem_t* system, float dt) {
 
     TutorialListener_t* listener = &system->current_step->listener;
 
-    // Check if listener triggered
-    if (listener->triggered) {
+    // Check if listener triggered (only process if dialogue is currently visible to prevent immediate re-trigger)
+    if (listener->triggered && system->dialogue_visible) {
         // Hide dialogue immediately so user can see game action
         system->dialogue_visible = false;
 
@@ -345,27 +345,33 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
 
     // Mouse click on skip/finish button
     if (app.mouse.pressed) {
-        int dialogue_x = ((SCREEN_WIDTH - DIALOGUE_WIDTH) / 2) + system->current_step->dialogue_x_offset;
+        // Final step gets wider dialogue box
+        int dialogue_width = system->current_step->is_final_step ? 800 : DIALOGUE_WIDTH;
+        int dialogue_height = DIALOGUE_HEIGHT;
+        int button_width = system->current_step->is_final_step ? 120 : 80;
+        int button_height = 30;
+
+        int dialogue_x = ((SCREEN_WIDTH - dialogue_width) / 2) + system->current_step->dialogue_x_offset;
         int dialogue_y = system->current_step->dialogue_y_position;
-        int button_x = dialogue_x + DIALOGUE_WIDTH - DIALOGUE_ARROW_MARGIN - 80;
-        int button_y = dialogue_y + DIALOGUE_HEIGHT - DIALOGUE_ARROW_MARGIN - 30;
+        int button_x = dialogue_x + dialogue_width - DIALOGUE_ARROW_MARGIN - button_width;
+        int button_y = dialogue_y + dialogue_height - DIALOGUE_ARROW_MARGIN - button_height;
 
         // DEBUG: Log click and bounds (rate-limited to once per second)
         d_LogRateLimitedF(D_LOG_RATE_LIMIT_FLAG_HASH_FORMAT_STRING, D_LOG_LEVEL_INFO, 1, 1.0,
                          "🖱️ CLICK at (%d,%d) | Dialogue: (%d,%d)-(%d,%d)",
                          app.mouse.x, app.mouse.y,
-                         dialogue_x, dialogue_y, dialogue_x + DIALOGUE_WIDTH, dialogue_y + DIALOGUE_HEIGHT);
+                         dialogue_x, dialogue_y, dialogue_x + dialogue_width, dialogue_y + dialogue_height);
 
-        // Check if click is on skip button
-        if (app.mouse.x >= button_x && app.mouse.x <= button_x + 80 &&
-            app.mouse.y >= button_y && app.mouse.y <= button_y + 30) {
-            d_LogInfo("  ➡️ Click on SKIP button - consuming");
+        // Check if click is on skip/finish button
+        if (app.mouse.x >= button_x && app.mouse.x <= button_x + button_width &&
+            app.mouse.y >= button_y && app.mouse.y <= button_y + button_height) {
+            d_LogInfo("  ➡️ Click on SKIP/FINISH button - consuming");
             button_clicked = true;
             app.mouse.pressed = 0;
         }
         // Check if click is anywhere INSIDE dialogue box
-        else if (app.mouse.x >= dialogue_x && app.mouse.x <= dialogue_x + DIALOGUE_WIDTH &&
-                 app.mouse.y >= dialogue_y && app.mouse.y <= dialogue_y + DIALOGUE_HEIGHT) {
+        else if (app.mouse.x >= dialogue_x && app.mouse.x <= dialogue_x + dialogue_width &&
+                 app.mouse.y >= dialogue_y && app.mouse.y <= dialogue_y + dialogue_height) {
             d_LogInfo("  ➡️ Click in DIALOGUE - consuming");
             app.mouse.pressed = 0;
         }
@@ -448,16 +454,20 @@ static void DrawTutorialButton(int x, int y, int w, int h,
 static void RenderDialogue(const TutorialStep_t* step) {
     if (!step || !step->dialogue_text) return;
 
+    // Final step gets wider dialogue box
+    int dialogue_width = step->is_final_step ? 800 : DIALOGUE_WIDTH;
+    int dialogue_height = DIALOGUE_HEIGHT;
+
     // Dialogue box position (use step-specific X offset and Y position)
-    int dialogue_x = ((SCREEN_WIDTH - DIALOGUE_WIDTH) / 2) + step->dialogue_x_offset;
+    int dialogue_x = ((SCREEN_WIDTH - dialogue_width) / 2) + step->dialogue_x_offset;
     int dialogue_y = step->dialogue_y_position;
 
     // Draw dialogue background
-    a_DrawFilledRect(dialogue_x, dialogue_y, DIALOGUE_WIDTH, DIALOGUE_HEIGHT,
+    a_DrawFilledRect(dialogue_x, dialogue_y, dialogue_width, dialogue_height,
                      DIALOGUE_BG.r, DIALOGUE_BG.g, DIALOGUE_BG.b, DIALOGUE_BG.a);
 
     // Draw dialogue border
-    a_DrawRect(dialogue_x, dialogue_y, DIALOGUE_WIDTH, DIALOGUE_HEIGHT,
+    a_DrawRect(dialogue_x, dialogue_y, dialogue_width, dialogue_height,
                DIALOGUE_BORDER.r, DIALOGUE_BORDER.g, DIALOGUE_BORDER.b, DIALOGUE_BORDER.a);
 
     // Draw dialogue text (split by \n and render each line separately)
@@ -569,16 +579,18 @@ static void RenderDialogue(const TutorialStep_t* step) {
 
     // Draw skip/finish button at bottom-right using helper
     const char* button_text = step->is_final_step ? "Finish" : "Skip";
-    int button_x = dialogue_x + DIALOGUE_WIDTH - DIALOGUE_ARROW_MARGIN - 80;
-    int button_y = dialogue_y + DIALOGUE_HEIGHT - DIALOGUE_ARROW_MARGIN - 30;
+    int button_width = step->is_final_step ? 120 : 80;  // Wider for "Finish"
+    int button_height = 30;
+    int button_x = dialogue_x + dialogue_width - DIALOGUE_ARROW_MARGIN - button_width;
+    int button_y = dialogue_y + dialogue_height - DIALOGUE_ARROW_MARGIN - button_height;
 
     // Check if button is hovered
-    bool skip_hovered = (app.mouse.x >= button_x && app.mouse.x <= button_x + 80 &&
-                         app.mouse.y >= button_y && app.mouse.y <= button_y + 30);
+    bool skip_hovered = (app.mouse.x >= button_x && app.mouse.x <= button_x + button_width &&
+                         app.mouse.y >= button_y && app.mouse.y <= button_y + button_height);
 
     // Use helper for properly centered text with hover effect
     aColor_t button_bg = {DIALOGUE_ARROW.r, DIALOGUE_ARROW.g, DIALOGUE_ARROW.b, 100};
-    DrawTutorialButton(button_x, button_y, 80, 30,
+    DrawTutorialButton(button_x, button_y, button_width, button_height,
                        button_text,
                        button_bg,
                        DIALOGUE_TEXT,

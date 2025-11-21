@@ -359,25 +359,65 @@ void RenderLeftSidebarSection(LeftSidebarSection_t* section, Player_t* player, i
 
     int portrait_y = a_FlexGetItemY(section->layout, 9);
 
-    // Load portrait if not already loaded
-    if (!player->portrait_surface) {
-        // Build path: resources/portraits/player_{id}.png
-        dString_t* path = d_StringInit();
-        d_StringFormat(path, "resources/portraits/player_%d.png", player->player_id);
-        LoadPlayerPortrait(player, d_StringPeek(path));
-        d_StringDestroy(path);
+    // Determine portrait based on sanity percentage
+    float sanity_percent = GetPlayerSanityPercent(player);
+    int portrait_sanity = 100;  // Default to 100 sanity portrait
+
+    if (sanity_percent > 0.75f) {
+        portrait_sanity = 100;  // 76-100% sanity
+    } else if (sanity_percent > 0.50f) {
+        portrait_sanity = 75;   // 51-75% sanity
+    } else if (sanity_percent > 0.25f) {
+        portrait_sanity = 50;   // 26-50% sanity
+    } else {
+        portrait_sanity = 0;    // 0-25% sanity
     }
+
+    // Build path: resources/portraits/degenerate/degenerate_{0,50,75,100}_sanity.png
+    dString_t* path = d_StringInit();
+    d_StringFormat(path, "resources/portraits/degenerate/degenerate_%d_sanity.png", portrait_sanity);
+
+    // Reload portrait if sanity tier changed or new game started
+    static int last_portrait_sanity = -1;
+    static Player_t* last_player = NULL;
+
+    // Reset cache if player changed (new game)
+    if (player != last_player) {
+        last_portrait_sanity = -1;
+        last_player = player;
+    }
+
+    if (portrait_sanity != last_portrait_sanity) {
+        LoadPlayerPortrait(player, d_StringPeek(path));
+        last_portrait_sanity = portrait_sanity;
+        d_LogInfoF("Portrait changed to %d%% sanity tier (actual sanity: %.1f%%)", portrait_sanity, sanity_percent * 100);
+    }
+
+    d_StringDestroy(path);
+
+    // Check if mouse is hovering over portrait (needed for both portrait and sanity bar offset)
+    int mouse_x, mouse_y;
+    SDL_GetMouseState(&mouse_x, &mouse_y);
+
+    int portrait_x = center_x - PORTRAIT_SIZE / 2;
+    bool portrait_hovering = (mouse_x >= portrait_x && mouse_x < portrait_x + PORTRAIT_SIZE &&
+                              mouse_y >= portrait_y && mouse_y < portrait_y + PORTRAIT_SIZE);
 
     // Get portrait texture (auto-refreshes if dirty)
     SDL_Texture* portrait_texture = GetPlayerPortraitTexture(player);
     if (portrait_texture) {
-        // Render centered portrait
-        int portrait_x = center_x - PORTRAIT_SIZE / 2;
-        SDL_Rect dst = {portrait_x, portrait_y, PORTRAIT_SIZE, PORTRAIT_SIZE};
+        // Scale up by 10% on hover, fade from 75% to 90% opacity
+        int render_size = portrait_hovering ? (int)(PORTRAIT_SIZE * 1.1f) : PORTRAIT_SIZE;
+        int render_x = center_x - render_size / 2;
+        int render_y = portrait_y - (render_size - PORTRAIT_SIZE) / 2;  // Keep centered vertically
+        int alpha = portrait_hovering ? 230 : 191;  // 90% on hover, 75% normally (255 * 0.75 = 191)
+
+        SDL_Rect dst = {render_x, render_y, render_size, render_size};
+        SDL_SetTextureAlphaMod(portrait_texture, alpha);
         SDL_RenderCopy(app.renderer, portrait_texture, NULL, &dst);
+        SDL_SetTextureAlphaMod(portrait_texture, 255);  // Reset to full opacity
     } else {
         // Fallback: Draw placeholder rect
-        int portrait_x = center_x - PORTRAIT_SIZE / 2;
         a_DrawFilledRect(portrait_x, portrait_y, PORTRAIT_SIZE, PORTRAIT_SIZE, 100, 100, 100, 255);
         a_DrawRect(portrait_x, portrait_y, PORTRAIT_SIZE, PORTRAIT_SIZE, 150, 150, 150, 255);
         a_DrawText("?", center_x, portrait_y + PORTRAIT_SIZE / 2 - 10,
@@ -388,9 +428,11 @@ void RenderLeftSidebarSection(LeftSidebarSection_t* section, Player_t* player, i
     // 6. Sanity Bar (FlexBox item 10) - UPDATED INDEX - No label, no text, just bar
     // ========================================================================
 
-    int sanity_bar_y = a_FlexGetItemY(section->layout, 10);
+    // Calculate portrait expansion (10% = 20px down, half is 10px)
+    int portrait_expansion_offset = portrait_hovering ? 10 : 0;
+
+    int sanity_bar_y = a_FlexGetItemY(section->layout, 10) + portrait_expansion_offset;
     int bar_x = center_x - SANITY_BAR_WIDTH / 2;
-    float sanity_percent = GetPlayerSanityPercent(player);
     RenderSanityBar(bar_x, sanity_bar_y, SANITY_BAR_WIDTH, SANITY_BAR_HEIGHT, sanity_percent);
 
 }

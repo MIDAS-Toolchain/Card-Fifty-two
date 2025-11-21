@@ -7,6 +7,7 @@
 #include "player.h"
 #include "deck.h"
 #include "random.h"
+#include "trinket.h"  // For trinket reward system
 
 // ============================================================================
 // INTERNAL HELPERS
@@ -33,6 +34,10 @@ static void DestroyEventChoice(EventChoice_t* choice) {
     if (choice->granted_tags) {
         d_DestroyArray(choice->granted_tags);
         choice->granted_tags = NULL;
+    }
+    if (choice->tag_target_strategies) {
+        d_DestroyArray(choice->tag_target_strategies);
+        choice->tag_target_strategies = NULL;
     }
     if (choice->removed_tags) {
         d_DestroyArray(choice->removed_tags);
@@ -134,9 +139,20 @@ void AddEventChoice(EventEncounter_t* event, const char* text, const char* resul
     choice.sanity_delta = sanity_delta;
     // d_InitArray(capacity, element_size) - capacity FIRST!
     choice.granted_tags = d_InitArray(2, sizeof(CardTag_t));
+    choice.tag_target_strategies = d_InitArray(2, sizeof(TagTargetStrategy_t));
     choice.removed_tags = d_InitArray(2, sizeof(CardTag_t));
 
-    if (!choice.text || !choice.result_text || !choice.granted_tags || !choice.removed_tags) {
+    // Initialize requirement to NONE (no requirement by default)
+    choice.requirement.type = REQUIREMENT_NONE;
+
+    // Initialize enemy modifiers to defaults
+    choice.enemy_hp_multiplier = 1.0f;  // Normal HP (no modification)
+
+    // Initialize trinket reward to none
+    choice.trinket_reward_id = -1;  // -1 = no trinket reward
+
+    if (!choice.text || !choice.result_text || !choice.granted_tags ||
+        !choice.tag_target_strategies || !choice.removed_tags) {
         d_LogFatal("AddEventChoice: Failed to initialize choice resources");
         DestroyEventChoice(&choice);
         return;
@@ -152,15 +168,22 @@ void AddEventChoice(EventEncounter_t* event, const char* text, const char* resul
 }
 
 void AddCardTagToChoice(EventEncounter_t* event, int choice_index, CardTag_t tag) {
+    // Backward compatible: uses TAG_TARGET_RANDOM_CARD strategy
+    AddCardTagToChoiceWithStrategy(event, choice_index, tag, TAG_TARGET_RANDOM_CARD);
+}
+
+void AddCardTagToChoiceWithStrategy(EventEncounter_t* event, int choice_index,
+                                     CardTag_t tag, TagTargetStrategy_t strategy) {
     if (!event || choice_index < 0 || (size_t)choice_index >= event->choices->count) {
-        d_LogError("AddCardTagToChoice: Invalid event or choice_index");
+        d_LogError("AddCardTagToChoiceWithStrategy: Invalid event or choice_index");
         return;
     }
 
     EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(event->choices, choice_index);
     d_AppendDataToArray(choice->granted_tags, &tag);
+    d_AppendDataToArray(choice->tag_target_strategies, &strategy);
 
-    d_LogInfoF("Choice %d: Added tag grant %s", choice_index, GetCardTagName(tag));
+    d_LogInfoF("Choice %d: Added tag grant %s (strategy: %d)", choice_index, GetCardTagName(tag), strategy);
 }
 
 void RemoveCardTagFromChoice(EventEncounter_t* event, int choice_index, CardTag_t tag) {
@@ -173,6 +196,51 @@ void RemoveCardTagFromChoice(EventEncounter_t* event, int choice_index, CardTag_
     d_AppendDataToArray(choice->removed_tags, &tag);
 
     d_LogInfoF("Choice %d: Added tag removal %s", choice_index, GetCardTagName(tag));
+}
+
+void SetChoiceRequirement(EventEncounter_t* event, int choice_index, ChoiceRequirement_t requirement) {
+    if (!event || choice_index < 0 || (size_t)choice_index >= event->choices->count) {
+        d_LogError("SetChoiceRequirement: Invalid event or choice_index");
+        return;
+    }
+
+    EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(event->choices, choice_index);
+    choice->requirement = requirement;
+
+    d_LogInfoF("Choice %d: Set requirement (type: %d)", choice_index, requirement.type);
+}
+
+void SetChoiceTrinketReward(EventEncounter_t* event, int choice_index, int trinket_id) {
+    if (!event || choice_index < 0 || (size_t)choice_index >= event->choices->count) {
+        d_LogError("SetChoiceTrinketReward: Invalid event or choice_index");
+        return;
+    }
+
+    if (trinket_id < 0) {
+        d_LogWarning("SetChoiceTrinketReward: Negative trinket_id (use -1 for no reward)");
+    }
+
+    EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(event->choices, choice_index);
+    choice->trinket_reward_id = trinket_id;
+
+    d_LogInfoF("Choice %d: Set trinket reward (ID: %d)", choice_index, trinket_id);
+}
+
+void SetChoiceEnemyHPMultiplier(EventEncounter_t* event, int choice_index, float multiplier) {
+    if (!event || choice_index < 0 || (size_t)choice_index >= event->choices->count) {
+        d_LogError("SetChoiceEnemyHPMultiplier: Invalid event or choice_index");
+        return;
+    }
+
+    if (multiplier < 0.0f) {
+        d_LogWarning("SetChoiceEnemyHPMultiplier: Negative multiplier clamped to 0");
+        multiplier = 0.0f;
+    }
+
+    EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(event->choices, choice_index);
+    choice->enemy_hp_multiplier = multiplier;
+
+    d_LogInfoF("Choice %d: Set enemy HP multiplier to %.2f", choice_index, multiplier);
 }
 
 void SelectEventChoice(EventEncounter_t* event, int choice_index) {
@@ -242,15 +310,154 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
         ModifyPlayerSanity(player, choice->sanity_delta);
     }
 
-    // Apply granted tags (to random cards)
+    // Apply granted tags (using targeting strategies)
     for (size_t i = 0; i < choice->granted_tags->count; i++) {
         CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray(choice->granted_tags, i);
+        TagTargetStrategy_t* strategy = (TagTargetStrategy_t*)d_IndexDataFromArray(choice->tag_target_strategies, i);
 
-        // Pick random card from deck
-        int random_card_id = GetRandomInt(0, 51);
-        AddCardTag(random_card_id, *tag);
+        if (!tag || !strategy) {
+            d_LogErrorF("ApplyEventConsequences: Missing tag or strategy at index %zu", i);
+            continue;
+        }
 
-        d_LogInfoF("Granted tag %s to card %d", GetCardTagName(*tag), random_card_id);
+        switch (*strategy) {
+            case TAG_TARGET_RANDOM_CARD: {
+                // Random card from full 52-card deck
+                int random_card_id = GetRandomInt(0, 51);
+                AddCardTag(random_card_id, *tag);
+                d_LogInfoF("Granted tag %s to card %d (RANDOM)", GetCardTagName(*tag), random_card_id);
+                break;
+            }
+
+            case TAG_TARGET_HIGHEST_UNTAGGED: {
+                // Highest rank card that doesn't already have this tag
+                int highest_card_id = -1;
+                CardRank_t highest_rank = RANK_ACE;  // Start at lowest
+                for (int card_id = 0; card_id < 52; card_id++) {
+                    if (!HasCardTag(card_id, *tag)) {  // Skip cards already tagged
+                        CardRank_t rank = (card_id % 13) + 1;  // Calculate rank from card_id
+                        if (highest_card_id < 0 || rank > highest_rank) {
+                            highest_rank = rank;
+                            highest_card_id = card_id;
+                        }
+                    }
+                }
+                if (highest_card_id >= 0) {
+                    AddCardTag(highest_card_id, *tag);
+                    d_LogInfoF("Granted tag %s to card %d (HIGHEST_UNTAGGED)", GetCardTagName(*tag), highest_card_id);
+                } else {
+                    d_LogInfo("HIGHEST_UNTAGGED: All cards already have this tag");
+                }
+                break;
+            }
+
+            case TAG_TARGET_LOWEST_UNTAGGED: {
+                // Lowest rank card that doesn't already have this tag
+                int lowest_card_id = -1;
+                CardRank_t lowest_rank = RANK_KING;  // Start at highest
+                for (int card_id = 0; card_id < 52; card_id++) {
+                    if (!HasCardTag(card_id, *tag)) {  // Skip cards already tagged
+                        CardRank_t rank = (card_id % 13) + 1;  // Calculate rank from card_id
+                        if (lowest_card_id < 0 || rank < lowest_rank) {
+                            lowest_rank = rank;
+                            lowest_card_id = card_id;
+                        }
+                    }
+                }
+                if (lowest_card_id >= 0) {
+                    AddCardTag(lowest_card_id, *tag);
+                    d_LogInfoF("Granted tag %s to card %d (LOWEST_UNTAGGED)", GetCardTagName(*tag), lowest_card_id);
+                } else {
+                    d_LogInfo("LOWEST_UNTAGGED: All cards already have this tag");
+                }
+                break;
+            }
+
+            case TAG_TARGET_SUIT_HEARTS: {
+                // All 13 hearts (card_id 0-12)
+                int count = 0;
+                for (int card_id = 0; card_id < 13; card_id++) {
+                    AddCardTag(card_id, *tag);
+                    count++;
+                }
+                d_LogInfoF("Granted tag %s to %d hearts (SUIT_HEARTS)", GetCardTagName(*tag), count);
+                break;
+            }
+
+            case TAG_TARGET_SUIT_DIAMONDS: {
+                // All 13 diamonds (card_id 13-25)
+                int count = 0;
+                for (int card_id = 13; card_id < 26; card_id++) {
+                    AddCardTag(card_id, *tag);
+                    count++;
+                }
+                d_LogInfoF("Granted tag %s to %d diamonds (SUIT_DIAMONDS)", GetCardTagName(*tag), count);
+                break;
+            }
+
+            case TAG_TARGET_SUIT_CLUBS: {
+                // All 13 clubs (card_id 26-38)
+                int count = 0;
+                for (int card_id = 26; card_id < 39; card_id++) {
+                    AddCardTag(card_id, *tag);
+                    count++;
+                }
+                d_LogInfoF("Granted tag %s to %d clubs (SUIT_CLUBS)", GetCardTagName(*tag), count);
+                break;
+            }
+
+            case TAG_TARGET_SUIT_SPADES: {
+                // All 13 spades (card_id 39-51)
+                int count = 0;
+                for (int card_id = 39; card_id < 52; card_id++) {
+                    AddCardTag(card_id, *tag);
+                    count++;
+                }
+                d_LogInfoF("Granted tag %s to %d spades (SUIT_SPADES)", GetCardTagName(*tag), count);
+                break;
+            }
+
+            case TAG_TARGET_RANK_ACES: {
+                // All 4 aces (one per suit)
+                int count = 0;
+                for (int card_id = 0; card_id < 52; card_id++) {
+                    CardRank_t rank = (card_id % 13) + 1;  // Calculate rank from card_id
+                    if (rank == RANK_ACE) {
+                        AddCardTag(card_id, *tag);
+                        count++;
+                    }
+                }
+                d_LogInfoF("Granted tag %s to %d aces (RANK_ACES)", GetCardTagName(*tag), count);
+                break;
+            }
+
+            case TAG_TARGET_RANK_FACE_CARDS: {
+                // All face cards (J, Q, K = 12 cards total)
+                int count = 0;
+                for (int card_id = 0; card_id < 52; card_id++) {
+                    CardRank_t rank = (card_id % 13) + 1;  // Calculate rank from card_id
+                    if (rank == RANK_JACK || rank == RANK_QUEEN || rank == RANK_KING) {
+                        AddCardTag(card_id, *tag);
+                        count++;
+                    }
+                }
+                d_LogInfoF("Granted tag %s to %d face cards (RANK_FACE_CARDS)", GetCardTagName(*tag), count);
+                break;
+            }
+
+            case TAG_TARGET_ALL_CARDS: {
+                // All 52 cards
+                for (int card_id = 0; card_id < 52; card_id++) {
+                    AddCardTag(card_id, *tag);
+                }
+                d_LogInfoF("Granted tag %s to all 52 cards (ALL_CARDS)", GetCardTagName(*tag));
+                break;
+            }
+
+            default:
+                d_LogErrorF("ApplyEventConsequences: Unknown strategy %d", *strategy);
+                break;
+        }
     }
 
     // Apply removed tags (from all cards)
@@ -267,7 +474,154 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
         d_LogInfoF("Removed tag %s from all cards", GetCardTagName(*tag));
     }
 
+    // Apply trinket reward
+    if (choice->trinket_reward_id >= 0) {
+        Trinket_t* trinket = GetTrinketByID(choice->trinket_reward_id);
+        if (trinket) {
+            int empty_slot = GetEmptyTrinketSlot(player);
+            if (empty_slot >= 0) {
+                EquipTrinket(player, empty_slot, trinket);
+                d_LogInfoF("Granted trinket: %s (slot %d)", GetTrinketName(trinket), empty_slot);
+            } else {
+                d_LogWarning("No empty trinket slot - trinket reward lost!");
+                // TODO: Show modal to player: "Inventory full - trinket lost"
+            }
+        } else {
+            d_LogErrorF("Trinket reward ID %d not found in registry", choice->trinket_reward_id);
+        }
+    }
+
     d_LogInfo("Event consequences applied");
+}
+
+// ============================================================================
+// REQUIREMENT SYSTEM
+// ============================================================================
+
+int CountCardsWithTag(CardTag_t tag) {
+    int count = 0;
+
+    // Iterate through all 52 cards (0-51)
+    for (int card_id = 0; card_id < 52; card_id++) {
+        if (HasCardTag(card_id, tag)) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+bool IsChoiceRequirementMet(const ChoiceRequirement_t* req, const Player_t* player) {
+    if (!req) {
+        d_LogError("IsChoiceRequirementMet: NULL requirement");
+        return true;  // Fail-safe: allow choice if requirement is NULL
+    }
+
+    switch (req->type) {
+        case REQUIREMENT_NONE:
+            // No requirement, always met
+            return true;
+
+        case REQUIREMENT_TAG_COUNT: {
+            // Count cards with specific tag in full 52-card deck
+            int count = CountCardsWithTag(req->data.tag_req.required_tag);
+            bool met = count >= req->data.tag_req.min_count;
+            d_LogDebugF("TAG_COUNT requirement: %d/%d cards with %s (met: %d)",
+                       count, req->data.tag_req.min_count,
+                       GetCardTagName(req->data.tag_req.required_tag), met);
+            return met;
+        }
+
+        case REQUIREMENT_TRINKET:
+            // Trinket system not yet implemented
+            d_LogWarning("TRINKET requirement check: Trinket system not implemented yet");
+            return false;  // Locked until trinket system exists
+
+        case REQUIREMENT_HP_THRESHOLD: {
+            if (!player) {
+                d_LogError("HP_THRESHOLD requirement: NULL player");
+                return false;
+            }
+            // Note: Player_t doesn't have HP field yet, using sanity as placeholder
+            // TODO: Update when HP system is implemented
+            d_LogWarning("HP_THRESHOLD requirement: Player HP system not implemented yet");
+            return false;
+        }
+
+        case REQUIREMENT_SANITY_THRESHOLD: {
+            if (!player) {
+                d_LogError("SANITY_THRESHOLD requirement: NULL player");
+                return false;
+            }
+            bool met = player->sanity >= req->data.sanity_req.threshold;
+            d_LogDebugF("SANITY_THRESHOLD requirement: %d >= %d (met: %d)",
+                       player->sanity, req->data.sanity_req.threshold, met);
+            return met;
+        }
+
+        case REQUIREMENT_CHIPS_THRESHOLD: {
+            if (!player) {
+                d_LogError("CHIPS_THRESHOLD requirement: NULL player");
+                return false;
+            }
+            bool met = player->chips >= req->data.chips_req.threshold;
+            d_LogDebugF("CHIPS_THRESHOLD requirement: %d >= %d (met: %d)",
+                       player->chips, req->data.chips_req.threshold, met);
+            return met;
+        }
+
+        default:
+            d_LogErrorF("IsChoiceRequirementMet: Unknown requirement type %d", req->type);
+            return false;
+    }
+}
+
+void GetRequirementTooltip(const ChoiceRequirement_t* req, dString_t* out) {
+    if (!req || !out) {
+        d_LogError("GetRequirementTooltip: NULL parameter");
+        return;
+    }
+
+    switch (req->type) {
+        case REQUIREMENT_NONE:
+            // No requirement, no tooltip needed
+            d_StringSet(out, "", 0);
+            break;
+
+        case REQUIREMENT_TAG_COUNT: {
+            int current_count = CountCardsWithTag(req->data.tag_req.required_tag);
+            d_StringFormat(out, "Requires at least %d %s cards (%d/%d)",
+                          req->data.tag_req.min_count,
+                          GetCardTagName(req->data.tag_req.required_tag),
+                          current_count,
+                          req->data.tag_req.min_count);
+            break;
+        }
+
+        case REQUIREMENT_TRINKET:
+            d_StringFormat(out, "Requires specific trinket (ID: %d)",
+                          req->data.trinket_req.required_trinket_id);
+            break;
+
+        case REQUIREMENT_HP_THRESHOLD:
+            d_StringFormat(out, "Requires HP >= %d",
+                          req->data.hp_req.threshold);
+            break;
+
+        case REQUIREMENT_SANITY_THRESHOLD:
+            d_StringFormat(out, "Requires sanity >= %d",
+                          req->data.sanity_req.threshold);
+            break;
+
+        case REQUIREMENT_CHIPS_THRESHOLD:
+            d_StringFormat(out, "Requires at least %d chips",
+                          req->data.chips_req.threshold);
+            break;
+
+        default:
+            d_StringFormat(out, "Unknown requirement type %d", req->type);
+            break;
+    }
 }
 
 // ============================================================================
@@ -299,324 +653,142 @@ const char* GetEventTypeName(EventType_t type) {
 }
 
 // ============================================================================
-// PRESET EVENTS
+// TUTORIAL EVENTS
 // ============================================================================
 
-EventEncounter_t* CreateGamblersBargainEvent(void) {
+/**
+ * CreateSystemMaintenanceEvent - "System Maintenance" event
+ *
+ * Theme: System corruption with choice to accelerate/sabotage
+ * Demonstrates locked choice requiring CURSED cards + enemy HP modification
+ */
+EventEncounter_t* CreateSystemMaintenanceEvent(void) {
     EventEncounter_t* event = CreateEvent(
-        "The Gambler's Bargain",
-        "A shadowy figure approaches with a deck of cards.\n"
-        "\"I offer you a choice, friend. Fortune favors the bold...\"",
+        "System Maintenance",
+        "The Didact's body sits motionless at the table.\n\n"
+        "A maintenance panel opens in the wall. You hear mechanical sounds—grinding, clicking, rebuilding.",
         EVENT_TYPE_CHOICE
     );
 
-    if (!event) return NULL;
+    if (!event) {
+        d_LogError("Failed to create SystemMaintenanceEvent");
+        return NULL;
+    }
 
-    // Option 1: High risk, high reward
+    // Choice A: Investigate panel (-10 sanity, Stack Trace trinket)
     AddEventChoice(event,
-                   "Accept the cursed chips (+20 chips, CURSED tag)",
-                   "You take the chips. They feel cold in your hand.\n"
-                   "One of your cards begins to darken...",
-                   20,   // +20 chips
-                   -5);  // -5 sanity
-    AddCardTagToChoice(event, 0, CARD_TAG_CURSED);
-
-    // Option 2: Safe blessing
-    AddEventChoice(event,
-                   "Pay for vampiric power (-10 chips, VAMPIRIC tag)",
-                   "You hand over the chips. Dark energy seeps into your deck.\n"
-                   "One card pulses with crimson light - it hungers.",
-                   -10,  // -10 chips
-                   5);   // +5 sanity
-    AddCardTagToChoice(event, 1, CARD_TAG_VAMPIRIC);
-
-    // Option 3: Decline
-    AddEventChoice(event,
-                   "Walk away (no change)",
-                   "The figure vanishes into the shadows.\n"
-                   "You continue on your path, unchanged.",
+                   "Investigate the panel (-10 sanity, gain Stack Trace)",
+                   "TEXT OUTPUT: \"DIAGNOSTIC_MODE_ACTIVE\"\n\n"
+                   "You dig through system logs. The corruption runs deep.\n"
+                   "The knowledge weighs on your mind.\n\n"
+                   "You recover a diagnostic tool from the wreckage.\n"
+                   "Every crash leaves a trace—now you can read them.",
                    0,    // No chips
-                   0);   // No sanity
+                   -10); // -10 sanity
+    SetChoiceTrinketReward(event, 0, 2);  // Grant Stack Trace (trinket_id = 2)
 
-    return event;
-}
-
-EventEncounter_t* CreateRiggedDeckEvent(void) {
-    EventEncounter_t* event = CreateEvent(
-        "The Rigged Deck",
-        "You discover a dealer's hidden stash of marked cards.\n"
-        "The deck pulses with unnatural energy...",
-        EVENT_TYPE_CHOICE
-    );
-
-    if (!event) return NULL;
-
-    // Option 1: Cleanse curses
+    // Choice B: Walk away (+20 chips, 3 random cards CURSED)
     AddEventChoice(event,
-                   "Cleanse the corruption (-15 sanity, remove CURSED)",
-                   "You focus your will, burning away the dark energy.\n"
-                   "The effort leaves you drained, but your deck is pure.",
-                   0,     // No chips
-                   -15);  // -15 sanity
-    RemoveCardTagFromChoice(event, 0, CARD_TAG_CURSED);
+                   "Walk away (+20 chips, 3 random cards CURSED)",
+                   "TEXT OUTPUT: \"REBUILD_CANCELLED\"\n"
+                   "TEXT OUTPUT: \"CORRUPTION_SPREADING\"\n\n"
+                   "You pocket some loose chips and leave.\n"
+                   "The panel's glow casts shadows on your cards.\n"
+                   "Three of them feel... wrong.",
+                   20,  // +20 chips
+                   0);  // No sanity change
+    // Tag 3 random cards as CURSED
+    AddCardTagToChoiceWithStrategy(event, 1, CARD_TAG_CURSED, TAG_TARGET_RANDOM_CARD);
+    AddCardTagToChoiceWithStrategy(event, 1, CARD_TAG_CURSED, TAG_TARGET_RANDOM_CARD);
+    AddCardTagToChoiceWithStrategy(event, 1, CARD_TAG_CURSED, TAG_TARGET_RANDOM_CARD);
 
-    // Option 2: Steal lucky cards
+    // Choice C: Sabotage maintenance [REQUIRES 1 CURSED CARD]
     AddEventChoice(event,
-                   "Steal the best cards (-30 chips, add LUCKY to 3 cards)",
-                   "You pocket the dealer's favorites. They'll notice eventually...\n"
-                   "Three of your cards now carry their luck.",
-                   -30,   // -30 chips (bribe cost)
-                   0);    // No sanity change
-    // Add 3 lucky tags (same tag added 3 times = 3 random cards)
-    AddCardTagToChoice(event, 1, CARD_TAG_LUCKY);
-    AddCardTagToChoice(event, 1, CARD_TAG_LUCKY);
-    AddCardTagToChoice(event, 1, CARD_TAG_LUCKY);
+                   "Sabotage the maintenance (Daemon 75% HP, -20 sanity) [LOCKED]",
+                   "TEXT OUTPUT: \"MANUAL_OVERRIDE_ACCEPTED\"\n"
+                   "TEXT OUTPUT: \"CORRUPTION_ACCELERATED\"\n\n"
+                   "You leverage the corrupted cards to sabotage the rebuild.\n"
+                   "The system destabilizes. The Daemon will be weakened...\n"
+                   "but your mind fractures further.",
+                   0,    // No chips
+                   -20); // -20 sanity
+    // Set requirement: needs at least 1 CURSED card
+    ChoiceRequirement_t req = {.type = REQUIREMENT_TAG_COUNT};
+    req.data.tag_req.required_tag = CARD_TAG_CURSED;
+    req.data.tag_req.min_count = 1;
+    SetChoiceRequirement(event, 2, req);
+    // Set enemy HP multiplier: Daemon starts at 75% HP
+    SetChoiceEnemyHPMultiplier(event, 2, 0.75f);
 
-    // Option 3: Leave it
-    AddEventChoice(event,
-                   "Leave it untouched (no change)",
-                   "You back away from the corrupted deck.\n"
-                   "Some mysteries are best left unsolved.",
-                   0,     // No chips
-                   0);    // No sanity
-
-    return event;
-}
-
-EventEncounter_t* CreateBrokenSlotMachineEvent(void) {
-    EventEncounter_t* event = CreateEvent(
-        "The Broken Slot Machine",
-        "An ancient slot machine sits in the corner, sparking erratically.\n"
-        "The display reads: \"MALFUNCTION - VOLATILE PAYOUT\"",
-        EVENT_TYPE_CHOICE
-    );
-
-    if (!event) return NULL;
-
-    // Option 1: Pull lever (volatile outcome)
-    int random_chips = GetRandomInt(-50, 50);
-    dString_t* pull_text = d_StringInit();
-    d_StringFormat(pull_text, "Pull the lever (volatile: %+d chips this time)", random_chips);
-
-    dString_t* pull_result = d_StringInit();
-    if (random_chips > 0) {
-        d_StringFormat(pull_result,
-                       "The machine whirrs and dings! Chips pour out!\n"
-                       "You gain %d chips from the jackpot.", random_chips);
-    } else {
-        d_StringFormat(pull_result,
-                       "The machine sparks and smokes! It devours your chips!\n"
-                       "You lose %d chips to the broken machine.", -random_chips);
-    }
-
-    AddEventChoice(event,
-                   d_StringPeek(pull_text),
-                   d_StringPeek(pull_result),
-                   random_chips,
-                   0);
-    d_StringDestroy(pull_text);
-    d_StringDestroy(pull_result);
-
-    // Option 2: Fix machine
-    AddEventChoice(event,
-                   "Try to fix it (-20 chips, add BRUTAL tag)",
-                   "You tinker with the machine's internals.\n"
-                   "One of your cards begins to glow with violent orange energy!",
-                   -20,   // Repair cost
-                   0);
-    AddCardTagToChoice(event, 1, CARD_TAG_BRUTAL);
-
-    // Option 3: Ignore
-    AddEventChoice(event,
-                   "Walk past it (no change)",
-                   "You give the machine a wide berth.\n"
-                   "It continues sparking ominously as you leave.",
-                   0,
-                   0);
-
-    return event;
-}
-
-EventEncounter_t* CreateDataBrokerEvent(void) {
-    EventEncounter_t* event = CreateEvent(
-        "The Data Broker's Offer",
-        "A terminal flickers to life in the corner.\n\n"
-        "TEXT OUTPUT: \"TRANSACTION AVAILABLE\"\n"
-        "TEXT OUTPUT: \"RESOURCES DETECTED: MENTAL_STABILITY\"\n"
-        "TEXT OUTPUT: \"EXCHANGE_RATE: FAVORABLE\"\n\n"
-        "The screen displays four options.",
-        EVENT_TYPE_CHOICE
-    );
-
-    if (!event) return NULL;
-
-    // Option 1: Decline (safe path - useless trinket placeholder)
-    AddEventChoice(event,
-                   "Decline transaction (no change)",
-                   "TEXT OUTPUT: \"TRANSACTION_DECLINED\"\n"
-                   "TEXT OUTPUT: \"EFFICIENCY_SUB-OPTIMAL\"\n\n"
-                   "The terminal goes dark.\n\n"
-                   "You walk away unchanged.\n"
-                   "The safe choice. The boring choice.",
-                   0,    // +0 chips
-                   0);   // +0 sanity
-    // TODO: Add useless trinket when trinket system implemented
-
-    // Option 2: Minor exchange (moderate risk)
-    AddEventChoice(event,
-                   "Accept minor exchange (+100 chips, -50 sanity)",
-                   "TEXT OUTPUT: \"PROCESSING_TRANSFER\"\n"
-                   "TEXT OUTPUT: \"MENTAL_STABILITY: 50% REDUCTION\"\n"
-                   "TEXT OUTPUT: \"CURRENCY_ACQUIRED: 100\"\n\n"
-                   "You feel your grip on reality loosening.\n"
-                   "The chips feel heavier than they should.\n\n"
-                   "[SANITY: 50%]\n"
-                   "[WARNING: BETTING_RESTRICTIONS_ACTIVE]",
-                   100,  // +100 chips
-                   -50); // -50 sanity (triggers 75% and 50% thresholds)
-
-    // Option 3: Major exchange (high risk - useful trinket placeholder)
-    AddEventChoice(event,
-                   "Accept major exchange (useful trinket, -75 sanity)",
-                   "TEXT OUTPUT: \"PROCESSING_TRANSFER\"\n"
-                   "TEXT OUTPUT: \"MENTAL_STABILITY: 75% REDUCTION\"\n"
-                   "TEXT OUTPUT: \"ASSET_ACQUIRED: [TRINKET_DATA]\"\n\n"
-                   "Your vision blurs at the edges.\n"
-                   "The world feels less... solid.\n"
-                   "The trinket pulses in your hand - is it real?\n\n"
-                   "[SANITY: 25%]\n"
-                   "[WARNING: CRITICAL_BETTING_RESTRICTIONS]",
-                   0,    // +0 chips
-                   -75); // -75 sanity (triggers all thresholds except 0%)
-    // TODO: Add useful trinket when trinket system implemented
-
-    // Option 4: Total exchange (maximum risk)
-    AddEventChoice(event,
-                   "Accept total exchange (+200 chips + trinket, -100 sanity)",
-                   "TEXT OUTPUT: \"PROCESSING_TRANSFER\"\n"
-                   "TEXT OUTPUT: \"MENTAL_STABILITY: CRITICAL_FAILURE\"\n"
-                   "TEXT OUTPUT: \"CURRENCY_ACQUIRED: 200\"\n"
-                   "TEXT OUTPUT: \"ASSET_ACQUIRED: [TRINKET_DATA]\"\n\n"
-                   "Everything feels distant. Unreal.\n"
-                   "The numbers on the chips seem to shift.\n"
-                   "Are they even real anymore?\n\n"
-                   "[SANITY: 0%]\n"
-                   "[WARNING: MAXIMUM_BETTING_RESTRICTIONS_ACTIVE]",
-                   200,  // +200 chips
-                   -100); // -100 sanity (complete depletion → forced max bets)
-    // TODO: Add useful trinket when trinket system implemented
-
-    return event;
-}
-
-// ============================================================================
-// TUTORIAL EVENTS (for EventPool system)
-// ============================================================================
-
-/**
- * CreateSanityTradeEvent - Tutorial event teaching sanity mechanic
- *
- * @return EventEncounter_t* - Event with 3 choices (safe/gain/trade)
- *
- * Theme: Risk/reward with sanity as resource
- * Design: Simple 3-choice structure for tutorial clarity
- */
-EventEncounter_t* CreateSanityTradeEvent(void) {
-    EventEncounter_t* event = CreateEvent(
-        "The Gambler's Dilemma",
-        "A mysterious figure at the table offers you a deal. "
-        "\"Gain resources now... but at what cost to your mind?\"\n\n"
-        "They slide chips and a strange device across the felt.",
-        EVENT_TYPE_CHOICE
-    );
-
-    if (!event) {
-        d_LogError("Failed to create SanityTradeEvent");
-        return NULL;
-    }
-
-    // Choice 1: Walk away (safe - no risk, no reward)
-    AddEventChoice(event,
-                   "Walk away (no change)",
-                   "You shake your head and decline the offer.\n"
-                   "The figure shrugs and vanishes into the shadows.\n\n"
-                   "Sometimes the safest bet is no bet at all.",
-                   0,    // +0 chips
-                   0);   // +0 sanity
-
-    // Choice 2: Accept the deal (+100 chips, -100 sanity)
-    AddEventChoice(event,
-                   "Accept the deal (+100 chips, -100 sanity)",
-                   "The device hums. Your vision blurs momentarily.\n"
-                   "The chips feel heavy in your pocket.\n\n"
-                   "\"A fair exchange,\" the figure whispers before fading away.\n\n"
-                   "[WARNING: Sanity depleted - betting restrictions active!]",
-                   100,  // +100 chips
-                   -100); // -100 sanity (complete depletion)
-
-    // Choice 3: Counter-offer (-50 chips, +50 sanity)
-    AddEventChoice(event,
-                   "Counter-offer (-50 chips, +50 sanity)",
-                   "You slide chips across the table.\n"
-                   "The figure's eyes widen, then they laugh.\n\n"
-                   "\"Buying clarity with coin? How... pragmatic.\"\n\n"
-                   "The world feels sharper. More real.",
-                   -50,  // -50 chips (you pay them)
-                   50);  // +50 sanity (you restore mental state)
-
-    d_LogInfo("Created SanityTradeEvent (tutorial)");
+    d_LogInfo("Created SystemMaintenanceEvent");
     return event;
 }
 
 /**
- * CreateChipGambleEvent - Tutorial event with simple chip outcomes
+ * CreateHouseOddsEvent - "House Odds" event
  *
- * @return EventEncounter_t* - Event with 3 choices (safe/risky/balanced)
- *
- * Theme: Classic risk/reward without sanity complexity
- * Design: Pure chips for simplicity (alternate tutorial path)
+ * Theme: Casino elite membership with tag-based conditional unlock
+ * Demonstrates multiple strategies and enemy HP scaling
  */
-EventEncounter_t* CreateChipGambleEvent(void) {
+EventEncounter_t* CreateHouseOddsEvent(void) {
     EventEncounter_t* event = CreateEvent(
-        "Victory Spoils",
-        "You search through the defeated enemy's belongings.\n\n"
-        "Among scattered cards and chips, you find a locked box.\n"
-        "Three keys lie beside it, each with a different symbol.",
+        "House Odds",
+        "A screen flickers to life above the table.\n\n"
+        "CONGRATULATIONS - YOU'VE BEEN UPGRADED TO ELITE STATUS.\n\n"
+        "Your next opponent has been selected for maximum engagement.",
         EVENT_TYPE_CHOICE
     );
 
     if (!event) {
-        d_LogError("Failed to create ChipGambleEvent");
+        d_LogError("Failed to create HouseOddsEvent");
         return NULL;
     }
 
-    // Choice 1: Conservative choice (safe +15 chips)
+    // Choice A: Accept upgrade (Daemon +50% HP, Elite Membership trinket)
     AddEventChoice(event,
-                   "Take the marked chips (+15 chips)",
-                   "You pocket the chips without touching the box.\n"
-                   "Sometimes the safest loot is the visible loot.\n\n"
-                   "The box remains locked.",
-                   15,  // +15 chips
-                   0);  // No sanity change
-
-    // Choice 2: Risky choice (+25 chips, no sanity)
-    AddEventChoice(event,
-                   "Try the golden key (+25 chips, risky)",
-                   "*CLICK* The box opens.\n\n"
-                   "Inside: a pile of high-value chips.\n"
-                   "But something feels... off about them.\n\n"
-                   "You take them anyway. What could go wrong?",
-                   25,  // +25 chips
-                   0);  // No sanity change
-
-    // Choice 3: Leave empty-handed (no gain, no loss)
-    AddEventChoice(event,
-                   "Leave everything (no change)",
-                   "You walk away from the box and the chips.\n\n"
-                   "Sometimes greed is a bigger gamble than you can afford.",
-                   0,  // No chips
+                   "Accept the upgrade (Daemon +50% HP, Elite Membership)",
+                   "\"Excellent choice.\"\n\n"
+                   "The dealer slides a black card across the table.\n"
+                   "You've been granted Elite Membership—wins boost rewards by 30%%,\n"
+                   "and losses refund 30%% of your bet.\n\n"
+                   "The Daemon awaits... but it's grown stronger.",
+                   0,  // No chips (rewards come later via trinket)
                    0); // No sanity change
+    // Grant Elite Membership trinket (ID 1)
+    SetChoiceTrinketReward(event, 0, 1);
+    // Set enemy HP multiplier: Daemon starts at 150% HP
+    SetChoiceEnemyHPMultiplier(event, 0, 1.5f);
 
-    d_LogInfo("Created ChipGambleEvent (tutorial)");
+    // Choice B: Refuse (-15 sanity, all Aces → LUCKY)
+    AddEventChoice(event,
+                   "Refuse the upgrade (-15 sanity, all Aces → LUCKY)",
+                   "\"Disappointing.\"\n\n"
+                   "The dealer's smile fades. Reality warps for a moment.\n"
+                   "When it stabilizes, your Aces shimmer with probability.\n\n"
+                   "The House punishes your refusal, but glitches—aces become luck.",
+                   0,    // No chips
+                   -15); // -15 sanity
+    // Tag all 4 Aces as LUCKY
+    AddCardTagToChoiceWithStrategy(event, 1, CARD_TAG_LUCKY, TAG_TARGET_RANK_ACES);
+
+    // Choice C: Negotiate terms [REQUIRES 1 LUCKY CARD]
+    AddEventChoice(event,
+                   "Negotiate terms (+30 chips, face cards → BRUTAL) [LOCKED]",
+                   "\"Ah, you have luck on your side. Let's renegotiate.\"\n\n"
+                   "You leverage your lucky card to manipulate the terms.\n"
+                   "The dealer agrees. Face cards become weapons.\n\n"
+                   "The Daemon awaits at normal strength.",
+                   30,  // +30 chips
+                   0);  // No sanity change
+    // Set requirement: needs at least 1 LUCKY card
+    ChoiceRequirement_t req2 = {.type = REQUIREMENT_TAG_COUNT};
+    req2.data.tag_req.required_tag = CARD_TAG_LUCKY;
+    req2.data.tag_req.min_count = 1;
+    SetChoiceRequirement(event, 2, req2);
+    // Tag all face cards (J, Q, K = 12 cards) as BRUTAL
+    AddCardTagToChoiceWithStrategy(event, 2, CARD_TAG_BRUTAL, TAG_TARGET_RANK_FACE_CARDS);
+    // No HP multiplier (normal Daemon HP)
+
+    d_LogInfo("Created HouseOddsEvent");
     return event;
 }

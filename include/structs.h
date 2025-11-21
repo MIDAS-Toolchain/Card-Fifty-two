@@ -8,6 +8,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+// Forward declarations (for circular dependencies)
+typedef struct Player Player_t;
+typedef struct GameContext GameContext_t;
+typedef struct Card Card_t;
+typedef struct Hand Hand_t;
+typedef struct Deck Deck_t;
+
 // ============================================================================
 // CARD STRUCTURE
 // ============================================================================
@@ -81,6 +88,9 @@ typedef struct Hand {
     bool is_blackjack;    // true if natural 21 (Ace + 10-value card)
 } Hand_t;
 
+// Now that Card_t, Hand_t, Deck_t are defined, we can include game.h for GameEvent_t
+#include "game.h"
+
 // ============================================================================
 // FORWARD DECLARATIONS (needed before Player_t)
 // ============================================================================
@@ -91,11 +101,78 @@ typedef struct Enemy Enemy_t;
 // Forward declare StatusEffectManager_t (defined in statusEffects.h)
 typedef struct StatusEffectManager StatusEffectManager_t;
 
-// Forward declare Trinket_t (defined in trinket.h)
-typedef struct Trinket Trinket_t;
-
 // Forward declare Act_t (defined in act.h)
 typedef struct Act Act_t;
+
+// ============================================================================
+// TRINKET ENUMS AND STRUCTURE (moved from trinket.h to resolve circular dependency)
+// ============================================================================
+
+/**
+ * TrinketRarity_t - Trinket rarity tiers
+ */
+typedef enum {
+    TRINKET_RARITY_COMMON,      // Common (white)
+    TRINKET_RARITY_UNCOMMON,    // Uncommon (green)
+    TRINKET_RARITY_RARE,        // Rare (blue)
+    TRINKET_RARITY_LEGENDARY,   // Legendary (gold)
+    TRINKET_RARITY_CLASS,       // Class trinket (purple - unique to character class)
+} TrinketRarity_t;
+
+/**
+ * TrinketTargetType_t - What can trinket actives target?
+ */
+typedef enum {
+    TRINKET_TARGET_NONE,        // No targeting (self-buff)
+    TRINKET_TARGET_CARD,        // Target a card (player or dealer)
+    TRINKET_TARGET_ENEMY,       // Target the enemy
+    TRINKET_TARGET_HAND,        // Target entire hand (yours or dealer's)
+} TrinketTargetType_t;
+
+/**
+ * Trinket_t - Equipment with passive and active effects
+ *
+ * Constitutional Amendment #1 (2025-11-14): VALUE TYPE (like Card_t, StatusEffectInstance_t)
+ * - Global registry (g_trinket_templates) stores templates as VALUES
+ * - Players store copies in trinket_slots (dArray_t of Trinket_t)
+ * - Equipping COPIES template → player slot (each player has own instance)
+ * - Passives triggered by GameEvent_t (reuse existing system)
+ * - Actives manually triggered with targeting
+ * - Tweening uses TweenFloatInArray() with slot_index (NO dangling pointers!)
+ */
+typedef struct Trinket {
+    int trinket_id;                    // Unique ID (0-N)
+    dString_t* name;                   // "Degenerate's Gambit"
+    dString_t* description;            // Full description
+
+    // Passive (event-triggered)
+    GameEvent_t passive_trigger;       // Which event triggers passive?
+    void (*passive_effect)(struct Player* player, GameContext_t* game, struct Trinket* self, size_t slot_index);
+    dString_t* passive_description;    // "When you HIT on 15+: Deal X damage"
+
+    // Active (player-activated)
+    TrinketTargetType_t active_target_type;
+    void (*active_effect)(struct Player* player, GameContext_t* game, void* target, struct Trinket* self, size_t slot_index);
+    int active_cooldown_max;           // Turns until reusable
+    int active_cooldown_current;       // Current cooldown (0 = ready)
+    dString_t* active_description;     // "Double a card ≤5"
+
+    // State tracking (per-trinket scaling)
+    int passive_damage_bonus;          // For Degenerate: +5 per active use
+    int total_damage_dealt;            // Total damage dealt this combat (for stats)
+
+    // Animation state (for shake/flash on proc - matches status effects/abilities)
+    float shake_offset_x;              // X shake offset (tweened)
+    float shake_offset_y;              // Y shake offset (tweened)
+    float flash_alpha;                 // Red flash alpha (tweened, 0-255)
+
+    // Additional fields (added at END to preserve binary compatibility)
+    int total_bonus_chips;             // For Elite Membership: Chips won via win bonus
+    int total_refunded_chips;          // For Elite Membership: Chips refunded via loss protection
+    TrinketRarity_t rarity;            // Rarity tier (common/uncommon/rare/legendary)
+    // Future: Add more state fields HERE (at end) to avoid breaking offsets
+
+} Trinket_t;
 
 // ============================================================================
 // PLAYER STRUCTURE
@@ -130,8 +207,16 @@ typedef struct Player {
 
     // Class system
     PlayerClass_t class;           // Character class (Degenerate, Dealer, Detective, Dreamer)
-    Trinket_t* class_trinket;      // Class-specific trinket (separate from 6 regular slots)
-    dArray_t* trinket_slots;       // Array of Trinket_t* (6 slots max)
+    Trinket_t class_trinket;       // Class-specific trinket (VALUE - own copy of template)
+    bool has_class_trinket;        // true if class trinket is equipped
+    dArray_t* trinket_slots;       // Array of Trinket_t VALUES (6 slots max, each is own copy)
+
+    // Combat stats (calculated from tags/trinkets) - ADR-09: Dirty-flag aggregation
+    int damage_flat;               // Flat damage bonus (added to base damage)
+    int damage_percent;            // Percentage damage increase (multiplies base damage)
+    int crit_chance;               // % chance to crit (0-100, LUCKY tag gives +10% per card)
+    int crit_bonus;                // % bonus damage on crit (e.g., 50 = +50% damage)
+    bool combat_stats_dirty;       // true = recalculate stats from hand tags
 } Player_t;
 
 // ============================================================================
@@ -173,6 +258,7 @@ typedef struct GameContext {
     // Combat system
     Enemy_t* current_enemy;         // Current combat enemy (NULL if not in combat)
     bool is_combat_mode;            // true if currently in combat encounter
+    float next_enemy_hp_multiplier; // HP multiplier for next spawned enemy (1.0 = normal, set by event consequences)
 
     // Act progression system (roguelike structure)
     Act_t* current_act;             // Current act with encounter sequence (NULL if not started)
@@ -182,6 +268,9 @@ typedef struct GameContext {
     int event_reroll_cost;          // Current reroll cost (doubles each use: 50→100→200→400)
     int event_rerolls_used;         // Reroll count for this preview (stats tracking)
     float event_preview_timer;      // 3.0 → 0.0 countdown (auto-proceed when 0)
+
+    // Combat preview system (elite/boss warning)
+    float combat_preview_timer;     // 3.0 → 0.0 countdown (auto-proceed when 0)
 } GameContext_t;
 
 #endif // STRUCTS_H

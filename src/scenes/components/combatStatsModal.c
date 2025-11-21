@@ -5,6 +5,7 @@
 
 #include "../../../include/scenes/components/combatStatsModal.h"
 #include "../../../include/scenes/sceneBlackjack.h"
+#include "../../../include/player.h"  // For CalculatePlayerCombatStats
 
 // Modern tooltip color scheme (matching other modals)
 #define COLOR_BG            ((aColor_t){20, 20, 30, 230})     // Dark background
@@ -127,27 +128,56 @@ void RenderCombatStatsModal(CombatStatsModal_t* modal) {
     int line_height = a_GetWrappedTextHeight("Damage Increase:", FONT_GAME, content_width);
     int spacing = 8;
 
-    // Damage Increase (percentage modifier)
+    // Recalculate stats if dirty (ADR-09 pattern)
+    if (modal->player->combat_stats_dirty) {
+        d_LogInfo("CombatStatsModal: Recalculating stats (dirty flag set)");
+        CalculatePlayerCombatStats(modal->player);
+    }
+
+    // Debug: Log current stat values
+    d_LogInfoF("CombatStatsModal: Displaying stats - damage%%=%d, flat=%d, crit%%=%d, crit_bonus=%d",
+               modal->player->damage_percent, modal->player->damage_flat,
+               modal->player->crit_chance, modal->player->crit_bonus);
+
+    // Damage Increase (percentage modifier from BRUTAL tag)
     a_DrawTextStyled("Damage Increase:", content_x, current_y, &label_config);
     current_y += line_height + 4;
-    a_DrawTextStyled("+0%", content_x + 10, current_y, &value_config);
+
+    dString_t* damage_percent_text = d_StringInit();
+    d_StringFormat(damage_percent_text, "+%d%%", modal->player->damage_percent);
+    a_DrawTextStyled((char*)d_StringPeek(damage_percent_text), content_x + 10, current_y, &value_config);
+    d_StringDestroy(damage_percent_text);
     current_y += line_height + spacing;
 
-    // Damage Bonus (flat bonus)
+    // Damage Bonus (flat bonus - currently unused)
     a_DrawTextStyled("Damage Bonus:", content_x, current_y, &label_config);
     current_y += line_height + 4;
-    a_DrawTextStyled("+0", content_x + 10, current_y, &value_config);
+
+    dString_t* damage_flat_text = d_StringInit();
+    d_StringFormat(damage_flat_text, "+%d", modal->player->damage_flat);
+    a_DrawTextStyled((char*)d_StringPeek(damage_flat_text), content_x + 10, current_y, &value_config);
+    d_StringDestroy(damage_flat_text);
     current_y += line_height + spacing;
 
-    // Crit Chance
+    // Crit Chance (from LUCKY tag)
     a_DrawTextStyled("Crit Chance:", content_x, current_y, &label_config);
     current_y += line_height + 4;
-    a_DrawTextStyled("0%", content_x + 10, current_y, &value_config);
+
+    dString_t* crit_chance_text = d_StringInit();
+    d_StringFormat(crit_chance_text, "%d%%", modal->player->crit_chance);
+    a_DrawTextStyled((char*)d_StringPeek(crit_chance_text), content_x + 10, current_y, &value_config);
+    d_StringDestroy(crit_chance_text);
     current_y += line_height + spacing;
 
-    // Damage Bonus (for crits)
-    a_DrawTextStyled("Damage Bonus:", content_x, current_y, &label_config);
+    // Crit Bonus (default 50%, can be increased by future mechanics)
+    a_DrawTextStyled("Crit Damage Bonus:", content_x, current_y, &label_config);
     current_y += line_height + 4;
-    a_DrawTextStyled("+0%", content_x + 10, current_y, &value_config);
+
+    dString_t* crit_bonus_text = d_StringInit();
+    // Base crit is +50%, plus any crit_bonus from player
+    int total_crit_bonus = 50 + modal->player->crit_bonus;
+    d_StringFormat(crit_bonus_text, "+%d%%", total_crit_bonus);
+    a_DrawTextStyled((char*)d_StringPeek(crit_bonus_text), content_x + 10, current_y, &value_config);
+    d_StringDestroy(crit_bonus_text);
     current_y += line_height + spacing;
 }

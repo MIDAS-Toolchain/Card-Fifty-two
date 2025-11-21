@@ -87,29 +87,41 @@ void RenderDamageNumbers(VisualEffects_t* vfx) {
 
         if (dmg->alpha < 0.01f) continue;  // Skip if fully faded
 
-        // Choose color based on type (red for damage, green for healing)
+        // Choose color and scale based on type
         aColor_t color;
-        if (dmg->is_healing) {
-            color = (aColor_t){117, 167, 67, (int)(dmg->alpha * 255)};  // Green with alpha
+        float scale;
+
+        if (dmg->is_crit) {
+            // CRIT: Gold, larger scale
+            color = (aColor_t){255, 204, 0, (int)(dmg->alpha * 255)};  // Gold (#ffcc00)
+            scale = 1.5f;
+        } else if (dmg->is_healing) {
+            // Healing: Green, normal scale
+            color = (aColor_t){117, 167, 67, (int)(dmg->alpha * 255)};  // Green
+            scale = 1.0f;
         } else {
-            color = (aColor_t){165, 48, 48, (int)(dmg->alpha * 255)};   // Red with alpha
+            // Normal damage: Red, normal scale
+            color = (aColor_t){165, 48, 48, (int)(dmg->alpha * 255)};  // Red
+            scale = 1.0f;
         }
 
         // Format damage text
         dString_t* dmg_text = d_StringInit();
-        if (dmg->is_healing) {
+        if (dmg->is_crit) {
+            d_StringFormat(dmg_text, "CRIT! -%d", dmg->damage);
+        } else if (dmg->is_healing) {
             d_StringFormat(dmg_text, "+%d", dmg->damage);
         } else {
             d_StringFormat(dmg_text, "-%d", dmg->damage);
         }
 
-        // Render at current position with alpha
+        // Render at current position with alpha and scale
         aFontConfig_t dmg_config = {
             .type = FONT_ENTER_COMMAND,
             .color = color,
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = 0,
-            .scale = 1.0f
+            .scale = scale
         };
         a_DrawTextStyled((char*)d_StringPeek(dmg_text), (int)dmg->x, (int)dmg->y, &dmg_config);
 
@@ -165,7 +177,7 @@ static void OnDamageNumberComplete(void* user_data) {
 // PUBLIC EFFECTS API
 // ============================================================================
 
-void VFX_SpawnDamageNumber(VisualEffects_t* vfx, int damage, float world_x, float world_y, bool is_healing) {
+void VFX_SpawnDamageNumber(VisualEffects_t* vfx, int damage, float world_x, float world_y, bool is_healing, bool is_crit) {
     if (!vfx) return;
 
     // Count how many active damage numbers are near this spawn position
@@ -206,6 +218,7 @@ void VFX_SpawnDamageNumber(VisualEffects_t* vfx, int damage, float world_x, floa
             dmg->alpha = 1.0f;
             dmg->damage = damage;
             dmg->is_healing = is_healing;
+            dmg->is_crit = is_crit;
 
             // Setup callback data with current generation
             vfx->callback_data[i].dmg = dmg;

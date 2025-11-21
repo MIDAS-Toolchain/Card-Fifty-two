@@ -194,17 +194,17 @@ int GetEventPoolTotalWeight(const EventPool_t* pool) {
 // ============================================================================
 
 // Forward declare event factories (will be defined in event.c)
-extern EventEncounter_t* CreateSanityTradeEvent(void);
-extern EventEncounter_t* CreateChipGambleEvent(void);
+extern EventEncounter_t* CreateSystemMaintenanceEvent(void);
+extern EventEncounter_t* CreateHouseOddsEvent(void);
 
 EventPool_t* CreateTutorialEventPool(void) {
     EventPool_t* pool = CreateEventPool();
     if (!pool) return NULL;
 
-    // Tutorial has 2 events with equal weight
-    AddEventToPool(pool, CreateSanityTradeEvent, 50);
-    AddEventToPool(pool, CreateChipGambleEvent, 50);
+    // Tutorial has 2 events demonstrating locked choices + enemy HP modification
+    AddEventToPool(pool, CreateSystemMaintenanceEvent, 50);  // Teaches CURSED tag requirement + 75% HP
+    AddEventToPool(pool, CreateHouseOddsEvent, 50);          // Teaches LUCKY tag requirement + 150% HP
 
-    d_LogInfo("Tutorial event pool created (2 events, 50/50 split)");
+    d_LogInfo("Tutorial event pool created (2 events: System Maintenance + House Odds)");
     return pool;
 }

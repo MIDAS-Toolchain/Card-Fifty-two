@@ -97,6 +97,14 @@ spec10 = importlib.util.spec_from_file_location(
 combat_damage_verification = importlib.util.module_from_spec(spec10)
 spec10.loader.exec_module(combat_damage_verification)
 
+# FF-011: Targeting Hover State
+spec11 = importlib.util.spec_from_file_location(
+    "targeting_hover_state",
+    Path(__file__).parent / "11_targeting_hover_state.py"
+)
+targeting_hover_state = importlib.util.module_from_spec(spec11)
+spec11.loader.exec_module(targeting_hover_state)
+
 # FF-012: Reward Modal Animation
 spec12 = importlib.util.spec_from_file_location(
     "reward_modal_animation",
@@ -104,6 +112,38 @@ spec12 = importlib.util.spec_from_file_location(
 )
 reward_modal_animation = importlib.util.module_from_spec(spec12)
 spec12.loader.exec_module(reward_modal_animation)
+
+# FF-013: Universal Damage Modifiers
+spec13 = importlib.util.spec_from_file_location(
+    "universal_damage_modifiers",
+    Path(__file__).parent / "13_universal_damage_modifiers.py"
+)
+universal_damage_modifiers = importlib.util.module_from_spec(spec13)
+spec13.loader.exec_module(universal_damage_modifiers)
+
+# FF-014: Reverse-Order Cleanup
+spec14 = importlib.util.spec_from_file_location(
+    "reverse_order_cleanup",
+    Path(__file__).parent / "14_reverse_order_cleanup.py"
+)
+reverse_order_cleanup = importlib.util.module_from_spec(spec14)
+spec14.loader.exec_module(reverse_order_cleanup)
+
+# FF-015: Double-Pointer Destructor
+spec15 = importlib.util.spec_from_file_location(
+    "double_pointer_destructor",
+    Path(__file__).parent / "15_double_pointer_destructor.py"
+)
+double_pointer_destructor = importlib.util.module_from_spec(spec15)
+spec15.loader.exec_module(double_pointer_destructor)
+
+# FF-016: Trinket Value Semantics
+spec16 = importlib.util.spec_from_file_location(
+    "trinket_value_semantics",
+    Path(__file__).parent / "16_trinket_value_semantics.py"
+)
+trinket_value_semantics = importlib.util.module_from_spec(spec16)
+spec16.loader.exec_module(trinket_value_semantics)
 
 def run_fitness_functions() -> List[Tuple[str, bool]]:
     """Run all fitness functions and collect results"""
@@ -217,6 +257,16 @@ def run_fitness_functions() -> List[Tuple[str, bool]]:
 
     print()
 
+    # FF-011: Targeting Hover State
+    try:
+        success = targeting_hover_state.verify_targeting_hover_state(project_root)
+        results.append(("FF-011: Targeting Hover State", success))
+    except Exception as e:
+        print(f"❌ FF-011 crashed: {e}")
+        results.append(("FF-011: Targeting Hover State", False))
+
+    print()
+
     # FF-012: Reward Modal Animation
     try:
         success = reward_modal_animation.verify_reward_modal_animation(project_root)
@@ -224,6 +274,46 @@ def run_fitness_functions() -> List[Tuple[str, bool]]:
     except Exception as e:
         print(f"❌ FF-012 crashed: {e}")
         results.append(("FF-012: Reward Modal Animation", False))
+
+    print()
+
+    # FF-013: Universal Damage Modifiers
+    try:
+        success = universal_damage_modifiers.verify_universal_damage_modifiers(project_root)
+        results.append(("FF-013: Universal Damage Modifiers", success))
+    except Exception as e:
+        print(f"❌ FF-013 crashed: {e}")
+        results.append(("FF-013: Universal Damage Modifiers", False))
+
+    print()
+
+    # FF-014: Reverse-Order Cleanup
+    try:
+        success = reverse_order_cleanup.verify_reverse_order_cleanup(project_root)
+        results.append(("FF-014: Reverse-Order Cleanup", success))
+    except Exception as e:
+        print(f"❌ FF-014 crashed: {e}")
+        results.append(("FF-014: Reverse-Order Cleanup", False))
+
+    print()
+
+    # FF-015: Double-Pointer Destructor
+    try:
+        success = double_pointer_destructor.verify_double_pointer_destructors(project_root)
+        results.append(("FF-015: Double-Pointer Destructor", success))
+    except Exception as e:
+        print(f"❌ FF-015 crashed: {e}")
+        results.append(("FF-015: Double-Pointer Destructor", False))
+
+    print()
+
+    # FF-016: Trinket Value Semantics
+    try:
+        success = trinket_value_semantics.verify_trinket_value_semantics(project_root)
+        results.append(("FF-016: Trinket Value Semantics", success))
+    except Exception as e:
+        print(f"❌ FF-016 crashed: {e}")
+        results.append(("FF-016: Trinket Value Semantics", False))
 
     print()
 

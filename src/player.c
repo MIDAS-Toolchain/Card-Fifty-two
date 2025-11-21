@@ -8,6 +8,7 @@
 #include "statusEffects.h"
 #include "stats.h"
 #include "scenes/sceneBlackjack.h"
+#include "cardTags.h"  // For HasCardTag, CARD_TAG_LUCKY, CARD_TAG_BRUTAL
 
 // ============================================================================
 // PLAYER LIFECYCLE
@@ -62,11 +63,12 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
 
     // Initialize class system (Constitutional: no class by default)
     player.class = PLAYER_CLASS_NONE;
-    player.class_trinket = NULL;  // No class trinket until class is set
+    player.has_class_trinket = false;  // No class trinket until class is set
+    memset(&player.class_trinket, 0, sizeof(Trinket_t));  // Zero-initialize embedded value
 
-    // Initialize trinket slots (Constitutional: dArray_t* of Trinket_t* pointers, 6 slots)
+    // Initialize trinket slots (Constitutional: dArray_t* of Trinket_t VALUES, 6 slots)
     // d_InitArray(capacity, element_size) - capacity FIRST!
-    player.trinket_slots = d_InitArray(6, sizeof(Trinket_t*));  // Array of pointers
+    player.trinket_slots = d_InitArray(6, sizeof(Trinket_t));  // Array of VALUES (not pointers!)
     if (!player.trinket_slots) {
         d_LogError("CreatePlayer: Failed to create trinket slots");
         d_StringDestroy(player.name);
@@ -75,13 +77,20 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
         return false;
     }
 
-    // Pre-populate with 6 NULL pointers (creates count=6, all slots empty)
-    Trinket_t* null_trinket = NULL;
+    // Pre-populate with 6 empty trinket values (creates count=6, all slots zeroed)
+    Trinket_t empty_trinket = {0};
     for (int i = 0; i < 6; i++) {
-        d_AppendDataToArray(player.trinket_slots, &null_trinket);
+        d_AppendDataToArray(player.trinket_slots, &empty_trinket);
     }
 
     d_LogInfoF("Initialized %d trinket slots for player", (int)player.trinket_slots->count);
+
+    // Initialize combat stats (ADR-09: Dirty-flag aggregation)
+    player.damage_flat = 0;
+    player.damage_percent = 0;
+    player.crit_chance = 0;
+    player.crit_bonus = 0;
+    player.combat_stats_dirty = true;  // Will be calculated on first update
 
     // Register in global players table (store by value)
     d_SetDataInTable(g_players, &player.player_id, &player);
@@ -95,22 +104,32 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
 
 void DestroyPlayer(int player_id) {
     // Constitutional pattern: Lookup player from table by ID
+    d_LogInfoF("DestroyPlayer: Starting destruction of player ID %d", player_id);
+
+    if (!g_players) {
+        d_LogError("DestroyPlayer: g_players table is NULL!");
+        return;
+    }
+
     Player_t* player = (Player_t*)d_GetDataFromTable(g_players, &player_id);
     if (!player) {
-        d_LogError("DestroyPlayer: Player not found in table");
+        d_LogErrorF("DestroyPlayer: Player ID %d not found in table", player_id);
         return;
     }
 
     // Destroy name string (heap-allocated resource)
+    d_LogDebug("DestroyPlayer: Destroying player name");
     if (player->name) {
         d_StringDestroy(player->name);
         player->name = NULL;
     }
 
     // Cleanup hand (value type - only cleanup internal resources)
+    d_LogDebug("DestroyPlayer: Cleaning up hand");
     CleanupHand(&player->hand);
 
     // Destroy portrait surface and texture (owned by player)
+    d_LogDebug("DestroyPlayer: Destroying portrait");
     if (player->portrait_surface) {
         SDL_FreeSurface(player->portrait_surface);
         player->portrait_surface = NULL;
@@ -122,23 +141,43 @@ void DestroyPlayer(int player_id) {
     }
 
     // Destroy status effects manager (heap-allocated)
+    d_LogDebug("DestroyPlayer: Destroying status effects");
     if (player->status_effects) {
         DestroyStatusEffectManager(&player->status_effects);
     }
 
-    // Class trinket is owned by g_trinket_templates registry - just NULL the pointer
-    player->class_trinket = NULL;
+    // Cleanup class trinket (VALUE semantics - only cleanup internal dStrings, not struct)
+    d_LogDebug("DestroyPlayer: Cleaning up class trinket");
+    if (player->has_class_trinket) {
+        CleanupTrinketValue(&player->class_trinket);
+        player->has_class_trinket = false;
+    }
 
-    // Destroy trinket slots array (Constitutional: just destroy array, trinkets owned by g_trinkets registry)
+    // Cleanup trinket slots (Constitutional: cleanup each VALUE, then destroy array)
+    // ADR-14: Reverse-order cleanup - free dStrings inside values, then free array
+    d_LogDebug("DestroyPlayer: Cleaning up trinket slots");
     if (player->trinket_slots) {
+        // Iterate through all slots and cleanup internal dStrings
+        for (size_t i = 0; i < player->trinket_slots->count; i++) {
+            Trinket_t* trinket = (Trinket_t*)d_IndexDataFromArray(player->trinket_slots, i);
+            if (trinket && trinket->trinket_id != 0) {  // Non-empty slot (ID 0 is valid, but empty slots are all-zero)
+                // Check if trinket has allocated dStrings (name != NULL means it's a real trinket)
+                if (trinket->name) {
+                    CleanupTrinketValue(trinket);
+                }
+            }
+        }
+
+        // Now destroy the array itself (Daedalus frees the Trinket_t values)
         d_DestroyArray(player->trinket_slots);
         player->trinket_slots = NULL;
     }
 
     // Remove from global players table (Daedalus frees the Player_t value)
+    d_LogDebug("DestroyPlayer: Removing from g_players table");
     d_RemoveDataFromTable(g_players, &player_id);
 
-    d_LogInfo("Player destroyed");
+    d_LogInfoF("Player ID %d destroyed successfully", player_id);
 }
 
 // ============================================================================
@@ -411,4 +450,151 @@ float GetPlayerSanityPercent(const Player_t* player) {
     }
 
     return (float)player->sanity / (float)player->max_sanity;
+}
+
+// ============================================================================
+// COMBAT STATS SYSTEM (ADR-09: Dirty-flag aggregation)
+// ============================================================================
+
+void CalculatePlayerCombatStats(Player_t* player) {
+    if (!player) {
+        d_LogError("CalculatePlayerCombatStats: NULL player");
+        return;
+    }
+
+    // Reset stats to base values
+    player->damage_flat = 0;
+    player->damage_percent = 0;
+    player->crit_chance = 0;
+    player->crit_bonus = 0;  // Default crit bonus (no cards give this yet)
+
+    int lucky_count = 0;
+    int brutal_count = 0;
+
+    // ADR-09: LUCKY/BRUTAL are GLOBAL bonuses - scan ALL hands in play (player + dealer)
+    // Iterate through all players in g_players (player ID 0 = dealer, ID 1 = human)
+    extern dTable_t* g_players;
+    if (!g_players) {
+        d_LogWarning("CalculatePlayerCombatStats: g_players table is NULL");
+        player->combat_stats_dirty = false;
+        return;
+    }
+
+    // Scan player ID 0 (dealer) and player ID 1 (human player)
+    for (int player_id = 0; player_id <= 1; player_id++) {
+        Player_t* p = (Player_t*)d_GetDataFromTable(g_players, &player_id);
+        if (!p || !p->hand.cards) continue;
+
+        // Scan all FACE-UP cards in this player's hand (hidden cards don't count!)
+        for (size_t i = 0; i < p->hand.cards->count; i++) {
+            const Card_t* card = (const Card_t*)d_IndexDataFromArray(p->hand.cards, i);
+            if (!card || !card->face_up) continue;  // Skip face-down cards!
+
+            // Check for LUCKY tag (+10% crit per card)
+            if (HasCardTag(card->card_id, CARD_TAG_LUCKY)) {
+                lucky_count++;
+                d_LogInfoF("  Found LUCKY card: %d (player_id=%d, face_up=%d)",
+                          card->card_id, player_id, card->face_up);
+            }
+
+            // Check for BRUTAL tag (+10% damage per card)
+            if (HasCardTag(card->card_id, CARD_TAG_BRUTAL)) {
+                brutal_count++;
+                d_LogInfoF("  Found BRUTAL card: %d (player_id=%d, face_up=%d)",
+                          card->card_id, player_id, card->face_up);
+            }
+        }
+    }
+
+    // Apply bonuses
+    player->crit_chance = lucky_count * 10;      // +10% per LUCKY card
+    player->damage_percent = brutal_count * 10;  // +10% per BRUTAL card
+
+    // Clear dirty flag
+    player->combat_stats_dirty = false;
+
+    d_LogInfoF("Combat stats recalculated: damage_percent=%d%%, crit_chance=%d%% (LUCKY=%d, BRUTAL=%d) [GLOBAL SCAN]",
+               player->damage_percent, player->crit_chance, lucky_count, brutal_count);
+}
+
+bool RollForCrit(Player_t* player, int base_damage, int* out_damage) {
+    if (!player || !out_damage) {
+        if (out_damage) *out_damage = base_damage;
+        return false;
+    }
+
+    // Base case: no damage = no crit
+    if (base_damage <= 0) {
+        *out_damage = base_damage;
+        return false;
+    }
+
+    // Recalculate stats if dirty
+    if (player->combat_stats_dirty) {
+        CalculatePlayerCombatStats(player);
+    }
+
+    // No crit chance = no crit
+    if (player->crit_chance <= 0) {
+        *out_damage = base_damage;
+        return false;
+    }
+
+    // Roll for crit (0-99 vs crit_chance%)
+    int roll = rand() % 100;
+    if (roll < player->crit_chance) {
+        // CRIT!
+        int crit_multiplier = 50 + player->crit_bonus;  // Base 50% + any bonus
+        int crit_damage = (base_damage * crit_multiplier) / 100;
+        *out_damage = base_damage + crit_damage;
+
+        d_LogInfoF("💥 CRITICAL HIT! %d → %d (+%d%% = +%d damage) [roll=%d < %d%%]",
+                   base_damage, *out_damage, crit_multiplier, crit_damage, roll, player->crit_chance);
+        return true;
+    }
+
+    // No crit
+    *out_damage = base_damage;
+    return false;
+}
+
+int ApplyPlayerDamageModifiers(Player_t* player, int base_damage, bool* out_is_crit) {
+    // Validate inputs
+    if (!player || base_damage <= 0) {
+        if (out_is_crit) *out_is_crit = false;
+        return base_damage;
+    }
+
+    // Recalculate stats if dirty (ADR-09: Dirty-flag aggregation)
+    if (player->combat_stats_dirty) {
+        CalculatePlayerCombatStats(player);
+    }
+
+    int modified_damage = base_damage;
+
+    // Step 1: Apply percentage damage increase (BRUTAL tag)
+    if (player->damage_percent > 0) {
+        int bonus_damage = (modified_damage * player->damage_percent) / 100;
+        modified_damage += bonus_damage;
+        d_LogInfoF("  [Damage Modifier] +%d%% damage: %d → %d (+%d)",
+                   player->damage_percent, base_damage, modified_damage, bonus_damage);
+    }
+
+    // Step 2: Apply flat damage bonus (currently unused, reserved for future trinkets)
+    if (player->damage_flat > 0) {
+        modified_damage += player->damage_flat;
+        d_LogInfoF("  [Damage Modifier] +%d flat damage: %d → %d",
+                   player->damage_flat, modified_damage - player->damage_flat, modified_damage);
+    }
+
+    // Step 3: Roll for crit (LUCKY tag)
+    bool is_crit = RollForCrit(player, modified_damage, &modified_damage);
+    if (out_is_crit) {
+        *out_is_crit = is_crit;
+    }
+
+    d_LogInfoF("  [Damage Modifier] Final: %d → %d%s",
+               base_damage, modified_damage, is_crit ? " (CRIT!)" : "");
+
+    return modified_damage;
 }

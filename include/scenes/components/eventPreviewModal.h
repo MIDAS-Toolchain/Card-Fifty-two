@@ -107,6 +107,19 @@ void UpdateEventPreviewModal(EventPreviewModal_t* modal, float dt);
  */
 void UpdateEventPreviewModalCost(EventPreviewModal_t* modal, int current_cost);
 
+/**
+ * UpdateEventPreviewContent - Update modal content for new event (avoids recreate)
+ *
+ * @param modal - Modal to update
+ * @param new_title - New event title
+ * @param new_cost - New reroll cost
+ *
+ * Updates the modal's event_title and reroll button cost without destroying/recreating.
+ * Use this on reroll to avoid allocation churn.
+ * Resets title fade-in animation.
+ */
+void UpdateEventPreviewContent(EventPreviewModal_t* modal, const char* new_title, int new_cost);
+
 // ============================================================================
 // RENDERING
 // ============================================================================

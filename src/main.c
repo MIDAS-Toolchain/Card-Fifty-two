@@ -246,11 +246,11 @@ void Cleanup(void) {
         d_LogInfo("Ability icon cache destroyed");
     }
 
-    // Cleanup card metadata system
-    CleanupCardMetadata();
-
-    // Cleanup trinket system
+    // Cleanup trinket system (ADR-14: destroy in reverse init order)
     CleanupTrinketSystem();
+
+    // Cleanup card metadata system (ADR-14: initialized first, destroyed last)
+    CleanupCardMetadata();
 
     // Quit Archimedes
     a_Quit();

@@ -351,7 +351,11 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
 
     // Check for CURSED tag: 10 damage to enemy
     if (HasCardTag(card->card_id, CARD_TAG_CURSED)) {
-        int damage = 10;
+        int base_damage = 10;
+
+        // Apply ALL damage modifiers (ADR-010: Universal damage modifier)
+        bool is_crit = false;
+        int damage = ApplyPlayerDamageModifiers(drawer, base_damage, &is_crit);
 
         // Apply damage using existing funnel
         TakeDamage(game->current_enemy, damage);
@@ -373,7 +377,7 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
             VFX_SpawnDamageNumber(vfx, damage,
                                  SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
                                  ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                                 false);  // false = damage (not healing)
+                                 false, is_crit);  // Pass crit flag
         }
 
         // Fire tag-specific event
@@ -386,8 +390,12 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
 
     // Check for VAMPIRIC tag: 5 damage + 5 chips
     if (HasCardTag(card->card_id, CARD_TAG_VAMPIRIC)) {
-        int damage = 5;
+        int base_damage = 5;
         int chip_gain = 5;
+
+        // Apply ALL damage modifiers (ADR-010: Universal damage modifier)
+        bool is_crit = false;
+        int damage = ApplyPlayerDamageModifiers(drawer, base_damage, &is_crit);
 
         // Apply damage using existing funnel
         TakeDamage(game->current_enemy, damage);
@@ -414,7 +422,7 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
             VFX_SpawnDamageNumber(vfx, damage,
                                  SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
                                  ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                                 false);  // false = damage (not healing)
+                                 false, is_crit);  // Pass crit flag
 
             // Spawn chip gain number (green, near chips display on left sidebar)
             // Left sidebar: x=0, width=280, center=140
@@ -422,7 +430,7 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
             VFX_SpawnDamageNumber(vfx, chip_gain,
                                  140,   // Center of left sidebar
                                  110,   // Near "Betting Power" / chips display
-                                 true); // true = healing/positive (green)
+                                 true, false); // healing/positive (green), no crit
         }
 
         // Fire tag-specific event

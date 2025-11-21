@@ -252,13 +252,6 @@ static void MenuDraw(float dt) {
     if (main_menu_section) {
         RenderMainMenuSection(main_menu_section);
     }
-
-    // FPS counter
-    dString_t* fps_str = d_StringInit();
-    d_StringFormat(fps_str, "FPS: %.1f", 1.0f / a_GetDeltaTime());
-    a_DrawText((char*)d_StringPeek(fps_str), SCREEN_WIDTH - 10, 10,
-               0, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_RIGHT, 0);
-    d_StringDestroy(fps_str);
 }
 
 // ============================================================================

@@ -55,6 +55,7 @@ void State_InitContext(GameContext_t* game, Deck_t* deck) {
     // Initialize combat system
     game->current_enemy = NULL;
     game->is_combat_mode = false;
+    game->next_enemy_hp_multiplier = 1.0f;  // Normal HP (no modification initially)
 
     // Initialize event preview system
     game->event_reroll_base_cost = 50;  // Base cost (configurable)
@@ -90,6 +91,7 @@ void State_CleanupContext(GameContext_t* game) {
 const char* State_ToString(GameState_t state) {
     switch (state) {
         case STATE_MENU: return "MENU";
+        case STATE_INTRO_NARRATIVE: return "INTRO_NARRATIVE";
         case STATE_BETTING: return "BETTING";
         case STATE_DEALING: return "DEALING";
         case STATE_PLAYER_TURN: return "PLAYER_TURN";
@@ -98,6 +100,7 @@ const char* State_ToString(GameState_t state) {
         case STATE_ROUND_END: return "ROUND_END";
         case STATE_COMBAT_VICTORY: return "COMBAT_VICTORY";
         case STATE_REWARD_SCREEN: return "REWARD_SCREEN";
+        case STATE_COMBAT_PREVIEW: return "COMBAT_PREVIEW";
         case STATE_EVENT_PREVIEW: return "EVENT_PREVIEW";
         case STATE_EVENT: return "EVENT";
         case STATE_TARGETING: return "TARGETING";
@@ -256,6 +259,14 @@ void State_UpdateLogic(GameContext_t* game, float dt) {
         case STATE_TARGETING:
             // Handled entirely by sceneBlackjack.c (HandleTargetingInput)
             // No state machine updates needed - just wait for user to select target or cancel
+            break;
+
+        case STATE_INTRO_NARRATIVE:
+            // Handled by introNarrativeModal.c
+            break;
+
+        case STATE_COMBAT_PREVIEW:
+            // Handled by combatPreviewModal.c
             break;
     }
 }

@@ -128,11 +128,18 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
     const char* passive_desc = trinket->passive_description ? d_StringPeek(trinket->passive_description) : "No passive";
     const char* active_desc = trinket->active_description ? d_StringPeek(trinket->active_description) : "No active";
 
+    // Get rarity name (with bounds check for safety against old struct layouts)
+    const char* rarity_name = NULL;
+    if (trinket->rarity >= TRINKET_RARITY_COMMON && trinket->rarity <= TRINKET_RARITY_LEGENDARY) {
+        rarity_name = GetTrinketRarityName(trinket->rarity);
+    }
+
     int padding = 16;
     int content_width = tooltip_width - (padding * 2);
 
     // Measure text heights
     int name_height = a_GetWrappedTextHeight((char*)name, FONT_ENTER_COMMAND, content_width);
+    int rarity_height = 18;  // Fixed height for rarity tag
     int desc_height = a_GetWrappedTextHeight((char*)description, FONT_GAME, content_width);
     int passive_height = a_GetWrappedTextHeight((char*)passive_desc, FONT_GAME, content_width);
     int active_height = a_GetWrappedTextHeight((char*)active_desc, FONT_GAME, content_width);
@@ -145,7 +152,8 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
         tooltip_height += 20;  // CLASS TRINKET header
     }
 
-    tooltip_height += name_height + 10;
+    tooltip_height += name_height + 8;
+    tooltip_height += rarity_height + 10;  // Rarity tag
     tooltip_height += desc_height + 12;
     tooltip_height += 1 + 12;  // Divider
     tooltip_height += passive_height + 8;
@@ -158,6 +166,16 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
 
     // Show damage counter (if any)
     if (trinket->total_damage_dealt > 0) {
+        tooltip_height += 20;
+    }
+
+    // Show bonus chips (if any - for Elite Membership)
+    if (trinket->total_bonus_chips > 0) {
+        tooltip_height += 20;
+    }
+
+    // Show refunded chips (if any - for Elite Membership)
+    if (trinket->total_refunded_chips > 0) {
         tooltip_height += 20;
     }
 
@@ -203,7 +221,23 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
         .scale = 1.0f
     };
     a_DrawTextStyled((char*)name, content_x, current_y, &title_config);
-    current_y += name_height + 10;
+    current_y += name_height + 8;
+
+    // Rarity tag (colored by rarity)
+    if (rarity_name && rarity_name[0] != '\0') {  // Safety check
+        int rarity_r, rarity_g, rarity_b;
+        GetTrinketRarityColor(trinket->rarity, &rarity_r, &rarity_g, &rarity_b);
+
+        aFontConfig_t rarity_config = {
+            .type = FONT_GAME,
+            .color = {(uint8_t)rarity_r, (uint8_t)rarity_g, (uint8_t)rarity_b, 255},
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 0.85f
+        };
+        a_DrawTextStyled((char*)rarity_name, content_x, current_y, &rarity_config);
+        current_y += rarity_height + 10;
+    }
 
     // Description
     aFontConfig_t desc_config = {
@@ -275,10 +309,50 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
         d_StringDestroy(dmg_text);
         current_y += 20;
     }
+
+    // Bonus chips won (if any - for Elite Membership)
+    if (trinket->total_bonus_chips > 0) {
+        dString_t* bonus_text = d_StringInit();
+        d_StringFormat(bonus_text, "Bonus Chips Won: %d", trinket->total_bonus_chips);
+
+        aFontConfig_t bonus_config = {
+            .type = FONT_GAME,
+            .color = {100, 255, 100, 255},  // Green text
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.0f
+        };
+        a_DrawTextStyled((char*)d_StringPeek(bonus_text), content_x, current_y, &bonus_config);
+        d_StringDestroy(bonus_text);
+        current_y += 20;
+    }
+
+    // Chips refunded (if any - for Elite Membership)
+    if (trinket->total_refunded_chips > 0) {
+        dString_t* refund_text = d_StringInit();
+        d_StringFormat(refund_text, "Chips Refunded: %d", trinket->total_refunded_chips);
+
+        aFontConfig_t refund_config = {
+            .type = FONT_GAME,
+            .color = {100, 200, 255, 255},  // Blue text
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.0f
+        };
+        a_DrawTextStyled((char*)d_StringPeek(refund_text), content_x, current_y, &refund_config);
+        d_StringDestroy(refund_text);
+        current_y += 20;
+    }
 }
 
 void RenderTrinketTooltips(TrinketUI_t* ui, Player_t* player) {
     if (!ui || !player || !player->trinket_slots) return;
+
+    // Don't show tooltips while in targeting mode (tooltip would block card selection)
+    extern GameContext_t g_game;
+    if (g_game.current_state == STATE_TARGETING) {
+        return;
+    }
 
     // Show tooltip for hovered class trinket
     if (ui->hovered_class_trinket) {
@@ -297,6 +371,58 @@ void RenderTrinketTooltips(TrinketUI_t* ui, Player_t* player) {
 }
 
 // ============================================================================
+// HOVER STATE UPDATE
+// ============================================================================
+
+/**
+ * UpdateTrinketUIHover - Update hover state based on mouse position
+ *
+ * MUST be called BEFORE HandleTrinketUIInput() to ensure input handler
+ * sees current hover state (not stale data from previous frame).
+ *
+ * Called in BlackjackLogic before input handling.
+ */
+void UpdateTrinketUIHover(TrinketUI_t* ui, Player_t* player) {
+    if (!ui || !player) return;
+
+    // Reset hover state
+    ui->hovered_trinket_slot = -1;
+    ui->hovered_class_trinket = false;
+
+    // Get mouse position
+    int mouse_x = app.mouse.x;
+    int mouse_y = app.mouse.y;
+
+    // Check class trinket hover
+    bool class_hovered = (mouse_x >= CLASS_TRINKET_X &&
+                          mouse_x < CLASS_TRINKET_X + CLASS_TRINKET_SIZE &&
+                          mouse_y >= CLASS_TRINKET_Y &&
+                          mouse_y < CLASS_TRINKET_Y + CLASS_TRINKET_SIZE);
+    if (class_hovered) {
+        ui->hovered_class_trinket = true;
+        return;  // Early exit if class trinket hovered
+    }
+
+    // Check regular trinket slots (2 rows × 3 columns)
+    for (int slot_index = 0; slot_index < 6; slot_index++) {
+        int row = slot_index / 3;
+        int col = slot_index % 3;
+        int slot_x = TRINKET_UI_X + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        int slot_y = TRINKET_UI_Y + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+
+        bool slot_hovered = (mouse_x >= slot_x &&
+                            mouse_x < slot_x + TRINKET_SLOT_SIZE &&
+                            mouse_y >= slot_y &&
+                            mouse_y < slot_y + TRINKET_SLOT_SIZE);
+
+        if (slot_hovered) {
+            ui->hovered_trinket_slot = slot_index;
+            return;  // Early exit if slot hovered
+        }
+    }
+}
+
+// ============================================================================
 // RENDERING - TRINKET SLOTS
 // ============================================================================
 
@@ -305,25 +431,16 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
         return;
     }
 
-    // Reset hover state
-    ui->hovered_trinket_slot = -1;
-    ui->hovered_class_trinket = false;
-
-    // Get mouse position for hover detection
-    int mouse_x = app.mouse.x;
-    int mouse_y = app.mouse.y;
+    // Hover state is now updated by UpdateTrinketUIHover() before input handling
+    // (no longer reset or calculated here to avoid timing bug)
 
     // ========================================================================
     // RENDER CLASS TRINKET (LEFT SIDE, BIGGER SLOT)
     // ========================================================================
     Trinket_t* class_trinket = GetClassTrinket(player);
 
-    // Check if mouse is hovering over class trinket slot
-    bool class_hovered = (mouse_x >= CLASS_TRINKET_X && mouse_x < CLASS_TRINKET_X + CLASS_TRINKET_SIZE &&
-                          mouse_y >= CLASS_TRINKET_Y && mouse_y < CLASS_TRINKET_Y + CLASS_TRINKET_SIZE);
-    if (class_hovered) {
-        ui->hovered_class_trinket = true;
-    }
+    // Use persisted hover state from UpdateTrinketUIHover()
+    bool class_hovered = ui->hovered_class_trinket;
 
     if (class_trinket) {
         // Class trinket equipped - draw with gold styling
@@ -490,12 +607,8 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
         int slot_x = TRINKET_UI_X + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
         int slot_y = TRINKET_UI_Y + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
 
-        // Check if mouse is hovering over this slot
-        bool is_hovered = (mouse_x >= slot_x && mouse_x < slot_x + TRINKET_SLOT_SIZE &&
-                          mouse_y >= slot_y && mouse_y < slot_y + TRINKET_SLOT_SIZE);
-        if (is_hovered) {
-            ui->hovered_trinket_slot = slot_index;
-        }
+        // Use persisted hover state from UpdateTrinketUIHover()
+        bool is_hovered = (ui->hovered_trinket_slot == slot_index);
 
         Trinket_t* trinket = GetEquippedTrinket(player, slot_index);
 

@@ -5,7 +5,7 @@ FF-012: Reward Modal Animation System Verification
 Enforces ADR-12 (Reward Modal Animation System)
 
 Verifies:
-1. ShowRewardModal() only offers untagged cards (no pre-tagged cards)
+1. ShowRewardModal() selects cards with lowest tag count (prioritizes untagged)
 2. Animation stages fire in sequence: FADE_OUT → SCALE_CARD → FADE_IN_TAG → COMPLETE
 3. AddCardTag() called exactly once per selection
 4. Tag badge consistency across three contexts (card, list, final animation)
@@ -52,8 +52,8 @@ PALETTE_COLORS = {
 
 
 def verify_untagged_card_selection(project_root: Path) -> bool:
-    """Verify ShowRewardModal() only offers untagged cards"""
-    print("📋 Verifying untagged card selection:")
+    """Verify ShowRewardModal() selects cards with lowest tag count"""
+    print("📋 Verifying lowest-tag card selection:")
     print()
 
     reward_modal_c = project_root / "src" / "scenes" / "components" / "rewardModal.c"
@@ -64,7 +64,7 @@ def verify_untagged_card_selection(project_root: Path) -> bool:
     content = reward_modal_c.read_text()
 
     # Find ShowRewardModal function (returns bool)
-    show_pattern = r'bool\s+ShowRewardModal\s*\([^)]*\)\s*\{([^}]{0,2000})\}'
+    show_pattern = r'bool\s+ShowRewardModal\s*\([^)]*\)\s*\{([^}]{0,3000})\}'
     match = re.search(show_pattern, content, re.DOTALL)
 
     if not match:
@@ -73,22 +73,24 @@ def verify_untagged_card_selection(project_root: Path) -> bool:
 
     func_body = match.group(1)
 
-    # Check for untagged card filtering (either HasCardTag or GetCardTags check)
-    has_untagged_check = (
-        ("HasCardTag" in func_body or "GetCardTags" in func_body) and
-        ("count == 0" in func_body or "->count == 0" in func_body or "tags->count == 0" in func_body)
+    # Check for tag count logic (prioritizes lowest tag count)
+    # Looking for: GetCardTags() calls and comparison logic (count, <, <=, etc.)
+    has_tag_count_check = (
+        "GetCardTags" in func_body and
+        ("->count" in func_body or "tags->count" in func_body or "tag_count" in func_body)
     )
 
-    if not has_untagged_check:
-        print("❌ FAIL: ShowRewardModal() doesn't filter for untagged cards")
-        print("   ADR-12 requires: Only offer cards without existing tags")
+    if not has_tag_count_check:
+        print("❌ FAIL: ShowRewardModal() doesn't check card tag counts")
+        print("   ADR-12 requires: Select cards with lowest tag count (prioritize untagged)")
         print()
         print("Required pattern:")
-        print("   if (GetCardTags(card_id)->count == 0) { ... }  // Only untagged")
+        print("   GetCardTags(card_id)->count  // Check tag count for prioritization")
         print()
         return False
 
-    print("✅ ShowRewardModal() filters for untagged cards only")
+    print("✅ ShowRewardModal() uses tag count for card selection")
+    print("   (Prioritizes cards with fewest tags)")
     print()
     return True
 

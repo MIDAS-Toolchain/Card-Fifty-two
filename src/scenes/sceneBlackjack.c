@@ -18,6 +18,8 @@
 #include "../../include/scenes/components/sidebarButton.h"
 #include "../../include/scenes/components/rewardModal.h"
 #include "../../include/scenes/components/eventPreviewModal.h"
+#include "../../include/scenes/components/combatPreviewModal.h"
+#include "../../include/scenes/components/introNarrativeModal.h"
 #include "../../include/scenes/components/eventModal.h"
 #include "../../include/scenes/components/resultScreen.h"
 #include "../../include/scenes/components/trinketUI.h"
@@ -42,6 +44,7 @@
 #include "../../include/event.h"
 #include "../../include/trinket.h"
 #include "../../include/stats.h"
+#include "../../include/sanityThreshold.h"
 #include <math.h>
 
 // External globals from main.c
@@ -56,6 +59,9 @@ extern SDL_Texture* g_card_back_texture;
 GameContext_t g_game;  // Stack-allocated singleton (constitutional pattern) - non-static for terminal access
 Player_t* g_dealer = NULL;
 Player_t* g_human_player = NULL;  // Non-static for terminal access
+
+// Loading screen state
+static bool g_is_loading = false;  // Set to true during asset loading
 
 // FlexBox layout (main vertical container)
 static FlexBox_t* g_main_layout = NULL;
@@ -81,11 +87,13 @@ static DrawPileModalSection_t* g_draw_pile_modal = NULL;
 static DiscardPileModalSection_t* g_discard_pile_modal = NULL;
 static RewardModal_t* g_reward_modal = NULL;
 static EventPreviewModal_t* g_event_preview_modal = NULL;
-static EventModal_t* g_event_modal = NULL;
+static CombatPreviewModal_t* g_combat_preview_modal = NULL;
+static IntroNarrativeModal_t* g_intro_narrative_modal = NULL;
+EventModal_t* g_event_modal = NULL;  // Non-static for terminal command access
 static ResultScreen_t* g_result_screen = NULL;
 
 // Event system
-static EventEncounter_t* g_current_event = NULL;
+EventEncounter_t* g_current_event = NULL;  // Non-static for terminal command access
 static EventPool_t* g_tutorial_event_pool = NULL;
 
 // Trinket UI component
@@ -100,6 +108,10 @@ static char g_popup_message[128] = {0};
 static float g_popup_alpha = 0.0f;
 static float g_popup_y = 0.0f;
 static bool g_popup_active = false;
+
+// Tutorial start delay (wait for enemy fade-in)
+static float g_tutorial_start_delay = 0.5f;  // 0.5s delay
+static bool g_tutorial_started = false;
 
 // Cached cursors (created once, reused)
 static SDL_Cursor* g_cursor_arrow = NULL;
@@ -241,6 +253,15 @@ static void InitializeLayout(void) {
     // Create event modal
     g_event_modal = CreateEventModal();
 
+    // Create event preview modal (created once, content updated on use)
+    g_event_preview_modal = CreateEventPreviewModal(&g_game, "Loading...");
+
+    // Create combat preview modal (created once, content updated on use)
+    g_combat_preview_modal = CreateCombatPreviewModal(&g_game, "", "");
+
+    // Create intro narrative modal (tutorial story scene)
+    g_intro_narrative_modal = CreateIntroNarrativeModal();
+
     // Create result screen component
     g_result_screen = CreateResultScreen();
     if (g_result_screen) {
@@ -302,6 +323,12 @@ static void CleanupLayout(void) {
     if (g_event_preview_modal) {
         DestroyEventPreviewModal(&g_event_preview_modal);
     }
+    if (g_combat_preview_modal) {
+        DestroyCombatPreviewModal(&g_combat_preview_modal);
+    }
+    if (g_intro_narrative_modal) {
+        DestroyIntroNarrativeModal(&g_intro_narrative_modal);
+    }
     if (g_event_modal) {
         DestroyEventModal(&g_event_modal);
     }
@@ -349,6 +376,9 @@ static void CleanupLayout(void) {
 
 void InitBlackjackScene(void) {
     d_LogInfo("Initializing Blackjack scene");
+
+    // Set loading flag (will show loading screen during asset loading)
+    g_is_loading = true;
 
     // Reset stats for new tutorial run
     Stats_Reset();
@@ -405,6 +435,10 @@ void InitBlackjackScene(void) {
     // Initialize game context
     State_InitContext(&g_game, &g_test_deck);
 
+    // Immediately transition to intro narrative (before loading assets)
+    // This ensures the first render doesn't show the bright game UI
+    State_Transition(&g_game, STATE_INTRO_NARRATIVE);
+
     // Add players to game (dealer first, then player)
     Game_AddPlayerToGame(&g_game, 0);  // Dealer
     Game_AddPlayerToGame(&g_game, 1);  // Player
@@ -412,13 +446,10 @@ void InitBlackjackScene(void) {
     // Initialize FlexBox layout (automatic positioning!)
     InitializeLayout();
 
-    // Initialize tutorial system
+    // Initialize tutorial system (but don't start yet - wait for enemy fade-in)
     g_tutorial_system = CreateTutorialSystem();
     g_tutorial_steps = CreateBlackjackTutorial();
-    if (g_tutorial_system && g_tutorial_steps) {
-        StartTutorial(g_tutorial_system, g_tutorial_steps);
-        d_LogInfo("Tutorial started");
-    }
+    g_tutorial_started = false;  // Will start after 0.5s delay
 
     // Create tutorial act (2 combats, 2 events)
     g_game.current_act = CreateTutorialAct();
@@ -437,40 +468,36 @@ void InitBlackjackScene(void) {
     d_LogInfoF("Starting tutorial act - First encounter: %s",
               GetEncounterTypeName(first_encounter->type));
 
-    // Spawn first enemy
-    if (first_encounter->type == ENCOUNTER_NORMAL ||
-        first_encounter->type == ENCOUNTER_ELITE ||
-        first_encounter->type == ENCOUNTER_BOSS) {
+    // State already set to INTRO_NARRATIVE at the top of InitBlackjackScene
+    // Show modal immediately (don't wait for first logic update)
+    if (g_intro_narrative_modal) {
+        const char* title = "The Casino";
 
-        if (!first_encounter->enemy_factory) {
-            d_LogError("Combat encounter has no enemy factory!");
-            return;
-        }
+        // Split narrative into 3 blocks
+        const char* block1 =
+            "You stumble through darkness. The casino floor stretches endlessly.\n\n"
+            "Slot machines silent, tables empty, cards scattered like debris.\n\n"
+            "The chips in your pocket grow warm.\n\n"
+            "You understand without being told: these are all you have.\n\n"
+            "When they're gone, so are you.\n\n";
 
-        Enemy_t* enemy = first_encounter->enemy_factory();
-        if (!enemy) {
-            d_LogError("Failed to create enemy from factory!");
-            return;
-        }
+        const char* block2 =
+            "Machines begin lighting up, one by one down the hallway.\n\n"
+            "The lights reveal a red velvet table at the end of the hall.\n\n"
+            "The faceless, lifeless dealer behind - nametag reads 'DIDACT' -\n\n"
+            "recites with a mechanical voice: 'The system requires demonstration. Place your bet.'\n\n";
 
-        // Load enemy portrait
-        if (first_encounter->portrait_path[0] != '\0') {
-            if (!LoadEnemyPortrait(enemy, first_encounter->portrait_path)) {
-                d_LogErrorF("Failed to load enemy portrait: %s", first_encounter->portrait_path);
-            }
-        }
+        const char* final_line = "You approach the table.";
 
-        g_game.current_enemy = enemy;
-        g_game.is_combat_mode = true;
+        const char* narrative_blocks[] = {block1, block2, final_line};
+        const char* portrait = "resources/textures/events/intro_scene.png";
 
-        // Fire COMBAT_START event
-        Game_TriggerEvent(&g_game, GAME_EVENT_COMBAT_START);
-
-        d_LogInfoF("Combat initialized: %s", GetEnemyName(enemy));
+        ShowIntroNarrativeModal(g_intro_narrative_modal, title, narrative_blocks, 3, portrait);
+        d_LogInfo("Tutorial intro narrative shown immediately on init");
     }
 
-    // Start in betting state
-    State_Transition(&g_game, STATE_BETTING);
+    // Loading complete - disable loading screen
+    g_is_loading = false;
 
     d_LogInfo("Blackjack scene ready");
 }
@@ -599,6 +626,18 @@ static void StartNextEncounter(void) {
             return;
         }
 
+        // Apply HP multiplier from event consequences (if not 1.0)
+        if (g_game.next_enemy_hp_multiplier != 1.0f) {
+            int original_hp = enemy->max_hp;
+            enemy->max_hp = (int)(enemy->max_hp * g_game.next_enemy_hp_multiplier);
+            enemy->current_hp = enemy->max_hp;
+            enemy->display_hp = (float)enemy->max_hp;
+            d_LogInfoF("Applied HP multiplier %.2f: %d → %d HP",
+                      g_game.next_enemy_hp_multiplier, original_hp, enemy->max_hp);
+            // Reset multiplier for next enemy
+            g_game.next_enemy_hp_multiplier = 1.0f;
+        }
+
         // Load portrait
         if (encounter->portrait_path[0] != '\0') {
             if (!LoadEnemyPortrait(enemy, encounter->portrait_path)) {
@@ -608,6 +647,9 @@ static void StartNextEncounter(void) {
 
         g_game.current_enemy = enemy;
         g_game.is_combat_mode = true;
+
+        // Fade in enemy on spawn (0.0 → 1.0 over 1.0 second)
+        TweenFloat(&g_tween_manager, &enemy->defeat_fade_alpha, 1.0f, 1.0f, TWEEN_EASE_OUT_CUBIC);
 
         // Fire COMBAT_START event
         Game_TriggerEvent(&g_game, GAME_EVENT_COMBAT_START);
@@ -696,6 +738,32 @@ static void BlackjackLogic(float dt) {
         return;  // Block all other input
     }
 
+    // Handle intro narrative modal input (BEFORE tutorial to avoid conflicts)
+    if (g_game.current_state == STATE_INTRO_NARRATIVE && g_intro_narrative_modal && IsIntroNarrativeModalVisible(g_intro_narrative_modal)) {
+        if (HandleIntroNarrativeModalInput(g_intro_narrative_modal, dt)) {
+            // Continue button was clicked - hide modal and start encounter directly
+            d_LogInfo("Intro narrative: Continue clicked, starting encounter");
+            HideIntroNarrativeModal(g_intro_narrative_modal);
+
+            // Start the Didact encounter directly (no combat preview)
+            StartNextEncounter();
+        }
+        return;  // Block all other input while narrative is visible
+    }
+
+    // Handle tutorial start delay (wait for enemy fade-in after narrative)
+    if (g_tutorial_system && g_tutorial_steps && !g_tutorial_started) {
+        g_tutorial_start_delay -= dt;
+        if (g_tutorial_start_delay <= 0.0f) {
+            StartTutorial(g_tutorial_system, g_tutorial_steps);
+            g_tutorial_started = true;
+            d_LogInfo("Tutorial started after 0.5s delay (post narrative)");
+        } else {
+            // Still waiting - don't process any input yet
+            return;
+        }
+    }
+
     // If tutorial is active, handle tutorial input (non-blocking - game input continues)
     if (g_tutorial_system && IsTutorialActive(g_tutorial_system)) {
         HandleTutorialInput(g_tutorial_system);
@@ -770,19 +838,36 @@ static void BlackjackLogic(float dt) {
         return;  // Don't process game logic while paused
     }
 
-    // Settings button clicked - Show pause menu (blocked during tutorial steps 1 and 2)
-    if (!tutorial_blocking_input && IsTopBarSettingsClicked(g_top_bar)) {
+    // Settings button clicked - Always works (even during tutorial)
+    if (IsTopBarSettingsClicked(g_top_bar)) {
         d_LogInfo("Settings button clicked - showing pause menu");
         ShowPauseMenu(g_pause_menu);
         return;
     }
 
-    // ESC - Show pause menu (blocked during tutorial steps 1 and 2)
-    if (!tutorial_blocking_input && app.keyboard[SDL_SCANCODE_ESCAPE]) {
+    // ESC - Show skip tutorial modal if tutorial dialogue is visible, otherwise show pause menu
+    // This check happens BEFORE tutorial_blocking_input so ESC works on all tutorial steps
+    if (app.keyboard[SDL_SCANCODE_ESCAPE]) {
         app.keyboard[SDL_SCANCODE_ESCAPE] = 0;
-        d_LogInfo("ESC pressed - showing pause menu");
-        ShowPauseMenu(g_pause_menu);
-        return;
+
+        // If tutorial dialogue is visible, show skip confirmation instead of pause menu
+        if (g_tutorial_system && IsTutorialActive(g_tutorial_system) &&
+            g_tutorial_system->dialogue_visible && !g_tutorial_system->skip_confirmation.visible) {
+            // Show skip tutorial confirmation (unless on final step)
+            if (g_tutorial_system->current_step && !g_tutorial_system->current_step->is_final_step) {
+                g_tutorial_system->skip_confirmation.visible = true;
+                d_LogInfo("ESC pressed - showing skip tutorial confirmation");
+                return;
+            }
+            // On final step, ESC finishes tutorial (handled in HandleTutorialInput)
+        }
+
+        // Otherwise show pause menu (only if not in tutorial blocking state)
+        if (!tutorial_blocking_input) {
+            d_LogInfo("ESC pressed - showing pause menu");
+            ShowPauseMenu(g_pause_menu);
+            return;
+        }
     }
 
     // Sidebar buttons - always available (except during tutorial steps 1 and 2)
@@ -910,8 +995,11 @@ static void BlackjackLogic(float dt) {
                 // If next is EVENT, show event preview
                 if (next->type == ENCOUNTER_EVENT) {
                     State_Transition(&g_game, STATE_EVENT_PREVIEW);
+                } else if (next->type == ENCOUNTER_ELITE || next->type == ENCOUNTER_BOSS) {
+                    // Elite/Boss combat - show preview
+                    State_Transition(&g_game, STATE_COMBAT_PREVIEW);
                 } else {
-                    // Next is combat - spawn enemy
+                    // Normal combat - spawn enemy directly (no preview)
                     StartNextEncounter();
                 }
             } else {
@@ -938,28 +1026,22 @@ static void BlackjackLogic(float dt) {
             return;
         }
 
-        // Create event preview modal
-        if (g_event_preview_modal) {
-            DestroyEventPreviewModal(&g_event_preview_modal);
-        }
-        g_event_preview_modal = CreateEventPreviewModal(&g_game, d_StringPeek(g_current_event->title));
+        // Initialize preview state
+        g_game.event_preview_timer = 3.0f;      // 3 second countdown
+        Game_ResetRerollCost(&g_game);          // Reset to base cost
+        g_game.event_rerolls_used = 0;          // Reset reroll counter
+
+        // Update modal content (created once at init, content updated here)
         if (!g_event_preview_modal) {
-            d_LogError("Failed to create event preview modal - skipping to event");
+            d_LogError("Event preview modal not initialized - skipping to event");
             State_Transition(&g_game, STATE_EVENT);
             return;
         }
 
-        // Initialize preview state
-        g_game.event_preview_timer = 3.0f;      // 3 second countdown
-        g_game.event_reroll_cost = g_game.event_reroll_base_cost;  // Reset to base cost
-        g_game.event_rerolls_used = 0;          // Reset reroll counter
-
-        d_LogInfoF("DEBUG: Initialized reroll cost - base_cost=%d, cost=%d",
-                  g_game.event_reroll_base_cost, g_game.event_reroll_cost);
-
-        // Show modal
+        UpdateEventPreviewContent(g_event_preview_modal,
+                                  d_StringPeek(g_current_event->title),
+                                  Game_GetEventRerollCost(&g_game));
         ShowEventPreviewModal(g_event_preview_modal);
-        UpdateEventPreviewModalCost(g_event_preview_modal, g_game.event_reroll_cost);
         d_LogInfoF("Event preview started: '%s' (3.0s timer)", d_StringPeek(g_current_event->title));
     }
 
@@ -968,13 +1050,24 @@ static void BlackjackLogic(float dt) {
         // Update fade animation
         UpdateEventPreviewModal(g_event_preview_modal, dt);
 
+        // Note: Timer is decremented by State_UpdateEventPreview() in state.c
+
+        // ENTER key (skip timer, proceed immediately)
+        if (app.keyboard[SDL_SCANCODE_RETURN] || app.keyboard[SDL_SCANCODE_KP_ENTER]) {
+            app.keyboard[SDL_SCANCODE_RETURN] = 0;
+            app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+            d_LogInfo("Event preview: ENTER pressed, proceeding");
+            HideEventPreviewModal(g_event_preview_modal);
+            State_Transition(&g_game, STATE_EVENT);
+        }
+
         // Check for button clicks (IsButtonClicked handles press/release detection internally)
         // Reroll button
         if (IsButtonClicked(g_event_preview_modal->reroll_button)) {
                 Player_t* player = Game_GetPlayerByID(1);  // Human player
-                if (player && player->chips >= g_game.event_reroll_cost) {
+                int cost = Game_GetEventRerollCost(&g_game);
+                if (player && player->chips >= cost) {
                     // Deduct chips and track stats
-                    int cost = g_game.event_reroll_cost;
                     player->chips -= cost;
                     Stats_RecordChipsSpentEventReroll(cost);
                     g_game.event_rerolls_used++;
@@ -983,8 +1076,7 @@ static void BlackjackLogic(float dt) {
                               cost, g_game.event_rerolls_used);
 
                     // Double reroll cost for next reroll
-                    g_game.event_reroll_cost *= 2;
-                    d_LogInfoF("DEBUG: After doubling, cost is now %d", g_game.event_reroll_cost);
+                    Game_IncrementRerollCost(&g_game);
 
                     // Regenerate event (avoid repeating same event immediately)
                     // Copy previous title before destroying event (avoid use-after-free)
@@ -1006,17 +1098,16 @@ static void BlackjackLogic(float dt) {
                         g_current_event = GetDifferentEventFromPool(g_tutorial_event_pool, prev);
                     }
 
-                    // Recreate modal with new title
-                    DestroyEventPreviewModal(&g_event_preview_modal);
-                    g_event_preview_modal = CreateEventPreviewModal(&g_game, d_StringPeek(g_current_event->title));
-                    ShowEventPreviewModal(g_event_preview_modal);
-                    UpdateEventPreviewModalCost(g_event_preview_modal, g_game.event_reroll_cost);
+                    // Update modal content (avoid destroy/recreate churn)
+                    UpdateEventPreviewContent(g_event_preview_modal,
+                                              d_StringPeek(g_current_event->title),
+                                              Game_GetEventRerollCost(&g_game));
 
                     // Reset timer
                     g_game.event_preview_timer = 3.0f;
 
                     d_LogInfoF("New event: '%s' (next reroll cost: %d chips)",
-                              d_StringPeek(g_current_event->title), g_game.event_reroll_cost);
+                              d_StringPeek(g_current_event->title), Game_GetEventRerollCost(&g_game));
             } else {
                 d_LogWarning("Not enough chips to reroll event");
                 // TODO: Show popup notification
@@ -1026,6 +1117,13 @@ static void BlackjackLogic(float dt) {
         // Continue button (skip timer, proceed immediately)
         if (IsButtonClicked(g_event_preview_modal->continue_button)) {
             d_LogInfo("Continue button clicked - proceeding to event");
+            HideEventPreviewModal(g_event_preview_modal);
+            State_Transition(&g_game, STATE_EVENT);
+        }
+
+        // Auto-proceed when timer hits 0
+        if (g_game.event_preview_timer <= 0.0f) {
+            d_LogInfo("Event preview: Timer expired, auto-proceeding");
             HideEventPreviewModal(g_event_preview_modal);
             State_Transition(&g_game, STATE_EVENT);
         }
@@ -1060,33 +1158,18 @@ static void BlackjackLogic(float dt) {
 
     // Handle event modal input
     if (g_game.current_state == STATE_EVENT && g_event_modal && IsEventModalVisible(g_event_modal)) {
-        if (HandleEventModalInput(g_event_modal, dt)) {
-            // Choice was selected
-            int choice_idx = GetSelectedChoiceIndex(g_event_modal);
-            if (choice_idx >= 0 && g_current_event && g_human_player) {
-                EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(g_current_event->choices, choice_idx);
-                if (choice) {
-                    d_LogInfoF("Event choice selected: %s", d_StringPeek(choice->text));
-
-                    // Apply chips delta
-                    if (choice->chips_delta != 0) {
-                        g_human_player->chips += choice->chips_delta;
-                        d_LogInfoF("Chips changed by %d (now: %d)",
-                                   choice->chips_delta, g_human_player->chips);
-                    }
-
-                    // Apply sanity delta
-                    if (choice->sanity_delta != 0) {
-                        g_human_player->sanity += choice->sanity_delta;
-                        // Clamp sanity to [0, max_sanity]
-                        if (g_human_player->sanity < 0) g_human_player->sanity = 0;
-                        if (g_human_player->sanity > g_human_player->max_sanity) {
-                            g_human_player->sanity = g_human_player->max_sanity;
-                        }
-                        d_LogInfoF("Sanity changed by %d (now: %d/%d)",
-                                   choice->sanity_delta, g_human_player->sanity, g_human_player->max_sanity);
-                    }
+        if (HandleEventModalInput(g_event_modal, g_human_player, dt)) {
+            // Choice was selected - copy modal's selected_choice to event
+            if (g_current_event) {
+                int selected_idx = GetSelectedChoiceIndex(g_event_modal);
+                if (selected_idx >= 0) {
+                    SelectEventChoice(g_current_event, selected_idx);
                 }
+            }
+
+            // Apply consequences via game logic layer
+            if (g_current_event && g_human_player) {
+                Game_ApplyEventConsequences(&g_game, g_current_event, g_human_player);
             }
 
             // Hide modal
@@ -1121,17 +1204,99 @@ static void BlackjackLogic(float dt) {
 
             d_LogInfoF("After event, next encounter: %s", GetEncounterTypeName(next->type));
 
-            // Start next encounter (should be combat)
-            if (next->type == ENCOUNTER_NORMAL ||
-                next->type == ENCOUNTER_ELITE ||
-                next->type == ENCOUNTER_BOSS) {
+            // Start next encounter (with combat preview for elite/boss)
+            if (next->type == ENCOUNTER_ELITE || next->type == ENCOUNTER_BOSS) {
+                // Elite/Boss combat - show preview
+                State_Transition(&g_game, STATE_COMBAT_PREVIEW);
+            } else if (next->type == ENCOUNTER_NORMAL) {
+                // Normal combat - spawn directly (no preview)
                 StartNextEncounter();
             } else {
+                // Unexpected type after event
                 d_LogWarning("Next encounter after event is not combat (unexpected)");
                 State_Transition(&g_game, STATE_BETTING);
             }
         }
     }
+
+    // Create combat preview when entering STATE_COMBAT_PREVIEW
+    // Skip this if coming from intro narrative (modal already set up manually)
+    if (previous_state != STATE_COMBAT_PREVIEW && g_game.current_state == STATE_COMBAT_PREVIEW
+        && previous_state != STATE_INTRO_NARRATIVE) {
+        // Get current encounter
+        Encounter_t* encounter = GetCurrentEncounter(g_game.current_act);
+        if (!encounter || !encounter->enemy_factory) {
+            d_LogError("Invalid combat encounter for preview");
+            StartNextEncounter();  // Fallback: spawn directly
+            return;
+        }
+
+        // Get enemy name and type
+        const char* encounter_type = (encounter->type == ENCOUNTER_ELITE) ? "Elite Combat" :
+                                      (encounter->type == ENCOUNTER_BOSS) ? "Boss Fight" : "Combat";
+
+        // Create temporary enemy to get name (will be destroyed and recreated on continue)
+        Enemy_t* temp_enemy = encounter->enemy_factory();
+        const char* enemy_name = temp_enemy ? GetEnemyName(temp_enemy) : "Unknown";
+
+        // Initialize preview state
+        g_game.combat_preview_timer = 3.0f;  // 3 second countdown
+
+        // Update modal content
+        if (!g_combat_preview_modal) {
+            d_LogError("Combat preview modal not initialized - skipping preview");
+            if (temp_enemy) DestroyEnemy(&temp_enemy);
+            StartNextEncounter();
+            return;
+        }
+
+        UpdateCombatPreviewContent(g_combat_preview_modal, enemy_name, encounter_type);
+        ShowCombatPreviewModal(g_combat_preview_modal);
+
+        // Cleanup temp enemy
+        if (temp_enemy) {
+            DestroyEnemy(&temp_enemy);
+        }
+
+        d_LogInfoF("Combat preview started: '%s - %s' (3.0s timer)", encounter_type, enemy_name);
+    }
+
+    // Handle combat preview modal input
+    if (g_game.current_state == STATE_COMBAT_PREVIEW && g_combat_preview_modal && IsCombatPreviewModalVisible(g_combat_preview_modal)) {
+        // Update fade animation
+        UpdateCombatPreviewModal(g_combat_preview_modal, dt);
+
+        // Decrement timer
+        g_game.combat_preview_timer -= dt;
+
+        // ENTER key (skip timer, proceed immediately)
+        if (app.keyboard[SDL_SCANCODE_RETURN] || app.keyboard[SDL_SCANCODE_KP_ENTER]) {
+            app.keyboard[SDL_SCANCODE_RETURN] = 0;
+            app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+            d_LogInfo("Combat preview: ENTER pressed, proceeding");
+            HideCombatPreviewModal(g_combat_preview_modal);
+            StartNextEncounter();  // Spawn enemy and start combat
+        }
+
+        // Continue button (skip timer, proceed immediately)
+        if (IsButtonClicked(g_combat_preview_modal->continue_button)) {
+            d_LogInfo("Combat preview: Continue clicked");
+            HideCombatPreviewModal(g_combat_preview_modal);
+            StartNextEncounter();  // Spawn enemy and start combat
+        }
+
+        // Auto-proceed when timer hits 0
+        if (g_game.combat_preview_timer <= 0.0f) {
+            d_LogInfo("Combat preview: Timer expired, auto-proceeding");
+            HideCombatPreviewModal(g_combat_preview_modal);
+            StartNextEncounter();  // Spawn enemy and start combat
+        }
+    }
+
+    // Intro narrative modal is shown immediately in InitBlackjackScene
+    // No need to show it again here
+
+    // (Intro narrative modal input handling moved to line ~702 for priority)
 
     // Trigger tutorial events on state changes
     if (g_tutorial_system && IsTutorialActive(g_tutorial_system)) {
@@ -1139,6 +1304,12 @@ static void BlackjackLogic(float dt) {
             TriggerTutorialEvent(g_tutorial_system, TUTORIAL_EVENT_STATE_CHANGE,
                                 (void*)(intptr_t)g_game.current_state);
         }
+    }
+
+    // Update trinket hover state ALWAYS (before state-specific input handling)
+    // This allows tooltips to appear at any time, while clicks are gated by STATE_PLAYER_TURN
+    if (g_trinket_ui && g_human_player && g_human_player->trinket_slots) {
+        UpdateTrinketUIHover(g_trinket_ui, g_human_player);
     }
 
     // Handle input based on current state (blocked during tutorial steps 3, 4, 5)
@@ -1410,7 +1581,6 @@ static void RenderTargetingArrow(void) {
 
     // Fill the triangle (simple scanline fill)
     for (int i = 0; i < arrow_size; i++) {
-        float t = (float)i / arrow_size;
         int fill_x1 = mouse_x - (int)(i * cosf(angle - arrow_angle));
         int fill_y1 = mouse_y - (int)(i * sinf(angle - arrow_angle));
         int fill_x2 = mouse_x - (int)(i * cosf(angle + arrow_angle));
@@ -1426,15 +1596,48 @@ static void RenderTargetingArrow(void) {
 static void HandleBettingInput(void) {
     if (!g_human_player) return;
 
-    const int bet_amounts[] = {BET_AMOUNT_MIN, BET_AMOUNT_MED, BET_AMOUNT_MAX};
+    // Apply sanity threshold effects to betting
+    int bet_amounts[3] = {BET_AMOUNT_MIN, BET_AMOUNT_MED, BET_AMOUNT_MAX};
+    bool sanity_enabled[3] = {true, true, true};
+    ApplySanityEffectsToBetting(g_human_player, bet_amounts, sanity_enabled);
 
-    // Update button positions from betting panel
-    UpdateActionPanelButtons(g_betting_panel);
-
-    // Enable/disable buttons based on available chips + update selection state
+    // Update button labels to show modified bet amounts
     for (int i = 0; i < NUM_BET_BUTTONS; i++) {
         if (!bet_buttons[i]) continue;
-        SetButtonEnabled(bet_buttons[i], CanAffordBet(g_human_player, bet_amounts[i]));
+
+        // Update label to show actual bet amount (may be modified by sanity)
+        // If player can't afford this bet, show "All In" instead
+        dString_t* label = d_StringInit();
+        const char* bet_names[] = {"Min", "Med", "Max"};
+
+        if (g_human_player->chips < bet_amounts[i]) {
+            // Can't afford this bet - show "All In" with current chips
+            d_StringFormat(label, "All In (%d)", g_human_player->chips);
+        } else {
+            // Can afford - show normal label
+            d_StringFormat(label, "%s (%d)", bet_names[i], bet_amounts[i]);
+        }
+
+        SetButtonLabel(bet_buttons[i], d_StringPeek(label));
+        d_StringDestroy(label);
+    }
+
+    // Calculate which buttons are visible (sanity allows AND can afford)
+    bool button_visible[3];
+    for (int i = 0; i < NUM_BET_BUTTONS; i++) {
+        button_visible[i] = sanity_enabled[i] && CanAffordBet(g_human_player, bet_amounts[i]);
+    }
+
+    // Rebuild action panel layout with only visible buttons (dynamic sizing)
+    RebuildActionPanelLayout(g_betting_panel, button_visible, 500);  // 500px available width
+
+    // NOTE: Don't call UpdateActionPanelButtons() here!
+    // Button positions will be updated in RenderActionPanel() after FlexBox bounds are set
+
+    // Set enabled/selected states
+    for (int i = 0; i < NUM_BET_BUTTONS; i++) {
+        if (!bet_buttons[i]) continue;
+        SetButtonEnabled(bet_buttons[i], button_visible[i]);
         SetButtonSelected(bet_buttons[i], (i == selected_bet_button));
     }
 
@@ -1483,7 +1686,11 @@ static void HandleBettingInput(void) {
         app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
 
         if (bet_buttons[selected_bet_button] && bet_buttons[selected_bet_button]->enabled) {
-            Game_ProcessBettingInput(&g_game, g_human_player, bet_amounts[selected_bet_button]);
+            // If player can't afford bet amount, bet all chips instead (All In)
+            int actual_bet = (g_human_player->chips < bet_amounts[selected_bet_button])
+                ? g_human_player->chips
+                : bet_amounts[selected_bet_button];
+            Game_ProcessBettingInput(&g_game, g_human_player, actual_bet);
         }
     }
 
@@ -1500,7 +1707,11 @@ static void HandleBettingInput(void) {
         // Process click - game.c validates and executes
         if (IsButtonClicked(bet_buttons[i])) {
             d_LogInfoF("✅ BET BUTTON %d CLICKED", i);
-            Game_ProcessBettingInput(&g_game, g_human_player, bet_amounts[i]);
+            // If player can't afford bet amount, bet all chips instead (All In)
+            int actual_bet = (g_human_player->chips < bet_amounts[i])
+                ? g_human_player->chips
+                : bet_amounts[i];
+            Game_ProcessBettingInput(&g_game, g_human_player, actual_bet);
         }
     }
 
@@ -1522,15 +1733,19 @@ static void HandleBettingInput(void) {
     // Trigger on key release (was held, now not held)
     if (prev_key_held != -1 && key_held_bet_index == -1) {
         int choice = prev_key_held;
-        d_LogInfoF("⌨️ KEYBOARD %d released - betting %d", choice + 1, bet_amounts[choice]);
-        Game_ProcessBettingInput(&g_game, g_human_player, bet_amounts[choice]);
+        // If player can't afford bet amount, bet all chips instead (All In)
+        int actual_bet = (g_human_player->chips < bet_amounts[choice])
+            ? g_human_player->chips
+            : bet_amounts[choice];
+        d_LogInfoF("⌨️ KEYBOARD %d released - betting %d", choice + 1, actual_bet);
+        Game_ProcessBettingInput(&g_game, g_human_player, actual_bet);
     }
 }
 
 static void HandlePlayerTurnInput(void) {
     if (!g_human_player) return;
 
-    // Check for trinket clicks FIRST (before button handling consumes mouse input)
+    // Handle trinket clicks (hover state already updated in main logic loop)
     if (g_trinket_ui && g_human_player->trinket_slots) {
         HandleTrinketUIInput(g_trinket_ui, g_human_player, &g_game);
     }
@@ -1715,6 +1930,23 @@ VisualEffects_t* GetVisualEffects(void) {
 static void BlackjackDraw(float dt) {
     (void)dt;
 
+    // Show loading screen during initialization
+    if (g_is_loading) {
+        // Black background
+        a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, 255);
+
+        // "Loading..." text (centered)
+        aFontConfig_t loading_config = {
+            .type = FONT_ENTER_COMMAND,
+            .color = {235, 237, 233, 255},  // Off-white
+            .align = TEXT_ALIGN_CENTER,
+            .wrap_width = 0,
+            .scale = 1.5f
+        };
+        a_DrawTextStyled("Loading...", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, &loading_config);
+        return;  // Skip all other rendering
+    }
+
     // Apply screen shake offset to entire viewport
     if (g_visual_effects) {
         ApplyScreenShakeViewport(g_visual_effects);
@@ -1810,17 +2042,19 @@ static void BlackjackDraw(float dt) {
                           (aColor_t){255, 255, 255, 255});  // No tint
     }
 
-    // Render top bar at fixed position (independent of FlexBox)
-    RenderTopBarSection(g_top_bar, &g_game, 0);
+    // Skip all game UI rendering during intro narrative (only show modal + overlay)
+    if (g_game.current_state != STATE_INTRO_NARRATIVE) {
+        // Render top bar at fixed position (independent of FlexBox)
+        RenderTopBarSection(g_top_bar, &g_game, 0);
 
-    // Render left sidebar (fixed position on left side)
-    if (g_left_sidebar && g_human_player) {
-        int sidebar_height = SCREEN_HEIGHT - LAYOUT_TOP_MARGIN - LAYOUT_BOTTOM_CLEARANCE;
-        RenderLeftSidebarSection(g_left_sidebar, g_human_player, 0, LAYOUT_TOP_MARGIN, sidebar_height);
-    }
+        // Render left sidebar (fixed position on left side)
+        if (g_left_sidebar && g_human_player) {
+            int sidebar_height = SCREEN_HEIGHT - LAYOUT_TOP_MARGIN - LAYOUT_BOTTOM_CLEARANCE;
+            RenderLeftSidebarSection(g_left_sidebar, g_human_player, 0, LAYOUT_TOP_MARGIN, sidebar_height);
+        }
 
-    // Get FlexBox-calculated positions and render all game area sections
-    if (g_main_layout) {
+        // Get FlexBox-calculated positions and render all game area sections
+        if (g_main_layout) {
         a_FlexLayout(g_main_layout);
 
         // Render 3 sections using FlexBox positions (no title)
@@ -1943,6 +2177,22 @@ static void BlackjackDraw(float dt) {
         RenderEventPreviewModal(g_event_preview_modal, &g_game);
     }
 
+    // Render combat preview modal (if visible) - BEFORE pause menu
+    if (g_combat_preview_modal) {
+        RenderCombatPreviewModal(g_combat_preview_modal, &g_game);
+    }
+
+    }  // End skip game UI during intro narrative
+
+    // Render intro narrative modal (if visible) with dark background
+    if (g_intro_narrative_modal && IsIntroNarrativeModalVisible(g_intro_narrative_modal)) {
+        // Dark semi-transparent overlay (50% black)
+        a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, 128);
+
+        // Render modal (has its own fade-in)
+        RenderIntroNarrativeModal(g_intro_narrative_modal);
+    }
+
     // Render deck/discard modals
     if (g_draw_pile_modal) {
         RenderDrawPileModalSection(g_draw_pile_modal);
@@ -1951,19 +2201,20 @@ static void BlackjackDraw(float dt) {
         RenderDiscardPileModalSection(g_discard_pile_modal);
     }
 
-    // Render pause menu if visible (on top of everything)
-    if (g_pause_menu) {
-        RenderPauseMenuSection(g_pause_menu);
-    }
-
     // Render event modal (if visible) - matches RewardModal pattern
     if (g_event_modal) {
-        RenderEventModal(g_event_modal);
+        RenderEventModal(g_event_modal, g_human_player);
     }
 
-    // Render tutorial if active (absolute top layer)
-    if (g_tutorial_system && IsTutorialActive(g_tutorial_system)) {
+    // Render tutorial if active - skip during intro narrative
+    if (g_tutorial_system && IsTutorialActive(g_tutorial_system) &&
+        g_game.current_state != STATE_INTRO_NARRATIVE) {
         RenderTutorial(g_tutorial_system);
+    }
+
+    // Render pause menu if visible (on top of everything, including tutorial)
+    if (g_pause_menu) {
+        RenderPauseMenuSection(g_pause_menu);
     }
 
     // Render damage numbers (floating combat text)
@@ -2002,19 +2253,6 @@ static void BlackjackDraw(float dt) {
     if (g_terminal) {
         RenderTerminal(g_terminal);
     }
-
-    // FPS
-    dString_t* fps_str = d_StringInit();
-    d_StringFormat(fps_str, "FPS: %.1f", 1.0f / a_GetDeltaTime());
-    aFontConfig_t fps_config = {
-        .type = FONT_ENTER_COMMAND,
-        .color = {0, 255, 255, 255},  // Cyan
-        .align = TEXT_ALIGN_RIGHT,
-        .wrap_width = 0,
-        .scale = 1.0f
-    };
-    a_DrawTextStyled((char*)d_StringPeek(fps_str), SCREEN_WIDTH - 10, 10, &fps_config);
-    d_StringDestroy(fps_str);
 }
 
 // ============================================================================

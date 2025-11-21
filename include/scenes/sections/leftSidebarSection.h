@@ -23,7 +23,7 @@
 
 #define SIDEBAR_WIDTH           280
 #define SIDEBAR_PADDING         20
-#define PORTRAIT_SIZE           128
+#define PORTRAIT_SIZE           200
 #define SANITY_BAR_WIDTH        200
 #define SANITY_BAR_HEIGHT       20
 #define ELEMENT_VERTICAL_GAP    15

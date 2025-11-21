@@ -7,10 +7,19 @@
 #include "../../include/enemy.h"
 #include "../../include/game.h"
 #include "../../include/cardTags.h"
+#include "../../include/event.h"
+#include "../../include/state.h"
+#include "../../include/scenes/components/eventModal.h"
 
 // External globals (from sceneBlackjack.c)
 extern Player_t* g_human_player;
 extern GameContext_t g_game;
+extern EventEncounter_t* g_current_event;
+extern EventModal_t* g_event_modal;
+
+// External event factories (from event.c)
+extern EventEncounter_t* CreateSystemMaintenanceEvent(void);
+extern EventEncounter_t* CreateHouseOddsEvent(void);
 
 // ============================================================================
 // COMMAND IMPLEMENTATIONS
@@ -25,9 +34,11 @@ void CMD_Help(Terminal_t* terminal, const char* args) {
     TerminalPrint(terminal, "  clear             - Clear terminal output");
     TerminalPrint(terminal, "  echo <text>       - Print text to terminal");
     TerminalPrint(terminal, "  give_chips <amt>  - Add chips to player");
+    TerminalPrint(terminal, "  set_sanity <amt>  - Set player sanity (0-100)");
     TerminalPrint(terminal, "  set_hp <amt>      - Set enemy HP (combat only)");
     TerminalPrint(terminal, "  spawn_enemy <name> <hp> <atk> - Spawn combat enemy");
     TerminalPrint(terminal, "  add_tag <id|all> <tag> - Add tag to card (0-51 or 'all')");
+    TerminalPrint(terminal, "  trigger_event <name> - Trigger event (maintenance, house_odds)");
     TerminalPrint(terminal, "");
 }
 
@@ -64,6 +75,48 @@ void CMD_GiveChips(Terminal_t* terminal, const char* args) {
 
     g_human_player->chips += amount;
     TerminalPrint(terminal, "[Terminal] Added %d chips (Total: %d)", amount, g_human_player->chips);
+}
+
+void CMD_SetSanity(Terminal_t* terminal, const char* args) {
+    if (!args || strlen(args) == 0) {
+        TerminalPrint(terminal, "[Error] Usage: set_sanity <amount>");
+        TerminalPrint(terminal, "[Error] Example: set_sanity 50");
+        return;
+    }
+
+    if (!g_human_player) {
+        TerminalPrint(terminal, "[Error] No player found");
+        return;
+    }
+
+    int sanity = atoi(args);
+
+    // Clamp to valid range
+    if (sanity < 0) sanity = 0;
+    if (sanity > g_human_player->max_sanity) sanity = g_human_player->max_sanity;
+
+    // Set sanity directly
+    g_human_player->sanity = sanity;
+
+    TerminalPrint(terminal, "[OK] Player sanity set to %d/%d",
+                  g_human_player->sanity, g_human_player->max_sanity);
+
+    // Show which sanity tier we're in
+    float percent = GetPlayerSanityPercent(g_human_player);
+    const char* tier_name = "Unknown";
+    if (percent == 0.0f) {
+        tier_name = "ZERO (0%)";
+    } else if (percent <= 0.25f) {
+        tier_name = "VERY LOW (1-25%)";
+    } else if (percent <= 0.50f) {
+        tier_name = "LOW (26-50%)";
+    } else if (percent <= 0.75f) {
+        tier_name = "MEDIUM (51-75%)";
+    } else {
+        tier_name = "HIGH (76-100%)";
+    }
+
+    TerminalPrint(terminal, "[OK] Sanity tier: %s", tier_name);
 }
 
 void CMD_SetHP(Terminal_t* terminal, const char* args) {
@@ -228,6 +281,44 @@ void CMD_AddTag(Terminal_t* terminal, const char* args) {
     }
 }
 
+void CMD_TriggerEvent(Terminal_t* terminal, const char* args) {
+    if (!args || strlen(args) == 0) {
+        TerminalPrint(terminal, "[Error] Usage: trigger_event <event_name>");
+        TerminalPrint(terminal, "[Error] Available events: maintenance, house_odds");
+        return;
+    }
+
+    // Destroy existing event if present
+    if (g_current_event) {
+        DestroyEvent(&g_current_event);
+        g_current_event = NULL;
+    }
+
+    // Create event based on name
+    if (strcasecmp(args, "maintenance") == 0) {
+        g_current_event = CreateSystemMaintenanceEvent();
+        if (g_current_event) {
+            State_Transition(&g_game, STATE_EVENT);
+            ShowEventModal(g_event_modal, g_current_event);  // Manually show modal
+            TerminalPrint(terminal, "[Terminal] Triggered event: System Maintenance");
+        } else {
+            TerminalPrint(terminal, "[Error] Failed to create event");
+        }
+    } else if (strcasecmp(args, "house_odds") == 0) {
+        g_current_event = CreateHouseOddsEvent();
+        if (g_current_event) {
+            State_Transition(&g_game, STATE_EVENT);
+            ShowEventModal(g_event_modal, g_current_event);  // Manually show modal
+            TerminalPrint(terminal, "[Terminal] Triggered event: House Odds");
+        } else {
+            TerminalPrint(terminal, "[Error] Failed to create event");
+        }
+    } else {
+        TerminalPrint(terminal, "[Error] Unknown event: %s", args);
+        TerminalPrint(terminal, "[Error] Available events: maintenance, house_odds");
+    }
+}
+
 // ============================================================================
 // COMMAND REGISTRATION
 // ============================================================================
@@ -237,7 +328,9 @@ void RegisterBuiltinCommands(Terminal_t* terminal) {
     RegisterCommand(terminal, "clear", CMD_Clear, "Clear terminal output");
     RegisterCommand(terminal, "echo", CMD_Echo, "Print text to terminal");
     RegisterCommand(terminal, "give_chips", CMD_GiveChips, "Add chips to player");
+    RegisterCommand(terminal, "set_sanity", CMD_SetSanity, "Set player sanity (0-100)");
     RegisterCommand(terminal, "set_hp", CMD_SetHP, "Set enemy HP (combat only)");
     RegisterCommand(terminal, "spawn_enemy", CMD_SpawnEnemy, "Spawn combat enemy");
     RegisterCommand(terminal, "add_tag", CMD_AddTag, "Add tag to card(s) by ID or 'all'");
+    RegisterCommand(terminal, "trigger_event", CMD_TriggerEvent, "Trigger specific event by name");
 }

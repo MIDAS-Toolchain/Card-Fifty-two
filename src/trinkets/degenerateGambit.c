@@ -53,7 +53,11 @@ void DegenerateGambitPassive(Player_t* player, GameContext_t* game, Trinket_t* s
 
     // Trigger only if we were ALREADY at 15+ before hitting
     if (value_before_hit >= 15) {
-        int damage = 10 + self->passive_damage_bonus;
+        int base_damage = 10 + self->passive_damage_bonus;
+
+        // Apply ALL damage modifiers (ADR-010: Universal damage modifier)
+        bool is_crit = false;
+        int damage = ApplyPlayerDamageModifiers(player, base_damage, &is_crit);
 
         TakeDamage(game->current_enemy, damage);
 
@@ -70,7 +74,8 @@ void DegenerateGambitPassive(Player_t* player, GameContext_t* game, Trinket_t* s
             TriggerEnemyDamageEffect(game->current_enemy, tween_mgr);  // Shake + red flash on enemy
 
             // Trigger trinket icon shake + flash
-            // SAFE: Trinkets are heap-allocated (malloc), pointers never dangle!
+            // SAFE: Class trinket is embedded in Player_t (stable address)
+            // NOTE: For regular trinkets in dArray, use TweenFloatInArray() with slot_index
             self->shake_offset_x = 0.0f;
             self->shake_offset_y = 0.0f;
             TweenFloat(tween_mgr, &self->shake_offset_x, 5.0f, 0.15f, TWEEN_EASE_OUT_ELASTIC);
@@ -85,11 +90,11 @@ void DegenerateGambitPassive(Player_t* player, GameContext_t* game, Trinket_t* s
             VFX_SpawnDamageNumber(vfx, damage,
                                  SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
                                  ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                                 false);  // false = damage (not healing)
+                                 false, is_crit);  // Pass crit flag
         }
 
-        d_LogInfoF("⚡ Degenerate's Gambit (Passive): Reckless hit at %d! Dealt %d damage",
-                   player->hand.total_value, damage);
+        d_LogInfoF("⚡ Degenerate's Gambit (Passive): Reckless hit at %d! Dealt %d damage%s",
+                   player->hand.total_value, damage, is_crit ? " (CRIT!)" : "");
     }
 }
 
@@ -151,10 +156,11 @@ void DegenerateGambitActive(Player_t* player, GameContext_t* game, void* target,
 // ============================================================================
 
 Trinket_t* CreateDegenerateGambitTrinket(void) {
-    Trinket_t* trinket = CreateTrinket(
+    Trinket_t* trinket = CreateTrinketTemplate(
         0,  // trinket_id
         "Degenerate's Gambit",
-        "The desperate gambler's last resort. Risk everything for fleeting power."
+        "The desperate gambler's last resort. Risk everything for fleeting power.",
+        TRINKET_RARITY_CLASS  // Class trinket (purple) - unique to Degenerate class
     );
 
     if (!trinket) {

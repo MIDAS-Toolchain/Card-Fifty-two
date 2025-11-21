@@ -85,13 +85,53 @@ void UpdateActionPanelButtons(ActionPanel_t* panel) {
     a_FlexLayout(panel->button_row);
 
     // Sync button positions from FlexBox
-    for (int i = 0; i < panel->button_count; i++) {
-        if (panel->buttons[i]) {
+    // IMPORTANT: Loop through FlexBox items, not panel->button_count!
+    // After RebuildActionPanelLayout(), FlexBox may have fewer items than button_count
+    int item_count = a_FlexGetItemCount(panel->button_row);
+    for (int i = 0; i < item_count; i++) {
+        const FlexItem_t* item = a_FlexGetItem(panel->button_row, i);
+        if (item && item->user_data) {
+            Button_t* button = (Button_t*)item->user_data;
             int x = a_FlexGetItemX(panel->button_row, i);
             int y = a_FlexGetItemY(panel->button_row, i);
-            SetButtonPosition(panel->buttons[i], x, y);
+            SetButtonPosition(button, x, y);
         }
     }
+}
+
+void RebuildActionPanelLayout(ActionPanel_t* panel, bool button_visible[3], int available_width) {
+    if (!panel || !panel->button_row || !button_visible) return;
+
+    // Count visible buttons
+    int visible_count = 0;
+    for (int i = 0; i < panel->button_count && i < 3; i++) {
+        if (button_visible[i]) {
+            visible_count++;
+        }
+    }
+
+    if (visible_count == 0) return;  // No buttons to show
+
+    // Calculate dynamic button width
+    // Formula: (available_width - (gaps * (visible_count - 1))) / visible_count
+    int total_gap_width = BUTTON_GAP * (visible_count - 1);
+    int button_width = (available_width - total_gap_width) / visible_count;
+
+    // Clear existing FlexBox items
+    a_FlexClearItems(panel->button_row);
+
+    // Add only visible buttons with new width
+    for (int i = 0; i < panel->button_count && i < 3; i++) {
+        if (button_visible[i] && panel->buttons[i]) {
+            // Update button size directly (no setter function exists)
+            panel->buttons[i]->w = button_width;
+
+            // Add to FlexBox
+            a_FlexAddItem(panel->button_row, button_width, panel->buttons[i]->h, panel->buttons[i]);
+        }
+    }
+
+    d_LogDebugF("ActionPanel rebuilt: %d visible buttons, %dpx each", visible_count, button_width);
 }
 
 void RenderActionPanel(ActionPanel_t* panel, int y) {
@@ -122,13 +162,15 @@ void RenderActionPanel(ActionPanel_t* panel, int y) {
     // Update button positions from FlexBox (includes layout calculation)
     UpdateActionPanelButtons(panel);
 
-    // Get actual button Y position after layout
-    int button_y = a_FlexGetItemY(panel->button_row, 0);
-
-    // Render all buttons
-    for (int i = 0; i < panel->button_count; i++) {
-        if (panel->buttons[i]) {
-            RenderButton(panel->buttons[i]);
+    // Render only buttons that are in the FlexBox
+    // FlexBox item count may be less than button_count after RebuildActionPanelLayout()
+    int item_count = a_FlexGetItemCount(panel->button_row);
+    for (int i = 0; i < item_count; i++) {
+        // Get the button pointer from FlexBox user_data
+        const FlexItem_t* item = a_FlexGetItem(panel->button_row, i);
+        if (item && item->user_data) {
+            Button_t* button = (Button_t*)item->user_data;
+            RenderButton(button);
         }
     }
 }

@@ -123,6 +123,25 @@ void UpdateEventPreviewModalCost(EventPreviewModal_t* modal, int current_cost) {
     SetButtonLabel(modal->reroll_button, reroll_text);
 }
 
+void UpdateEventPreviewContent(EventPreviewModal_t* modal, const char* new_title, int new_cost) {
+    if (!modal || !new_title) {
+        d_LogError("UpdateEventPreviewContent: NULL parameter");
+        return;
+    }
+
+    // Update event title (static buffer copy)
+    strncpy(modal->event_title, new_title, sizeof(modal->event_title) - 1);
+    modal->event_title[sizeof(modal->event_title) - 1] = '\0';
+
+    // Reset fade animation for new title
+    modal->title_alpha = 0.0f;
+
+    // Update reroll button cost
+    UpdateEventPreviewModalCost(modal, new_cost);
+
+    d_LogInfoF("EventPreviewModal content updated: '%s' (cost: %d)", new_title, new_cost);
+}
+
 // ============================================================================
 // RENDERING
 // ============================================================================

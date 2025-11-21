@@ -31,6 +31,7 @@ typedef struct DamageNumber {
     float alpha;          // Opacity (1.0 = opaque, 0.0 = invisible)
     int damage;           // Damage amount to display
     bool is_healing;      // true = green (+N), false = red (-N)
+    bool is_crit;         // true = gold/large crit number, false = normal
 } DamageNumber_t;
 
 // Callback user data for damage numbers (includes generation to prevent stale callbacks)
@@ -114,8 +115,9 @@ void RestoreViewport(void);
  * @param x World X position
  * @param y World Y position
  * @param is_healing true = green (+N), false = red (-N)
+ * @param is_crit true = gold/large crit, false = normal
  */
-void VFX_SpawnDamageNumber(VisualEffects_t* vfx, int damage, float x, float y, bool is_healing);
+void VFX_SpawnDamageNumber(VisualEffects_t* vfx, int damage, float x, float y, bool is_healing, bool is_crit);
 
 /**
  * Trigger screen shake effect

@@ -6,6 +6,8 @@
 #include "../include/trinket.h"
 #include "../include/player.h"
 #include "../include/trinkets/degenerateGambit.h"
+#include "../include/trinkets/eliteMembership.h"
+#include "../include/trinkets/stackTrace.h"
 #include "../include/scenes/sceneBlackjack.h"  // For GetTweenManager
 #include "../include/tween/tween.h"            // For TweenFloat, TWEEN_EASE_*
 #include <stdlib.h>
@@ -14,184 +16,202 @@
 // GLOBAL REGISTRY
 // ============================================================================
 
-dTable_t* g_trinkets = NULL;  // trinket_id → Trinket_t*
+dTable_t* g_trinket_templates = NULL;  // trinket_id → Trinket_t (BY VALUE!)
 
 // ============================================================================
 // LIFECYCLE
 // ============================================================================
 
 void InitTrinketSystem(void) {
-    if (g_trinkets) {
-        d_LogWarning("InitTrinketSystem: g_trinkets already initialized");
+    if (g_trinket_templates) {
+        d_LogWarning("InitTrinketSystem: g_trinket_templates already initialized");
         return;
     }
 
-    // Constitutional pattern: dTable_t for O(1) lookup
-    g_trinkets = d_InitTable(sizeof(int), sizeof(Trinket_t*),
-                              d_HashInt, d_CompareInt, 16);
+    // Constitutional pattern: Store trinket templates BY VALUE (not pointers!)
+    // Matches g_players pattern (ADR-003)
+    g_trinket_templates = d_InitTable(sizeof(int), sizeof(Trinket_t),
+                                       d_HashInt, d_CompareInt, 16);
 
-    if (!g_trinkets) {
-        d_LogFatal("InitTrinketSystem: Failed to create g_trinkets table");
+    if (!g_trinket_templates) {
+        d_LogFatal("InitTrinketSystem: Failed to create g_trinket_templates table");
         return;
     }
 
     d_LogInfo("Trinket system initialized");
 
-    // Register all trinkets
+    // Register all trinket templates
     CreateDegenerateGambitTrinket();  // ID 0 - Degenerate starter trinket
+    CreateEliteMembershipTrinket();   // ID 1 - Elite Membership (House Odds event)
+    CreateStackTraceTrinket();        // ID 2 - Stack Trace (System Maintenance event)
 }
 
 void CleanupTrinketSystem(void) {
-    if (!g_trinkets) {
+    if (!g_trinket_templates) {
         return;
     }
 
     // Get all trinket IDs from table (Constitutional: use Daedalus helper)
-    dArray_t* trinket_ids = d_GetAllKeysFromTable(g_trinkets);
+    dArray_t* trinket_ids = d_GetAllKeysFromTable(g_trinket_templates);
     if (trinket_ids) {
-        // Iterate through all actual trinket IDs (handles non-sequential IDs)
+        // Iterate through all templates and clean up internal dStrings
         for (size_t i = 0; i < trinket_ids->count; i++) {
             int* trinket_id = (int*)d_IndexDataFromArray(trinket_ids, i);
             if (trinket_id) {
-                Trinket_t** trinket_ptr = (Trinket_t**)d_GetDataFromTable(g_trinkets, trinket_id);
-                if (trinket_ptr && *trinket_ptr) {
-                    DestroyTrinket(trinket_ptr);
+                Trinket_t* trinket = (Trinket_t*)d_GetDataFromTable(g_trinket_templates, trinket_id);
+                if (trinket) {
+                    CleanupTrinketValue(trinket);  // Free dStrings inside
                 }
             }
         }
-        d_DestroyArray(trinket_ids);
+        d_DestroyArray(trinket_ids);  // Pass pointer directly, not address
     }
 
-    d_DestroyTable(&g_trinkets);
-    g_trinkets = NULL;
+    d_DestroyTable(&g_trinket_templates);
+    g_trinket_templates = NULL;
 
     d_LogInfo("Trinket system cleaned up");
 }
 
-Trinket_t* CreateTrinket(int trinket_id, const char* name, const char* description) {
+Trinket_t* CreateTrinketTemplate(int trinket_id, const char* name, const char* description, TrinketRarity_t rarity) {
     if (!name || !description) {
-        d_LogError("CreateTrinket: NULL name or description");
+        d_LogError("CreateTrinketTemplate: NULL name or description");
         return NULL;
     }
 
-    Trinket_t* trinket = malloc(sizeof(Trinket_t));
-    if (!trinket) {
-        d_LogFatal("CreateTrinket: Failed to allocate Trinket_t");
-        return NULL;
-    }
+    // Constitutional pattern: Build template on STACK, store BY VALUE (NO malloc!)
+    Trinket_t template = {0};
 
-    // Initialize ID
-    trinket->trinket_id = trinket_id;
+    // Initialize ID and rarity
+    template.trinket_id = trinket_id;
+    template.rarity = rarity;
 
     // Initialize name (Constitutional: dString_t, not char[])
-    trinket->name = d_StringInit();
-    if (!trinket->name) {
-        d_LogError("CreateTrinket: Failed to allocate name");
-        free(trinket);
+    template.name = d_StringInit();
+    if (!template.name) {
+        d_LogError("CreateTrinketTemplate: Failed to allocate name");
         return NULL;
     }
-    d_StringSet(trinket->name, name, 0);
+    d_StringSet(template.name, name, 0);
 
     // Initialize description
-    trinket->description = d_StringInit();
-    if (!trinket->description) {
-        d_LogError("CreateTrinket: Failed to allocate description");
-        d_StringDestroy(trinket->name);
-        free(trinket);
+    template.description = d_StringInit();
+    if (!template.description) {
+        d_LogError("CreateTrinketTemplate: Failed to allocate description");
+        d_StringDestroy(template.name);
         return NULL;
     }
-    d_StringSet(trinket->description, description, 0);
+    d_StringSet(template.description, description, 0);
 
-    // Initialize passive (use ROUND_START as default "no-op" trigger)
-    trinket->passive_trigger = GAME_EVENT_COMBAT_START;
-    trinket->passive_effect = NULL;  // NULL effect = won't trigger
-    trinket->passive_description = d_StringInit();
-    if (!trinket->passive_description) {
-        d_LogError("CreateTrinket: Failed to allocate passive_description");
-        d_StringDestroy(trinket->name);
-        d_StringDestroy(trinket->description);
-        free(trinket);
+    // Initialize passive (use COMBAT_START as default "no-op" trigger)
+    template.passive_trigger = GAME_EVENT_COMBAT_START;
+    template.passive_effect = NULL;  // NULL effect = won't trigger
+    template.passive_description = d_StringInit();
+    if (!template.passive_description) {
+        d_LogError("CreateTrinketTemplate: Failed to allocate passive_description");
+        d_StringDestroy(template.name);
+        d_StringDestroy(template.description);
         return NULL;
     }
 
     // Initialize active
-    trinket->active_target_type = TRINKET_TARGET_NONE;
-    trinket->active_effect = NULL;
-    trinket->active_cooldown_max = 0;
-    trinket->active_cooldown_current = 0;
-    trinket->active_description = d_StringInit();
-    if (!trinket->active_description) {
-        d_LogError("CreateTrinket: Failed to allocate active_description");
-        d_StringDestroy(trinket->name);
-        d_StringDestroy(trinket->description);
-        d_StringDestroy(trinket->passive_description);
-        free(trinket);
+    template.active_target_type = TRINKET_TARGET_NONE;
+    template.active_effect = NULL;
+    template.active_cooldown_max = 0;
+    template.active_cooldown_current = 0;
+    template.active_description = d_StringInit();
+    if (!template.active_description) {
+        d_LogError("CreateTrinketTemplate: Failed to allocate active_description");
+        d_StringDestroy(template.name);
+        d_StringDestroy(template.description);
+        d_StringDestroy(template.passive_description);
         return NULL;
     }
 
-    // Initialize state tracking
-    trinket->passive_damage_bonus = 0;
-    trinket->total_damage_dealt = 0;
+    // Initialize state tracking (will be reset per-instance when equipped)
+    template.passive_damage_bonus = 0;
+    template.total_damage_dealt = 0;
 
     // Initialize animation state
-    trinket->shake_offset_x = 0.0f;
-    trinket->shake_offset_y = 0.0f;
-    trinket->flash_alpha = 0.0f;
+    template.shake_offset_x = 0.0f;
+    template.shake_offset_y = 0.0f;
+    template.flash_alpha = 0.0f;
 
-    // Register in global table
-    d_SetDataInTable(g_trinkets, &trinket->trinket_id, &trinket);
+    // Initialize additional stats (at end for binary compatibility)
+    template.total_bonus_chips = 0;
+    template.total_refunded_chips = 0;
 
-    d_LogInfoF("Created trinket: %s (ID: %d)", d_StringPeek(trinket->name), trinket_id);
+    // Store template BY VALUE in global table (Constitutional pattern!)
+    d_SetDataInTable(g_trinket_templates, &template.trinket_id, &template);
 
-    return trinket;
+    // Return pointer to VALUE stored in table (like g_players)
+    Trinket_t* stored_template = (Trinket_t*)d_GetDataFromTable(g_trinket_templates, &trinket_id);
+    if (!stored_template) {
+        d_LogError("CreateTrinketTemplate: Failed to store template in table");
+        CleanupTrinketValue(&template);  // Clean up dStrings before returning
+        return NULL;
+    }
+
+    d_LogInfoF("Created trinket template: %s (ID: %d)", d_StringPeek(stored_template->name), trinket_id);
+
+    return stored_template;
 }
 
-void DestroyTrinket(Trinket_t** trinket) {
-    if (!trinket || !*trinket) {
+void CleanupTrinketValue(Trinket_t* trinket) {
+    if (!trinket) {
         return;
     }
 
-    Trinket_t* t = *trinket;
+    // Free internal dString_t resources (Constitutional: Daedalus owns the struct itself)
+    if (trinket->name) {
+        d_StringDestroy(trinket->name);
+        trinket->name = NULL;
+    }
+    if (trinket->description) {
+        d_StringDestroy(trinket->description);
+        trinket->description = NULL;
+    }
+    if (trinket->passive_description) {
+        d_StringDestroy(trinket->passive_description);
+        trinket->passive_description = NULL;
+    }
+    if (trinket->active_description) {
+        d_StringDestroy(trinket->active_description);
+        trinket->active_description = NULL;
+    }
 
-    // Destroy dString_t resources
-    if (t->name) d_StringDestroy(t->name);
-    if (t->description) d_StringDestroy(t->description);
-    if (t->passive_description) d_StringDestroy(t->passive_description);
-    if (t->active_description) d_StringDestroy(t->active_description);
-
-    // Free trinket struct
-    free(t);
-    *trinket = NULL;
-
-    d_LogInfo("Trinket destroyed");
+    // DO NOT free trinket struct itself - it's stored by value in table/array
+    // Daedalus will free the struct when table/array is destroyed
+    d_LogDebug("Cleaned up trinket value (dStrings freed, struct preserved)");
 }
 
 Trinket_t* GetTrinketByID(int trinket_id) {
-    if (!g_trinkets) {
-        d_LogError("GetTrinketByID: g_trinkets not initialized");
+    if (!g_trinket_templates) {
+        d_LogError("GetTrinketByID: g_trinket_templates not initialized");
         return NULL;
     }
 
-    Trinket_t** trinket_ptr = (Trinket_t**)d_GetDataFromTable(g_trinkets, &trinket_id);
-    if (!trinket_ptr) {
+    // Constitutional pattern: Table stores VALUES, return pointer to value in table
+    Trinket_t* trinket = (Trinket_t*)d_GetDataFromTable(g_trinket_templates, &trinket_id);
+    if (!trinket) {
         return NULL;  // Trinket not found
     }
 
-    return *trinket_ptr;
+    return trinket;
 }
 
 // ============================================================================
 // PLAYER TRINKET MANAGEMENT
 // ============================================================================
 
-bool EquipTrinket(Player_t* player, int slot_index, Trinket_t* trinket) {
+bool EquipTrinket(Player_t* player, int slot_index, Trinket_t* trinket_template) {
     if (!player) {
         d_LogError("EquipTrinket: NULL player pointer");
         return false;
     }
 
-    if (!trinket) {
-        d_LogError("EquipTrinket: NULL trinket pointer");
+    if (!trinket_template) {
+        d_LogError("EquipTrinket: NULL trinket template pointer");
         return false;
     }
 
@@ -205,21 +225,51 @@ bool EquipTrinket(Player_t* player, int slot_index, Trinket_t* trinket) {
         return false;
     }
 
-    // Store trinket pointer in slot (Constitutional: store pointer, not copy)
     if ((size_t)slot_index >= player->trinket_slots->count) {
         d_LogError("EquipTrinket: Slot index out of bounds");
         return false;
     }
 
-    // Manually replace pointer at index (Daedalus doesn't have d_SetDataInArray)
-    Trinket_t** slot_ptr = (Trinket_t**)d_IndexDataFromArray(player->trinket_slots, slot_index);
-    if (!slot_ptr) {
+    // Constitutional pattern: COPY template → slot by VALUE (each player gets own instance!)
+    // Get pointer to slot value in array
+    Trinket_t* slot = (Trinket_t*)d_IndexDataFromArray(player->trinket_slots, slot_index);
+    if (!slot) {
         d_LogError("EquipTrinket: Failed to access slot");
         return false;
     }
-    *slot_ptr = trinket;
 
-    d_LogInfoF("Equipped trinket %s to slot %d", GetTrinketName(trinket), slot_index);
+    // Cleanup old trinket in slot if it exists
+    if (slot->name) {  // name != NULL means slot was previously occupied
+        CleanupTrinketValue(slot);
+    }
+
+    // Deep copy template → slot (memcpy struct, then deep-copy dStrings)
+    memcpy(slot, trinket_template, sizeof(Trinket_t));
+
+    // Deep-copy dStrings (shallow copy above copied pointers, we need new instances)
+    slot->name = d_StringInit();
+    d_StringSet(slot->name, d_StringPeek(trinket_template->name), 0);
+
+    slot->description = d_StringInit();
+    d_StringSet(slot->description, d_StringPeek(trinket_template->description), 0);
+
+    slot->passive_description = d_StringInit();
+    d_StringSet(slot->passive_description, d_StringPeek(trinket_template->passive_description), 0);
+
+    slot->active_description = d_StringInit();
+    d_StringSet(slot->active_description, d_StringPeek(trinket_template->active_description), 0);
+
+    // Reset per-instance state (each copy starts fresh)
+    slot->passive_damage_bonus = 0;
+    slot->total_damage_dealt = 0;
+    slot->total_bonus_chips = 0;
+    slot->total_refunded_chips = 0;
+    slot->shake_offset_x = 0.0f;
+    slot->shake_offset_y = 0.0f;
+    slot->flash_alpha = 0.0f;
+    slot->active_cooldown_current = 0;  // Ready on equip
+
+    d_LogInfoF("Equipped trinket %s to slot %d (VALUE copy)", GetTrinketName(slot), slot_index);
 
     return true;
 }
@@ -238,10 +288,15 @@ void UnequipTrinket(Player_t* player, int slot_index) {
         return;
     }
 
-    // Set slot to NULL (manually replace pointer)
-    Trinket_t** slot_ptr = (Trinket_t**)d_IndexDataFromArray(player->trinket_slots, slot_index);
-    if (slot_ptr) {
-        *slot_ptr = NULL;
+    // Get pointer to slot value
+    Trinket_t* slot = (Trinket_t*)d_IndexDataFromArray(player->trinket_slots, slot_index);
+    if (slot) {
+        // Cleanup dStrings inside trinket value
+        if (slot->name) {  // name != NULL means slot was occupied
+            CleanupTrinketValue(slot);
+        }
+        // Zero out slot (mark as empty)
+        memset(slot, 0, sizeof(Trinket_t));
     }
 
     d_LogInfoF("Unequipped trinket from slot %d", slot_index);
@@ -260,13 +315,18 @@ Trinket_t* GetEquippedTrinket(const Player_t* player, int slot_index) {
         return NULL;
     }
 
-    // Get pointer from array
-    Trinket_t** trinket_ptr = (Trinket_t**)d_IndexDataFromArray(player->trinket_slots, slot_index);
-    if (!trinket_ptr) {
+    // Constitutional pattern: Return pointer to VALUE in array
+    Trinket_t* trinket = (Trinket_t*)d_IndexDataFromArray(player->trinket_slots, slot_index);
+    if (!trinket) {
         return NULL;
     }
 
-    return *trinket_ptr;
+    // Empty slot check: if name is NULL, slot is empty
+    if (!trinket->name) {
+        return NULL;
+    }
+
+    return trinket;
 }
 
 int GetEmptyTrinketSlot(const Player_t* player) {
@@ -425,6 +485,42 @@ const char* GetTrinketDescription(const Trinket_t* trinket) {
     return d_StringPeek(trinket->description);
 }
 
+const char* GetTrinketRarityName(TrinketRarity_t rarity) {
+    switch (rarity) {
+        case TRINKET_RARITY_COMMON:    return "Common";
+        case TRINKET_RARITY_UNCOMMON:  return "Uncommon";
+        case TRINKET_RARITY_RARE:      return "Rare";
+        case TRINKET_RARITY_LEGENDARY: return "Legendary";
+        case TRINKET_RARITY_CLASS:     return "Class";
+        default:                       return "Unknown";
+    }
+}
+
+void GetTrinketRarityColor(TrinketRarity_t rarity, int* r, int* g, int* b) {
+    if (!r || !g || !b) return;
+
+    switch (rarity) {
+        case TRINKET_RARITY_COMMON:
+            *r = 200; *g = 200; *b = 200;  // Gray/white
+            break;
+        case TRINKET_RARITY_UNCOMMON:
+            *r = 100; *g = 255; *b = 100;  // Green
+            break;
+        case TRINKET_RARITY_RARE:
+            *r = 100; *g = 150; *b = 255;  // Blue
+            break;
+        case TRINKET_RARITY_LEGENDARY:
+            *r = 255; *g = 215; *b = 0;    // Gold
+            break;
+        case TRINKET_RARITY_CLASS:
+            *r = 180; *g = 100; *b = 255;  // Purple (class-specific)
+            break;
+        default:
+            *r = 255; *g = 255; *b = 255;  // White fallback
+            break;
+    }
+}
+
 int GetTrinketCooldown(const Trinket_t* trinket) {
     if (!trinket) {
         return 0;
@@ -447,16 +543,120 @@ Trinket_t* GetClassTrinket(const Player_t* player) {
     if (!player) {
         return NULL;
     }
-    return player->class_trinket;
+
+    // Return pointer to embedded value if equipped, NULL otherwise
+    if (!player->has_class_trinket) {
+        return NULL;
+    }
+
+    return (Trinket_t*)&player->class_trinket;  // Cast away const for API compatibility
 }
 
-bool EquipClassTrinket(Player_t* player, Trinket_t* trinket) {
-    if (!player || !trinket) {
-        d_LogError("EquipClassTrinket: NULL player or trinket");
+bool EquipClassTrinket(Player_t* player, Trinket_t* trinket_template) {
+    if (!player || !trinket_template) {
+        d_LogError("EquipClassTrinket: NULL player or trinket template");
         return false;
     }
 
-    player->class_trinket = trinket;
-    d_LogInfoF("Equipped class trinket: %s", GetTrinketName(trinket));
+    // Cleanup old class trinket if exists
+    if (player->has_class_trinket) {
+        CleanupTrinketValue(&player->class_trinket);
+    }
+
+    // Constitutional pattern: COPY template → embedded value (player gets own copy!)
+    // Deep copy template → class_trinket (memcpy struct, then deep-copy dStrings)
+    memcpy(&player->class_trinket, trinket_template, sizeof(Trinket_t));
+
+    // Deep-copy dStrings (shallow copy above copied pointers, we need new instances)
+    player->class_trinket.name = d_StringInit();
+    d_StringSet(player->class_trinket.name, d_StringPeek(trinket_template->name), 0);
+
+    player->class_trinket.description = d_StringInit();
+    d_StringSet(player->class_trinket.description, d_StringPeek(trinket_template->description), 0);
+
+    player->class_trinket.passive_description = d_StringInit();
+    d_StringSet(player->class_trinket.passive_description, d_StringPeek(trinket_template->passive_description), 0);
+
+    player->class_trinket.active_description = d_StringInit();
+    d_StringSet(player->class_trinket.active_description, d_StringPeek(trinket_template->active_description), 0);
+
+    // Reset per-instance state (each copy starts fresh)
+    player->class_trinket.passive_damage_bonus = 0;
+    player->class_trinket.total_damage_dealt = 0;
+    player->class_trinket.total_bonus_chips = 0;
+    player->class_trinket.total_refunded_chips = 0;
+    player->class_trinket.shake_offset_x = 0.0f;
+    player->class_trinket.shake_offset_y = 0.0f;
+    player->class_trinket.flash_alpha = 0.0f;
+    player->class_trinket.active_cooldown_current = 0;  // Ready on equip
+
+    player->has_class_trinket = true;
+    d_LogInfoF("Equipped class trinket: %s (VALUE copy)", GetTrinketName(&player->class_trinket));
     return true;
+}
+
+// ============================================================================
+// MODIFIER SYSTEM (Win/Loss Modifiers - Pattern matches statusEffects.c)
+// ============================================================================
+
+int ModifyWinningsWithTrinkets(Player_t* player, int base_winnings, int bet_amount) {
+    if (!player || !player->trinket_slots) {
+        return base_winnings;
+    }
+
+    int modified = base_winnings;
+
+    // Check class trinket first
+    Trinket_t* class_trinket = GetClassTrinket(player);
+    if (class_trinket && class_trinket->trinket_id == 1) {  // Elite Membership
+        int bonus = (bet_amount * 30) / 100;  // 30% of bet
+        modified += bonus;
+        class_trinket->total_bonus_chips += bonus;
+        d_LogInfoF("💳 Elite Membership (Class): +%d bonus chips (30%% win boost)", bonus);
+    }
+
+    // Check regular trinket slots
+    for (int i = 0; i < 6; i++) {
+        Trinket_t* trinket = GetEquippedTrinket(player, i);
+        if (trinket && trinket->trinket_id == 1) {  // Elite Membership
+            int bonus = (bet_amount * 30) / 100;  // 30% of bet
+            modified += bonus;
+            trinket->total_bonus_chips += bonus;
+            d_LogInfoF("💳 Elite Membership (Slot %d): +%d bonus chips (30%% win boost)", i, bonus);
+        }
+    }
+
+    return modified;
+}
+
+int ModifyLossesWithTrinkets(Player_t* player, int base_loss, int bet_amount) {
+    (void)base_loss;  // Unused, but kept for API consistency with status effects
+
+    if (!player || !player->trinket_slots) {
+        return 0;
+    }
+
+    int total_refund = 0;
+
+    // Check class trinket first
+    Trinket_t* class_trinket = GetClassTrinket(player);
+    if (class_trinket && class_trinket->trinket_id == 1) {  // Elite Membership
+        int refund = (bet_amount * 30) / 100;  // 30% of bet
+        total_refund += refund;
+        class_trinket->total_refunded_chips += refund;
+        d_LogInfoF("💳 Elite Membership (Class): +%d refunded chips (30%% loss protection)", refund);
+    }
+
+    // Check regular trinket slots
+    for (int i = 0; i < 6; i++) {
+        Trinket_t* trinket = GetEquippedTrinket(player, i);
+        if (trinket && trinket->trinket_id == 1) {  // Elite Membership
+            int refund = (bet_amount * 30) / 100;  // 30% of bet
+            total_refund += refund;
+            trinket->total_refunded_chips += refund;
+            d_LogInfoF("💳 Elite Membership (Slot %d): +%d refunded chips (30%% loss protection)", i, refund);
+        }
+    }
+
+    return total_refund;
 }
