@@ -172,7 +172,7 @@ void RenderMenuItemRow(const MenuItemRow_t* item) {
         int height = text_h + 4;  // Text height + small padding top/bottom
 
         // Very subtle semi-transparent white background (~10% opacity)
-        a_DrawFilledRect(left, top, width, height, 255, 255, 255, 25);
+        a_DrawFilledRect((aRectf_t){left, top, width, height}, (aColor_t){255, 255, 255, 25});
     }
 
     // Determine color based on state (visual hierarchy)
@@ -192,20 +192,17 @@ void RenderMenuItemRow(const MenuItemRow_t* item) {
     // Draw selection indicator ">" if selected (slightly closer for row layout)
     if (item->is_selected && item->enabled) {
         a_DrawText(">", item->x - 50, item->y,
-                   COLOR_INDICATOR.r, COLOR_INDICATOR.g, COLOR_INDICATOR.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_RIGHT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_INDICATOR.r,COLOR_INDICATOR.g,COLOR_INDICATOR.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_RIGHT, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
     // Draw label (centered at item position)
     a_DrawText((char*)item->label, item->x, item->y,
-               text_color.r, text_color.g, text_color.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={text_color.r,text_color.g,text_color.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Draw hotkey hint if present
     if (item->hotkey[0] != '\0' && item->enabled) {
         int hotkey_x = item->x + 80;  // Closer to label for row layout
         a_DrawText((char*)item->hotkey, hotkey_x, item->y,
-                   150, 150, 150,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={150,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 }

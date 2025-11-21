@@ -27,7 +27,7 @@ void DestroyTitleSection(TitleSection_t** section) {
     if (!section || !*section) return;
 
     if ((*section)->layout) {
-        a_DestroyFlexBox(&(*section)->layout);
+        a_FlexBoxDestroy(&(*section)->layout);
     }
 
     free(*section);
@@ -44,13 +44,13 @@ void RenderTitleSection(TitleSection_t* section, const GameContext_t* game, int 
 
     // Title at top of section
     a_DrawText("Blackjack", SCREEN_WIDTH / 2, y + TITLE_TEXT_Y_OFFSET,
-               255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // State info below title
     dString_t* state_str = d_StringInit();
     d_StringFormat(state_str, "State: %s | Round: %d",
                    State_ToString(game->current_state), game->round_number);
     a_DrawText((char*)d_StringPeek(state_str), SCREEN_WIDTH / 2, y + STATE_TEXT_Y_OFFSET,
-               200, 200, 200, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={200,200,200,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     d_StringDestroy(state_str);
 }

@@ -11,7 +11,7 @@
 
 // External globals
 extern dTable_t* g_card_textures;
-extern SDL_Texture* g_card_back_texture;
+extern SDL_Surface* g_card_back_texture;
 
 // Color constants (matching pause menu palette)
 #define COLOR_OVERLAY           ((aColor_t){9, 10, 20, 180})     // #090a14 - almost black overlay
@@ -283,8 +283,7 @@ void RenderCardGridModal(CardGridModal_t* modal) {
     if (!modal || !modal->is_visible) return;
 
     // Full-screen overlay
-    a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
-                     COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b, COLOR_OVERLAY.a);
+    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, COLOR_OVERLAY);
 
     // Modal panel (shifted 96px right from center, matching reward modal)
     int modal_x = ((SCREEN_WIDTH - MODAL_WIDTH) / 2) + 96;
@@ -293,21 +292,17 @@ void RenderCardGridModal(CardGridModal_t* modal) {
     // Draw panel body
     int panel_body_y = modal_y + MODAL_HEADER_HEIGHT;
     int panel_body_height = MODAL_HEIGHT - MODAL_HEADER_HEIGHT;
-    a_DrawFilledRect(modal_x, panel_body_y, MODAL_WIDTH, panel_body_height,
-                     COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, COLOR_PANEL_BG.a);
+    a_DrawFilledRect((aRectf_t){modal_x, panel_body_y, MODAL_WIDTH, panel_body_height}, COLOR_PANEL_BG);
 
     // Draw header
-    a_DrawFilledRect(modal_x, modal_y, MODAL_WIDTH, MODAL_HEADER_HEIGHT,
-                     COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, COLOR_HEADER_BG.a);
-    a_DrawRect(modal_x, modal_y, MODAL_WIDTH, MODAL_HEADER_HEIGHT,
-               COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, COLOR_HEADER_BORDER.a);
+    a_DrawFilledRect((aRectf_t){modal_x, modal_y, MODAL_WIDTH, MODAL_HEADER_HEIGHT}, COLOR_HEADER_BG);
+    a_DrawRect((aRectf_t){modal_x, modal_y, MODAL_WIDTH, MODAL_HEADER_HEIGHT}, COLOR_HEADER_BORDER);
 
     // Draw title (centered on modal panel, not screen)
     int title_center_x = modal_x + (MODAL_WIDTH / 2);
     // Cast safe: a_DrawText is read-only, using fixed char buffer
     a_DrawText((char*)modal->title, title_center_x, modal_y + 12,
-               COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_HEADER_TEXT.r,COLOR_HEADER_TEXT.g,COLOR_HEADER_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Draw X button (centered in header)
     int close_button_size = 30;
@@ -320,11 +315,10 @@ void RenderCardGridModal(CardGridModal_t* modal) {
                              app.mouse.y <= close_button_y + close_button_size);
 
     aColor_t close_color = mouse_over_close ? COLOR_CLOSE_HOVER : COLOR_CLOSE_BUTTON;
-    a_DrawFilledRect(close_button_x, close_button_y, close_button_size, close_button_size,
-                     close_color.r, close_color.g, close_color.b, close_color.a);
+    a_DrawFilledRect((aRectf_t){close_button_x, close_button_y, close_button_size, close_button_size}, close_color);
     // Center X text vertically in button
     a_DrawText("X", close_button_x + close_button_size / 2, close_button_y + 3,
-               255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Draw card grid with clipping
     if (modal->cards && modal->cards->count > 0) {
@@ -359,7 +353,7 @@ void RenderCardGridModal(CardGridModal_t* modal) {
 
             // Ensure texture is loaded (lazy loading)
             if (!card->texture) {
-                SDL_Texture** tex_ptr = (SDL_Texture**)d_GetDataFromTable(g_card_textures, &card->card_id);
+                SDL_Surface** tex_ptr = (SDL_Surface**)d_GetDataFromTable(g_card_textures, &card->card_id);
                 if (tex_ptr && *tex_ptr) {
                     card->texture = *tex_ptr;
                 }
@@ -377,12 +371,11 @@ void RenderCardGridModal(CardGridModal_t* modal) {
             }
 
             // Draw card - ALWAYS show face (ignore card->face_up, this is a viewer)
-            SDL_Rect dst = {x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT};
             if (card->texture) {
-                SDL_RenderCopy(app.renderer, card->texture, NULL, &dst);
+                a_BlitSurfaceRect(card->texture, (aRectf_t){x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT}, 1);
             } else {
-                a_DrawFilledRect(x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT, 200, 200, 200, 255);
-                a_DrawRect(x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT, 100, 100, 100, 255);
+                a_DrawFilledRect((aRectf_t){x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT}, (aColor_t){200, 200, 200, 255});
+                a_DrawRect((aRectf_t){x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT}, (aColor_t){100, 100, 100, 255});
             }
 
             // Draw tag badge on top-right of card
@@ -401,21 +394,21 @@ void RenderCardGridModal(CardGridModal_t* modal) {
                 int badge_y = y - badge_h - 3 + 24;  // +24px down (was +16px)
 
                 if (badge_y >= panel_body_y) {
-                    a_DrawFilledRect(badge_x, badge_y, badge_w, badge_h, r, g, b, 255);
-                    a_DrawRect(badge_x, badge_y, badge_w, badge_h, 0, 0, 0, 255);
+                    a_DrawFilledRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){r, g, b, 255});
+                    a_DrawRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){0, 0, 0, 255});
 
                     // Truncate tag text to first 3 letters
                     char truncated[4] = {0};
                     strncpy(truncated, tag_text, 3);
                     truncated[3] = '\0';
 
-                    aFontConfig_t tag_config = {
+                    aTextStyle_t tag_config = {
                         .type = FONT_ENTER_COMMAND,
-                        .color = {0, 0, 0, 180},
+                        .fg = {0, 0, 0, 180},
                         .align = TEXT_ALIGN_CENTER,
                         .scale = 0.7f
                     };
-                    a_DrawTextStyled(truncated, badge_x + badge_w / 2, badge_y - 3, &tag_config);
+                    a_DrawText(truncated, badge_x + badge_w / 2, badge_y - 3, tag_config);
                 }
             }
         }
@@ -445,8 +438,7 @@ void RenderCardGridModal(CardGridModal_t* modal) {
                 int hover_y = base_y + (CARD_GRID_CARD_HEIGHT - hover_h) / 2;
 
                 // Draw enlarged card
-                SDL_Rect hover_dst = {hover_x, hover_y, hover_w, hover_h};
-                SDL_RenderCopy(app.renderer, card->texture, NULL, &hover_dst);
+                a_BlitSurfaceRect(card->texture, (aRectf_t){hover_x, hover_y, hover_w, hover_h}, 1);
 
                 // Draw tag badge on enlarged card
                 const dArray_t* tags = GetCardTags(card->card_id);
@@ -463,21 +455,21 @@ void RenderCardGridModal(CardGridModal_t* modal) {
                     int hover_badge_x = hover_x + hover_w - hover_badge_w - 5 + (int)(12 * HOVER_CARD_SCALE);  // +12px right (scaled)
                     int hover_badge_y = hover_y - hover_badge_h - 5 + (int)(24 * HOVER_CARD_SCALE);  // +24px down (scaled)
 
-                    a_DrawFilledRect(hover_badge_x, hover_badge_y, hover_badge_w, hover_badge_h, r, g, b, 255);
-                    a_DrawRect(hover_badge_x, hover_badge_y, hover_badge_w, hover_badge_h, 0, 0, 0, 255);
+                    a_DrawFilledRect((aRectf_t){hover_badge_x, hover_badge_y, hover_badge_w, hover_badge_h}, (aColor_t){r, g, b, 255});
+                    a_DrawRect((aRectf_t){hover_badge_x, hover_badge_y, hover_badge_w, hover_badge_h}, (aColor_t){0, 0, 0, 255});
 
                     // Truncate tag text to first 3 letters
                     char truncated[4] = {0};
                     strncpy(truncated, tag_text, 3);
                     truncated[3] = '\0';
 
-                    aFontConfig_t hover_tag_config = {
+                    aTextStyle_t hover_tag_config = {
                         .type = FONT_ENTER_COMMAND,
-                        .color = {0, 0, 0, 200},
+                        .fg = {0, 0, 0, 200},
                         .align = TEXT_ALIGN_CENTER,
                         .scale = 0.7f * HOVER_CARD_SCALE
                     };
-                    a_DrawTextStyled(truncated, hover_badge_x + hover_badge_w / 2, hover_badge_y + (int)(3 * HOVER_CARD_SCALE) - 10, &hover_tag_config);
+                    a_DrawText(truncated, hover_badge_x + hover_badge_w / 2, hover_badge_y + (int)(3 * HOVER_CARD_SCALE) - 10, hover_tag_config);
                 }
             }
         }
@@ -515,8 +507,7 @@ void RenderCardGridModal(CardGridModal_t* modal) {
             int scrollbar_height = panel_body_height - 20;
 
             // Background
-            a_DrawFilledRect(scrollbar_x, scrollbar_y, SCROLLBAR_WIDTH, scrollbar_height,
-                             COLOR_SCROLLBAR_BG.r, COLOR_SCROLLBAR_BG.g, COLOR_SCROLLBAR_BG.b, COLOR_SCROLLBAR_BG.a);
+            a_DrawFilledRect((aRectf_t){scrollbar_x, scrollbar_y, SCROLLBAR_WIDTH, scrollbar_height}, COLOR_SCROLLBAR_BG);
 
             // Calculate handle size and position
             int rows = (card_count + CARD_GRID_COLS - 1) / CARD_GRID_COLS;
@@ -537,13 +528,12 @@ void RenderCardGridModal(CardGridModal_t* modal) {
             aColor_t handle_color = (mouse_over_handle || modal->dragging_scrollbar) ? COLOR_SCROLLBAR_HOVER : COLOR_SCROLLBAR_HANDLE;
 
             // Draw handle
-            a_DrawFilledRect(scrollbar_x, handle_y, SCROLLBAR_WIDTH, handle_height,
-                             handle_color.r, handle_color.g, handle_color.b, handle_color.a);
+            a_DrawFilledRect((aRectf_t){scrollbar_x, handle_y, SCROLLBAR_WIDTH, handle_height}, handle_color);
         }
     } else {
         // No cards message (centered on modal panel)
         int msg_center_x = modal_x + (MODAL_WIDTH / 2);
         a_DrawText("No cards to display", msg_center_x, modal_y + MODAL_HEIGHT / 2,
-                   200, 200, 200, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={200,200,200,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 }

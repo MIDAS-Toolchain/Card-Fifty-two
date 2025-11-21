@@ -17,20 +17,24 @@ from pathlib import Path
 from typing import Set, Dict, List, Tuple
 
 def find_texture_tables(src_dir: Path) -> Set[str]:
-    """Find all global dTable_t variables that store SDL_Texture* pointers"""
+    """Find all global dTable_t variables that store SDL_Texture* or SDL_Surface* pointers"""
     texture_tables = set()
 
-    # Search for global table declarations storing SDL_Texture*
+    # Search for global table declarations storing SDL_Texture* or SDL_Surface*
     for c_file in src_dir.rglob('*.c'):
         with open(c_file, 'r') as f:
             content = f.read()
 
         # Match: dTable_t* g_XXX = d_InitTable(..., sizeof(SDL_Texture*), ...);
-        pattern = r'(g_\w+)\s*=\s*d_InitTable\([^,]+,\s*sizeof\s*\(\s*SDL_Texture\s*\*\s*\)'
-        matches = re.finditer(pattern, content, re.MULTILINE)
-        for match in matches:
-            table_name = match.group(1)
-            texture_tables.add(table_name)
+        # or: dTable_t* g_XXX = d_InitTable(..., sizeof(SDL_Surface*), ...);
+        texture_pattern = r'(g_\w+)\s*=\s*d_InitTable\([^,]+,\s*sizeof\s*\(\s*SDL_Texture\s*\*\s*\)'
+        surface_pattern = r'(g_\w+)\s*=\s*d_InitTable\([^,]+,\s*sizeof\s*\(\s*SDL_Surface\s*\*\s*\)'
+
+        for pattern in [texture_pattern, surface_pattern]:
+            matches = re.finditer(pattern, content, re.MULTILINE)
+            for match in matches:
+                table_name = match.group(1)
+                texture_tables.add(table_name)
 
     # Also check header files for extern declarations
     for h_file in src_dir.parent.glob('include/**/*.h'):
@@ -81,10 +85,11 @@ def find_texture_cleanup(cleanup_func: str, table_name: str) -> Tuple[bool, str]
     if not re.search(keys_pattern, block_text):
         return (False, "d_GetAllKeysFromTable() not found in cleanup block")
 
-    # 2. SDL_DestroyTexture call
-    sdl_destroy_pattern = r'SDL_DestroyTexture\s*\('
-    if not re.search(sdl_destroy_pattern, block_text):
-        return (False, "SDL_DestroyTexture() not found in cleanup block")
+    # 2. SDL_DestroyTexture or SDL_FreeSurface call (Archimedes uses both)
+    texture_destroy_pattern = r'SDL_DestroyTexture\s*\('
+    surface_destroy_pattern = r'SDL_FreeSurface\s*\('
+    if not (re.search(texture_destroy_pattern, block_text) or re.search(surface_destroy_pattern, block_text)):
+        return (False, "Neither SDL_DestroyTexture() nor SDL_FreeSurface() found in cleanup block")
 
     # 3. d_DestroyArray for keys (any variable name)
     destroy_array_pattern = r'd_DestroyArray\s*\(\s*\w+\s*\)'
@@ -194,12 +199,12 @@ def verify_texture_cleanup(project_root: Path) -> bool:
         print()
 
     if all_valid:
-        print("✅ SUCCESS: All textures properly cleaned up")
+        print("✅ SUCCESS: All textures/surfaces properly cleaned up")
         print()
         print("Constitutional Pattern Verified:")
         print("  - Global tables manage pointer ownership")
-        print("  - SDL_DestroyTexture() called before d_DestroyTable()")
-        print("  - No memory leaks from texture storage")
+        print("  - SDL_DestroyTexture()/SDL_FreeSurface() called before d_DestroyTable()")
+        print("  - No memory leaks from texture/surface storage")
         return True
     else:
         print(f"❌ FAILURE: {len(missing_cleanup)} texture(s) missing cleanup")

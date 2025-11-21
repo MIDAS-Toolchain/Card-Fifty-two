@@ -64,7 +64,7 @@ RewardModal_t* CreateRewardModal(void) {
     int panel_body_y = modal_y + REWARD_MODAL_HEADER_HEIGHT;
 
     // Create FlexBox for info text (vertical)
-    modal->info_layout = a_CreateFlexBox(
+    modal->info_layout = a_FlexBoxCreate(
         modal_x + REWARD_MODAL_PADDING,
         panel_body_y + 20,
         REWARD_MODAL_WIDTH - (REWARD_MODAL_PADDING * 2),
@@ -77,7 +77,7 @@ RewardModal_t* CreateRewardModal(void) {
 
     // Create FlexBox for horizontal card layout (top section)
     int cards_area_y = panel_body_y + 100;
-    modal->card_layout = a_CreateFlexBox(
+    modal->card_layout = a_FlexBoxCreate(
         modal_x + REWARD_MODAL_PADDING,
         cards_area_y,
         REWARD_MODAL_WIDTH - (REWARD_MODAL_PADDING * 2),
@@ -95,7 +95,7 @@ RewardModal_t* CreateRewardModal(void) {
     int list_area_y = cards_area_y + CARD_HEIGHT + 40;
     int list_width = REWARD_MODAL_WIDTH - (REWARD_MODAL_PADDING * 2);
 
-    modal->list_layout = a_CreateFlexBox(
+    modal->list_layout = a_FlexBoxCreate(
         modal_x + REWARD_MODAL_PADDING,
         list_area_y,
         list_width,
@@ -117,13 +117,13 @@ void DestroyRewardModal(RewardModal_t** modal) {
     if (!modal || !*modal) return;
 
     if ((*modal)->card_layout) {
-        a_DestroyFlexBox(&(*modal)->card_layout);
+        a_FlexBoxDestroy(&(*modal)->card_layout);
     }
     if ((*modal)->info_layout) {
-        a_DestroyFlexBox(&(*modal)->info_layout);
+        a_FlexBoxDestroy(&(*modal)->info_layout);
     }
     if ((*modal)->list_layout) {
-        a_DestroyFlexBox(&(*modal)->list_layout);
+        a_FlexBoxDestroy(&(*modal)->list_layout);
     }
 
     free(*modal);
@@ -482,8 +482,7 @@ void RenderRewardModal(const RewardModal_t* modal) {
     if (!modal || !modal->is_visible) return;
 
     // Full-screen overlay (matching cardGridModal)
-    a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
-                     COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b, COLOR_OVERLAY.a);
+    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, COLOR_OVERLAY);
 
     // Modal panel (shifted 96px right from center)
     int modal_x = ((SCREEN_WIDTH - REWARD_MODAL_WIDTH) / 2) + 96;
@@ -492,20 +491,16 @@ void RenderRewardModal(const RewardModal_t* modal) {
     // Draw panel body
     int panel_body_y = modal_y + REWARD_MODAL_HEADER_HEIGHT;
     int panel_body_height = REWARD_MODAL_HEIGHT - REWARD_MODAL_HEADER_HEIGHT;
-    a_DrawFilledRect(modal_x, panel_body_y, REWARD_MODAL_WIDTH, panel_body_height,
-                     COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, COLOR_PANEL_BG.a);
+    a_DrawFilledRect((aRectf_t){modal_x, panel_body_y, REWARD_MODAL_WIDTH, panel_body_height}, COLOR_PANEL_BG);
 
     // Draw header
-    a_DrawFilledRect(modal_x, modal_y, REWARD_MODAL_WIDTH, REWARD_MODAL_HEADER_HEIGHT,
-                     COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, COLOR_HEADER_BG.a);
-    a_DrawRect(modal_x, modal_y, REWARD_MODAL_WIDTH, REWARD_MODAL_HEADER_HEIGHT,
-               COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, COLOR_HEADER_BORDER.a);
+    a_DrawFilledRect((aRectf_t){modal_x, modal_y, REWARD_MODAL_WIDTH, REWARD_MODAL_HEADER_HEIGHT}, COLOR_HEADER_BG);
+    a_DrawRect((aRectf_t){modal_x, modal_y, REWARD_MODAL_WIDTH, REWARD_MODAL_HEADER_HEIGHT}, COLOR_HEADER_BORDER);
 
     // Draw title in header (centered on modal panel, not screen)
     int title_center_x = modal_x + (REWARD_MODAL_WIDTH / 2);
     a_DrawText("CARD UPGRADE - Choose One Card", title_center_x, modal_y + 10,
-               COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+               (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_HEADER_TEXT.r,COLOR_HEADER_TEXT.g,COLOR_HEADER_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
 
     // Informational text using FlexBox positions
@@ -518,14 +513,12 @@ void RenderRewardModal(const RewardModal_t* modal) {
     if (info1) {
         a_DrawText("You always have 52 cards, choose one to add a tag to.",
                    text_center_x, info1->calc_y,
-                   COLOR_INFO_TEXT.r, COLOR_INFO_TEXT.g, COLOR_INFO_TEXT.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_INFO_TEXT.r,COLOR_INFO_TEXT.g,COLOR_INFO_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     }
     if (info2) {
         a_DrawText("Tags are permanent modifiers to card behavior.",
                    text_center_x, info2->calc_y,
-                   COLOR_INFO_TEXT.r, COLOR_INFO_TEXT.g, COLOR_INFO_TEXT.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_INFO_TEXT.r,COLOR_INFO_TEXT.g,COLOR_INFO_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
     if (!modal->reward_taken) {
@@ -550,15 +543,14 @@ void RenderRewardModal(const RewardModal_t* modal) {
                 SDL_RenderCopy(app.renderer, *tex_ptr, NULL, &card_rect);
             } else {
                 // Fallback: gray placeholder
-                a_DrawFilledRect(card_x, card_y, CARD_WIDTH, CARD_HEIGHT, 50, 50, 50, 255);
-                a_DrawRect(card_x, card_y, CARD_WIDTH, CARD_HEIGHT, 100, 100, 100, 255);
+                a_DrawFilledRect((aRectf_t){card_x, card_y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){50, 50, 50, 255});
+                a_DrawRect((aRectf_t){card_x, card_y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){100, 100, 100, 255});
             }
 
             // Highlight card if corresponding list item is hovered OR key held
             bool is_card_highlighted = (modal->hovered_index == i || modal->key_held_index == i);
             if (is_card_highlighted) {
-                a_DrawRect(card_x - 5, card_y - 5, CARD_WIDTH + 10, CARD_HEIGHT + 10,
-                          COLOR_TAG_GOLD.r, COLOR_TAG_GOLD.g, COLOR_TAG_GOLD.b, 255);
+                a_DrawRect((aRectf_t){card_x - 5, card_y - 5, CARD_WIDTH + 10, CARD_HEIGHT + 10}, (aColor_t){COLOR_TAG_GOLD.r, COLOR_TAG_GOLD.g, COLOR_TAG_GOLD.b, 255});
             }
 
             // Tag name above card with colored background badge
@@ -574,14 +566,13 @@ void RenderRewardModal(const RewardModal_t* modal) {
             // Badge background (60% opacity if not hovered/key-held, full if highlighted)
             Uint8 badge_alpha = is_card_highlighted ? 255 : (Uint8)(255 * 0.4);
 
-            a_DrawFilledRect(badge_x, badge_y, badge_w, badge_h, r, g, b, badge_alpha);
-            a_DrawRect(badge_x, badge_y, badge_w, badge_h, 0, 0, 0, badge_alpha);
+            a_DrawFilledRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){r, g, b, badge_alpha});
+            a_DrawRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){0, 0, 0, badge_alpha});
 
             // Tag name (black text on colored background)
             a_DrawText((char*)tag_name,
                       card_x + CARD_WIDTH / 2, badge_y - 6,
-                      0, 0, 0,
-                      FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                      (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={0,0,0,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
         }
 
         // Draw tag list (bottom section)
@@ -598,10 +589,8 @@ void RenderRewardModal(const RewardModal_t* modal) {
             bool is_hovered = (modal->hovered_index == i || modal->key_held_index == i);
             aColor_t bg_color = is_hovered ? COLOR_SKIP_HOVER : COLOR_SKIP_BG;
 
-            a_DrawFilledRect(item_x, item_y, item_w, item_h,
-                           bg_color.r, bg_color.g, bg_color.b, bg_color.a);
-            a_DrawRect(item_x, item_y, item_w, item_h,
-                      COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, 255);
+            a_DrawFilledRect((aRectf_t){item_x, item_y, item_w, item_h}, bg_color);
+            a_DrawRect((aRectf_t){item_x, item_y, item_w, item_h}, (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, 255});
 
             // Big number hotkey (left side, no background)
             int number_x = item_x + 25;
@@ -612,14 +601,8 @@ void RenderRewardModal(const RewardModal_t* modal) {
             snprintf(number_str, sizeof(number_str), "%d", i + 1);
 
             // Use styled text config for larger size
-            aFontConfig_t number_font = {
-                .type = FONT_GAME,
-                .align = TEXT_ALIGN_LEFT,
-                .scale = 3.0f,  // Much bigger
-                .color = {255, 255, 255, (Uint8)(255 * 0.6)}  // White 60% opacity
-            };
-
-            a_DrawTextStyled(number_str, number_x, number_y, &number_font);
+            a_DrawText(number_str, number_x, number_y,
+                      (aTextStyle_t){.type=FONT_GAME, .fg={255,255,255,(Uint8)(255 * 0.6)}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=3.0f, .padding=0});
 
             // Tag name with colored badge background (shifted right after number)
             int text_padding = 75;  // Shifted right to make room for number
@@ -632,14 +615,13 @@ void RenderRewardModal(const RewardModal_t* modal) {
             int tag_badge_y = item_y + 8;
 
             // Draw colored badge for tag name
-            a_DrawFilledRect(tag_badge_x, tag_badge_y, tag_badge_w, tag_badge_h, r, g, b, 255);
-            a_DrawRect(tag_badge_x, tag_badge_y, tag_badge_w, tag_badge_h, 0, 0, 0, 255);
+            a_DrawFilledRect((aRectf_t){tag_badge_x, tag_badge_y, tag_badge_w, tag_badge_h}, (aColor_t){r, g, b, 255});
+            a_DrawRect((aRectf_t){tag_badge_x, tag_badge_y, tag_badge_w, tag_badge_h}, (aColor_t){0, 0, 0, 255});
 
             // Tag name (black text on colored background)
             a_DrawText((char*)GetCardTagName(modal->tags[i]),
                       tag_badge_x + tag_badge_w / 2, tag_badge_y - 6,
-                      0, 0, 0,
-                      FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                      (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={0,0,0,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
             // Card name (e.g., "Queen of Hearts")
             CardSuit_t suit;
@@ -651,16 +633,14 @@ void RenderRewardModal(const RewardModal_t* modal) {
 
             a_DrawText((char*)d_StringPeek(card_name),
                       item_x + 250, item_y + 10,
-                      255, 255, 255,
-                      FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                      (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
 
             d_StringDestroy(card_name);
 
             // Tag description (gray color)
             a_DrawText((char*)GetCardTagDescription(modal->tags[i]),
                       item_x + text_padding, item_y + 50,
-                      COLOR_INFO_TEXT.r, COLOR_INFO_TEXT.g, COLOR_INFO_TEXT.b,
-                      FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                      (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_INFO_TEXT.r,COLOR_INFO_TEXT.g,COLOR_INFO_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
         }
 
         // [Skip All] button (red background)
@@ -674,14 +654,11 @@ void RenderRewardModal(const RewardModal_t* modal) {
 
         aColor_t skip_bg = skip_hovered ? COLOR_CLOSE_HOVER : COLOR_CLOSE_BUTTON;
 
-        a_DrawFilledRect(skip_x, skip_y, skip_w, skip_h,
-                       skip_bg.r, skip_bg.g, skip_bg.b, skip_bg.a);
-        a_DrawRect(skip_x, skip_y, skip_w, skip_h,
-                  COLOR_CLOSE_BUTTON.r, COLOR_CLOSE_BUTTON.g, COLOR_CLOSE_BUTTON.b, 255);
+        a_DrawFilledRect((aRectf_t){skip_x, skip_y, skip_w, skip_h}, skip_bg);
+        a_DrawRect((aRectf_t){skip_x, skip_y, skip_w, skip_h}, (aColor_t){COLOR_CLOSE_BUTTON.r, COLOR_CLOSE_BUTTON.g, COLOR_CLOSE_BUTTON.b, 255});
 
         a_DrawText("Skip", skip_x + skip_w / 2, skip_y + 6,
-                  255, 255, 255,
-                  FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                  (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     } else {
         // Animation in progress - render based on stage
@@ -723,12 +700,11 @@ void RenderRewardModal(const RewardModal_t* modal) {
                 int item_w = REWARD_MODAL_WIDTH - (REWARD_MODAL_PADDING * 2);
                 int item_h = REWARD_LIST_ITEM_HEIGHT;
 
-                aColor_t bg = COLOR_SKIP_BG;
-                a_DrawFilledRect(item_x, item_y, item_w, item_h,
-                               bg.r, bg.g, bg.b, list_alpha);
+                aColor_t bg = (aColor_t){COLOR_SKIP_BG.r, COLOR_SKIP_BG.g, COLOR_SKIP_BG.b, list_alpha};
+                a_DrawFilledRect((aRectf_t){item_x, item_y, item_w, item_h}, bg);
                 // Fade border with same alpha
-                a_DrawRect(item_x, item_y, item_w, item_h,
-                          COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, list_alpha);
+                a_DrawRect((aRectf_t){item_x, item_y, item_w, item_h},
+                          (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, list_alpha});
             }
         }
 
@@ -765,24 +741,16 @@ void RenderRewardModal(const RewardModal_t* modal) {
                     Uint8 badge_alpha = (Uint8)(modal->tag_badge_alpha * 255);
 
                     // Badge background (matching card badge style)
-                    a_DrawFilledRect(badge_x, badge_y, badge_w, badge_h, r, g, b, badge_alpha);
-                    a_DrawRect(badge_x, badge_y, badge_w, badge_h, 0, 0, 0, badge_alpha);
+                    a_DrawFilledRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){r, g, b, badge_alpha});
+                    a_DrawRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){0, 0, 0, badge_alpha});
 
                     // Tag name (full name, black text)
                     const char* tag_name = GetCardTagName(modal->tags[selected]);
 
-                    aFontConfig_t badge_font = {
-                        .type = FONT_ENTER_COMMAND,
-                        .color = {0, 0, 0, badge_alpha},
-                        .align = TEXT_ALIGN_CENTER,
-                        .wrap_width = 0,
-                        .scale = 1.0f
-                    };
-
-                    a_DrawTextStyled((char*)tag_name,
-                                    badge_x + badge_w / 2,
-                                    badge_y,
-                                    &badge_font);
+                    a_DrawText((char*)tag_name,
+                              badge_x + badge_w / 2,
+                              badge_y,
+                              (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={0,0,0,badge_alpha}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
                 }
             }
         }

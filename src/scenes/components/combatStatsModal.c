@@ -78,12 +78,10 @@ void RenderCombatStatsModal(CombatStatsModal_t* modal) {
     int content_width = modal_width - (padding * 2);
 
     // Draw background (modern dark style)
-    a_DrawFilledRect(modal->x, modal->y, modal_width, modal_height,
-                     COLOR_BG.r, COLOR_BG.g, COLOR_BG.b, COLOR_BG.a);
+    a_DrawFilledRect((aRectf_t){modal->x, modal->y, modal_width, modal_height}, COLOR_BG);
 
     // Draw border
-    a_DrawRect(modal->x, modal->y, modal_width, modal_height,
-               COLOR_BORDER.r, COLOR_BORDER.g, COLOR_BORDER.b, COLOR_BORDER.a);
+    a_DrawRect((aRectf_t){modal->x, modal->y, modal_width, modal_height}, COLOR_BORDER);
 
     // Content positioning
     int content_x = modal->x + padding;
@@ -93,15 +91,15 @@ void RenderCombatStatsModal(CombatStatsModal_t* modal) {
     // Title - "Combat Stats"
     // ========================================================================
 
-    aFontConfig_t title_config = {
+    aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = COLOR_TITLE,
+        .fg = COLOR_TITLE,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
 
-    a_DrawTextStyled("Combat Stats", content_x, current_y, &title_config);
+    a_DrawText("Combat Stats", content_x, current_y, title_config);
     int title_height = a_GetWrappedTextHeight("Combat Stats", FONT_ENTER_COMMAND, content_width);
     current_y += title_height + 12;
 
@@ -109,17 +107,17 @@ void RenderCombatStatsModal(CombatStatsModal_t* modal) {
     // Stat Labels and Values (placeholder values for now)
     // ========================================================================
 
-    aFontConfig_t label_config = {
+    aTextStyle_t label_config = {
         .type = FONT_GAME,
-        .color = COLOR_TEXT,
+        .fg = COLOR_TEXT,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f  // ADR-008: Consistent readability
     };
 
-    aFontConfig_t value_config = {
+    aTextStyle_t value_config = {
         .type = FONT_GAME,
-        .color = COLOR_VALUE,
+        .fg = COLOR_VALUE,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f  // ADR-008: Consistent readability
@@ -140,44 +138,44 @@ void RenderCombatStatsModal(CombatStatsModal_t* modal) {
                modal->player->crit_chance, modal->player->crit_bonus);
 
     // Damage Increase (percentage modifier from BRUTAL tag)
-    a_DrawTextStyled("Damage Increase:", content_x, current_y, &label_config);
+    a_DrawText("Damage Increase:", content_x, current_y, label_config);
     current_y += line_height + 4;
 
     dString_t* damage_percent_text = d_StringInit();
     d_StringFormat(damage_percent_text, "+%d%%", modal->player->damage_percent);
-    a_DrawTextStyled((char*)d_StringPeek(damage_percent_text), content_x + 10, current_y, &value_config);
+    a_DrawText((char*)d_StringPeek(damage_percent_text), content_x + 10, current_y, value_config);
     d_StringDestroy(damage_percent_text);
     current_y += line_height + spacing;
 
     // Damage Bonus (flat bonus - currently unused)
-    a_DrawTextStyled("Damage Bonus:", content_x, current_y, &label_config);
+    a_DrawText("Damage Bonus:", content_x, current_y, label_config);
     current_y += line_height + 4;
 
     dString_t* damage_flat_text = d_StringInit();
     d_StringFormat(damage_flat_text, "+%d", modal->player->damage_flat);
-    a_DrawTextStyled((char*)d_StringPeek(damage_flat_text), content_x + 10, current_y, &value_config);
+    a_DrawText((char*)d_StringPeek(damage_flat_text), content_x + 10, current_y, value_config);
     d_StringDestroy(damage_flat_text);
     current_y += line_height + spacing;
 
     // Crit Chance (from LUCKY tag)
-    a_DrawTextStyled("Crit Chance:", content_x, current_y, &label_config);
+    a_DrawText("Crit Chance:", content_x, current_y, label_config);
     current_y += line_height + 4;
 
     dString_t* crit_chance_text = d_StringInit();
     d_StringFormat(crit_chance_text, "%d%%", modal->player->crit_chance);
-    a_DrawTextStyled((char*)d_StringPeek(crit_chance_text), content_x + 10, current_y, &value_config);
+    a_DrawText((char*)d_StringPeek(crit_chance_text), content_x + 10, current_y, value_config);
     d_StringDestroy(crit_chance_text);
     current_y += line_height + spacing;
 
     // Crit Bonus (default 50%, can be increased by future mechanics)
-    a_DrawTextStyled("Crit Damage Bonus:", content_x, current_y, &label_config);
+    a_DrawText("Crit Damage Bonus:", content_x, current_y, label_config);
     current_y += line_height + 4;
 
     dString_t* crit_bonus_text = d_StringInit();
     // Base crit is +50%, plus any crit_bonus from player
     int total_crit_bonus = 50 + modal->player->crit_bonus;
     d_StringFormat(crit_bonus_text, "+%d%%", total_crit_bonus);
-    a_DrawTextStyled((char*)d_StringPeek(crit_bonus_text), content_x + 10, current_y, &value_config);
+    a_DrawText((char*)d_StringPeek(crit_bonus_text), content_x + 10, current_y, value_config);
     d_StringDestroy(crit_bonus_text);
     current_y += line_height + spacing;
 }

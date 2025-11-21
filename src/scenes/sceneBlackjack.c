@@ -50,7 +50,7 @@
 // External globals from main.c
 extern Deck_t g_test_deck;
 extern dTable_t* g_card_textures;
-extern SDL_Texture* g_card_back_texture;
+extern SDL_Surface* g_card_back_texture;
 
 // ============================================================================
 // SCENE-LOCAL STATE
@@ -78,9 +78,9 @@ static ActionPanel_t* g_action_panel = NULL;
 static ActionPanel_t* g_targeting_panel = NULL;
 static Terminal_t* g_terminal = NULL;
 
-// Background textures
-static SDL_Texture* g_background_texture = NULL;
-static SDL_Texture* g_table_texture = NULL;
+// Background surfaces
+static SDL_Surface* g_background_texture = NULL;
+static SDL_Surface* g_table_texture = NULL;
 
 // Modal sections
 static DrawPileModalSection_t* g_draw_pile_modal = NULL;
@@ -167,7 +167,7 @@ static void InitializeLayout(void) {
     // Create main vertical FlexBox for GAME AREA (right side, after sidebar)
     // Top bar is independent, layout starts at LAYOUT_TOP_MARGIN (35px)
     // X position = SIDEBAR_WIDTH (280px), Width = remaining screen width
-    g_main_layout = a_CreateFlexBox(GAME_AREA_X, LAYOUT_TOP_MARGIN,
+    g_main_layout = a_FlexBoxCreate(GAME_AREA_X, LAYOUT_TOP_MARGIN,
                                      GAME_AREA_WIDTH,
                                      SCREEN_HEIGHT - LAYOUT_TOP_MARGIN - LAYOUT_BOTTOM_CLEARANCE);
     a_FlexConfigure(g_main_layout, FLEX_DIR_COLUMN, FLEX_JUSTIFY_SPACE_BETWEEN, LAYOUT_GAP);
@@ -190,18 +190,18 @@ static void InitializeLayout(void) {
     // Create developer terminal
     g_terminal = InitTerminal();
 
-    // Load background textures (only on first initialization - they persist across scenes)
+    // Load background surfaces (only on first initialization - they persist across scenes)
     if (!g_background_texture) {
-        g_background_texture = a_LoadTexture("resources/textures/background1.png");
+        g_background_texture = IMG_Load("resources/textures/background1.png");
         if (!g_background_texture) {
-            d_LogError("Failed to load background texture");
+            d_LogError("Failed to load background surface");
         }
     }
 
     if (!g_table_texture) {
-        g_table_texture = a_LoadTexture("resources/textures/blackjack_table.png");
+        g_table_texture = IMG_Load("resources/textures/blackjack_table.png");
         if (!g_table_texture) {
-            d_LogError("Failed to load table texture");
+            d_LogError("Failed to load table surface");
         }
     }
 
@@ -347,7 +347,7 @@ static void CleanupLayout(void) {
 
     // Destroy main FlexBox
     if (g_main_layout) {
-        a_DestroyFlexBox(&g_main_layout);
+        a_FlexBoxDestroy(&g_main_layout);
     }
 
     // Destroy button components (panels don't own these)
@@ -1933,17 +1933,19 @@ static void BlackjackDraw(float dt) {
     // Show loading screen during initialization
     if (g_is_loading) {
         // Black background
-        a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, 255);
+        a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 255});
 
         // "Loading..." text (centered)
-        aFontConfig_t loading_config = {
+        aTextStyle_t loading_config = {
             .type = FONT_ENTER_COMMAND,
-            .color = {235, 237, 233, 255},  // Off-white
+            .fg = {235, 237, 233, 255},  // Off-white
+            .bg = {0, 0, 0, 0},
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = 0,
-            .scale = 1.5f
+            .scale = 1.5f,
+            .padding = 0
         };
-        a_DrawTextStyled("Loading...", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, &loading_config);
+        a_DrawText("Loading...", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, loading_config);
         return;  // Skip all other rendering
     }
 
@@ -1952,9 +1954,9 @@ static void BlackjackDraw(float dt) {
         ApplyScreenShakeViewport(g_visual_effects);
     }
 
-    // Draw full-screen background texture first
+    // Draw full-screen background surface first
     if (g_background_texture) {
-        a_BlitTextureScaled(g_background_texture, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+        a_BlitSurfaceRect(g_background_texture, (aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, 1);
     } else {
         // Fallback to black if texture didn't load
         app.background = (aColor_t){0, 0, 0, 255};
@@ -1962,11 +1964,12 @@ static void BlackjackDraw(float dt) {
 
     // Draw enemy portrait as background (if in combat)
     if (g_game.is_combat_mode && g_game.current_enemy) {
-        SDL_Texture* enemy_portrait = GetEnemyPortraitTexture(g_game.current_enemy);
-        if (enemy_portrait) {
-            // Query portrait texture size
-            int portrait_w, portrait_h;
-            SDL_QueryTexture(enemy_portrait, NULL, NULL, &portrait_w, &portrait_h);
+        // Get enemy portrait surface
+        SDL_Surface* portrait_surf = g_game.current_enemy->portrait_surface;
+        if (portrait_surf) {
+            // Get portrait surface size
+            int portrait_w = portrait_surf->w;
+            int portrait_h = portrait_surf->h;
 
             // Calculate actual rendered size after scaling
             int scaled_width = (int)(portrait_w * ENEMY_PORTRAIT_SCALE);
@@ -1980,12 +1983,14 @@ static void BlackjackDraw(float dt) {
             float shake_x, shake_y;
             GetEnemyShakeOffset(g_game.current_enemy, &shake_x, &shake_y);
 
-            // Get red flash alpha for damage feedback
+            // Get red flash alpha for damage feedback (unused in surface version)
             float red_alpha = GetEnemyRedFlashAlpha(g_game.current_enemy);
+            (void)red_alpha;  // Suppress unused warning
 
             // Get defeat animation state (fade + zoom out)
             float defeat_alpha = GetEnemyDefeatAlpha(g_game.current_enemy);
             float defeat_scale = GetEnemyDefeatScale(g_game.current_enemy);
+            (void)defeat_alpha;  // Suppress unused warning
 
             // Apply defeat scale to dimensions
             int final_width = (int)(scaled_width * defeat_scale);
@@ -1995,51 +2000,34 @@ static void BlackjackDraw(float dt) {
             int scale_offset_x = (scaled_width - final_width) / 2;
             int scale_offset_y = (scaled_height - final_height) / 2;
 
-            // Apply red tint to texture pixels (not transparent areas)
-            if (red_alpha > 0.0f) {
-                // Blend white → red based on alpha
-                // red_alpha = 0.0 → (255, 255, 255) white (no tint)
-                // red_alpha = 1.0 → (255, 0, 0) pure red
-                Uint8 g_channel = (Uint8)(255 * (1.0f - red_alpha));
-                Uint8 b_channel = (Uint8)(255 * (1.0f - red_alpha));
-                SDL_SetTextureColorMod(enemy_portrait, 255, g_channel, b_channel);
-            }
-
-            // Apply defeat fade alpha
-            if (defeat_alpha < 1.0f) {
-                SDL_SetTextureAlphaMod(enemy_portrait, (Uint8)(defeat_alpha * 255));
-            }
-
-            // Use a_BlitTextureScaled to avoid int truncation of scale parameter
-            // (a_BlitTextureRect takes int scale, which truncates 0.6f to 0)
-            a_BlitTextureScaled(enemy_portrait,
-                                portrait_x + (int)shake_x + scale_offset_x,
-                                ENEMY_PORTRAIT_Y_OFFSET + (int)shake_y + scale_offset_y,
-                                final_width, final_height);
-
-            // Reset texture mods after rendering
-            if (red_alpha > 0.0f) {
-                SDL_SetTextureColorMod(enemy_portrait, 255, 255, 255);
-            }
-            if (defeat_alpha < 1.0f) {
-                SDL_SetTextureAlphaMod(enemy_portrait, 255);
-            }
-        };
-    };
+            // Use a_BlitSurfaceRect for rendering (simplified - no color/alpha effects for now)
+            // TODO: Re-implement red flash and defeat effects with surface manipulation
+            aRectf_t dest = {
+                portrait_x + shake_x + scale_offset_x,
+                ENEMY_PORTRAIT_Y_OFFSET + shake_y + scale_offset_y,
+                final_width,
+                final_height
+            };
+            a_BlitSurfaceRect(portrait_surf, dest, 1);
+        }
+    }
 
     // Draw blackjack table sprite at bottom (on top of portrait)
     if (g_table_texture) {
         int table_y = SCREEN_HEIGHT - 256;  // Bottom 256px of screen
-        SDL_Rect src = {0, 0, 1024, 256};    // Full source sprite (512×256)
 
         // Center in game area (right of sidebar)
         // Game area is 232px wide (512 - 280 sidebar), scale image to fit
         float scale = (float)GAME_AREA_WIDTH / 512.0f;  // Scale to fit game area width
 
-        a_BlitTextureRect(g_table_texture, src,
-                          GAME_AREA_X - 32, table_y,  // X=280 (start of game area)
-                          scale,                 // Scale to fit game area
-                          (aColor_t){255, 255, 255, 255});  // No tint
+        // Use a_BlitSurfaceRect with destination rectangle
+        aRectf_t dest = {
+            GAME_AREA_X - 32,  // X position
+            table_y,           // Y position
+            (int)(g_table_texture->w * scale),  // Scaled width
+            (int)(g_table_texture->h * scale)   // Scaled height
+        };
+        a_BlitSurfaceRect(g_table_texture, dest, 1);  // scale=1 since we pre-calculated dimensions
     }
 
     // Skip all game UI rendering during intro narrative (only show modal + overlay)
@@ -2122,32 +2110,32 @@ static void BlackjackDraw(float dt) {
     // Render combat victory celebration (after round end, before rewards)
     if (g_game.current_state == STATE_COMBAT_VICTORY && g_game.current_enemy) {
         // Dark overlay
-        a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, 200);
+        a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 200});
 
         // "VICTORY!" text (centered, large, gold)
         int center_x = SCREEN_WIDTH / 2;
         int center_y = SCREEN_HEIGHT / 2 - 50;
-        aFontConfig_t gold_title = {
+        aTextStyle_t gold_title = {
             .type = FONT_ENTER_COMMAND,
-            .color = {232, 193, 112, 255},  // Gold
+            .fg = {232, 193, 112, 255},  // Gold
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = 0,
             .scale = 1.5f
         };
-        a_DrawTextStyled("VICTORY!", center_x, center_y, &gold_title);
+        a_DrawText("VICTORY!", center_x, center_y, gold_title);
 
         // Victory message
         dString_t* victory_msg = d_StringInit();
         d_StringFormat(victory_msg, "You defeated %s!",
                        GetEnemyName(g_game.current_enemy));
-        aFontConfig_t off_white = {
+        aTextStyle_t off_white = {
             .type = FONT_ENTER_COMMAND,
-            .color = {235, 237, 233, 255},  // Off-white
+            .fg = {235, 237, 233, 255},  // Off-white
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = 0,
             .scale = 1.0f
         };
-        a_DrawTextStyled((char*)d_StringPeek(victory_msg), center_x, center_y + 50, &off_white);
+        a_DrawText((char*)d_StringPeek(victory_msg), center_x, center_y + 50, off_white);
         d_StringDestroy(victory_msg);
 
         // Show bet winnings (green "+X chips" text)
@@ -2155,14 +2143,14 @@ static void BlackjackDraw(float dt) {
             dString_t* winnings_text = d_StringInit();
             d_StringFormat(winnings_text, "+%d chips won!", g_result_screen->chip_delta);
 
-            aFontConfig_t green_winnings = {
+            aTextStyle_t green_winnings = {
                 .type = FONT_GAME,
-                .color = {117, 255, 67, 255},  // Bright green
+                .fg = {117, 255, 67, 255},  // Bright green
                 .align = TEXT_ALIGN_CENTER,
                 .wrap_width = 0,
                 .scale = 1.5f
             };
-            a_DrawTextStyled((char*)d_StringPeek(winnings_text), center_x, center_y + 110, &green_winnings);
+            a_DrawText((char*)d_StringPeek(winnings_text), center_x, center_y + 110, green_winnings);
             d_StringDestroy(winnings_text);
         }
     }
@@ -2187,7 +2175,7 @@ static void BlackjackDraw(float dt) {
     // Render intro narrative modal (if visible) with dark background
     if (g_intro_narrative_modal && IsIntroNarrativeModalVisible(g_intro_narrative_modal)) {
         // Dark semi-transparent overlay (50% black)
-        a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, 128);
+        a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 128});
 
         // Render modal (has its own fade-in)
         RenderIntroNarrativeModal(g_intro_narrative_modal);
@@ -2236,17 +2224,19 @@ static void BlackjackDraw(float dt) {
 
         // Draw background box (#10141f at 30% opacity with fade)
         Uint8 bg_alpha = (Uint8)(0.3f * g_popup_alpha * 255);
-        a_DrawFilledRect(box_x, box_y, box_width, box_height, 16, 20, 31, bg_alpha);
+        a_DrawFilledRect((aRectf_t){box_x, box_y, box_width, box_height}, (aColor_t){16, 20, 31, bg_alpha});
 
         // Draw text (#a53030 red with fade)
-        aFontConfig_t popup_config = {
+        aTextStyle_t popup_config = {
             .type = FONT_ENTER_COMMAND,
-            .color = {165, 48, 48, (Uint8)(g_popup_alpha * 255)},  // #a53030 with fade
+            .fg = {165, 48, 48, (Uint8)(g_popup_alpha * 255)},  // #a53030 with fade
+            .bg = {0, 0, 0, 0},
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = 0,
-            .scale = 1.2f
+            .scale = 1.2f,
+            .padding = 0
         };
-        a_DrawTextStyled(g_popup_message, SCREEN_WIDTH / 2, (int)g_popup_y, &popup_config);
+        a_DrawText(g_popup_message, SCREEN_WIDTH / 2, (int)g_popup_y, popup_config);
     }
 
     // Render terminal overlay (highest layer - above tutorial)

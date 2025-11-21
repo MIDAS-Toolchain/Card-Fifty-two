@@ -70,16 +70,13 @@ void RenderEnemyHealthBar(const EnemyHealthBar_t* bar) {
     int filled_width = (int)(bar->w * hp_percent);
 
     // Draw background (dark gray)
-    a_DrawFilledRect(bar->x, bar->y, bar->w, bar->h,
-                     COLOR_BG.r, COLOR_BG.g, COLOR_BG.b, COLOR_BG.a);
+    a_DrawFilledRect((aRectf_t){bar->x, bar->y, bar->w, bar->h}, COLOR_BG);
 
     // Draw filled portion (red) - animates smoothly
-    a_DrawFilledRect(bar->x, bar->y, filled_width, bar->h,
-                     COLOR_FILL.r, COLOR_FILL.g, COLOR_FILL.b, COLOR_FILL.a);
+    a_DrawFilledRect((aRectf_t){bar->x, bar->y, filled_width, bar->h}, COLOR_FILL);
 
     // Draw border (off-white)
-    a_DrawRect(bar->x, bar->y, bar->w, bar->h,
-               COLOR_BORDER.r, COLOR_BORDER.g, COLOR_BORDER.b, COLOR_BORDER.a);
+    a_DrawRect((aRectf_t){bar->x, bar->y, bar->w, bar->h}, COLOR_BORDER);
 
     // Draw HP text to the right of the bar (show actual HP, not display_hp)
     dString_t* hp_text = d_StringInit();
@@ -89,8 +86,7 @@ void RenderEnemyHealthBar(const EnemyHealthBar_t* bar) {
     int text_y = bar->y;
 
     a_DrawText((char*)d_StringPeek(hp_text), text_x, text_y,
-               COLOR_TEXT.r, COLOR_TEXT.g, COLOR_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_TEXT.r,COLOR_TEXT.g,COLOR_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
 
     d_StringDestroy(hp_text);
 }

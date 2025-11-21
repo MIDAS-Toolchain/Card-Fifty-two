@@ -14,7 +14,7 @@
 // External globals
 extern dTable_t* g_players;
 extern dTable_t* g_card_textures;
-extern SDL_Texture* g_card_back_texture;
+extern SDL_Surface* g_card_back_texture;
 extern GameContext_t g_game;  // For checking targeting state
 
 // ============================================================================
@@ -68,7 +68,7 @@ void DestroyPlayerSection(PlayerSection_t** section) {
     if (!section || !*section) return;
 
     if ((*section)->layout) {
-        a_DestroyFlexBox(&(*section)->layout);
+        a_FlexBoxDestroy(&(*section)->layout);
     }
 
     // Destroy tooltip
@@ -105,7 +105,7 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
 
     // Draw main score (yellow)
     a_DrawText((char*)d_StringPeek(info), center_x, name_y,
-               255, 255, 0, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,0,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     d_StringDestroy(info);
 
@@ -183,15 +183,13 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
             CalculateCardFanPosition(i, hand_size, cards_y, &x, &y);
         }
 
-        SDL_Rect dst = {x, y, CARD_WIDTH, CARD_HEIGHT};
-
         if (card->face_up && card->texture) {
-            SDL_RenderCopy(app.renderer, card->texture, NULL, &dst);
+            a_BlitSurfaceRect(card->texture, (aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, 1);
         } else if (!card->face_up && g_card_back_texture) {
-            SDL_RenderCopy(app.renderer, g_card_back_texture, NULL, &dst);
+            a_BlitSurfaceRect(g_card_back_texture, (aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, 1);
         } else {
-            a_DrawFilledRect(x, y, CARD_WIDTH, CARD_HEIGHT, 200, 200, 200, 255);
-            a_DrawRect(x, y, CARD_WIDTH, CARD_HEIGHT, 100, 100, 100, 255);
+            a_DrawFilledRect((aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){200, 200, 200, 255});
+            a_DrawRect((aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){100, 100, 100, 255});
         }
 
         // Draw ace value text (1 or 11) on the card itself
@@ -206,7 +204,7 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
 
             // Lighter blue text (dodger blue)
             a_DrawText((char*)d_StringPeek(ace_text), text_x, text_y,
-                      30, 144, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={30,144,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
             d_StringDestroy(ace_text);
         }
 
@@ -222,10 +220,10 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
 
                 if (is_valid) {
                     // Green overlay for valid targets
-                    a_DrawFilledRect(x, y, CARD_WIDTH, CARD_HEIGHT, 0, 255, 0, 80);
+                    a_DrawFilledRect((aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){0, 255, 0, 80});
                 } else {
                     // Dimmed overlay for invalid targets
-                    a_DrawFilledRect(x, y, CARD_WIDTH, CARD_HEIGHT, 128, 128, 128, 80);
+                    a_DrawFilledRect((aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){128, 128, 128, 80});
                 }
             }
         }
@@ -249,8 +247,8 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                     // Get tag color
                     int r, g, b;
                     GetCardTagColor(*tag, &r, &g, &b);
-                    a_DrawFilledRect(badge_x, badge_y, badge_w, badge_h, r, g, b, 255);
-                    a_DrawRect(badge_x, badge_y, badge_w, badge_h, 0, 0, 0, 255);
+                    a_DrawFilledRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){r, g, b, 255});
+                    a_DrawRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){0, 0, 0, 255});
 
                     // Truncate tag text to first 3 letters
                     const char* full_tag_text = GetCardTagName(*tag);
@@ -259,13 +257,13 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                     truncated[3] = '\0';
 
                     // Black text, centered
-                    aFontConfig_t tag_config = {
+                    aTextStyle_t tag_config = {
                         .type = FONT_ENTER_COMMAND,
-                        .color = {0, 0, 0, 255},
+                        .fg = {0, 0, 0, 255},
                         .align = TEXT_ALIGN_CENTER,
                         .scale = 0.7f
                     };
-                    a_DrawTextStyled(truncated, badge_x + badge_w / 2, badge_y - 3, &tag_config);
+                    a_DrawText(truncated, badge_x + badge_w / 2, badge_y - 3, tag_config);
                 }
             }
         }
@@ -294,14 +292,14 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
             int scaled_x = x - (scaled_width - CARD_WIDTH) / 2;  // Center scaling
             int scaled_y = y + lift - (scaled_height - CARD_HEIGHT) / 2;
 
-            // Use Archimedes scaled blit (constitutional pattern)
+            // Use Archimedes surface blitting
             if (card->face_up && card->texture) {
-                a_BlitTextureScaled(card->texture, scaled_x, scaled_y, scaled_width, scaled_height);
+                a_BlitSurfaceRect(card->texture, (aRectf_t){scaled_x, scaled_y, scaled_width, scaled_height}, 1);
             } else if (!card->face_up && g_card_back_texture) {
-                a_BlitTextureScaled(g_card_back_texture, scaled_x, scaled_y, scaled_width, scaled_height);
+                a_BlitSurfaceRect(g_card_back_texture, (aRectf_t){scaled_x, scaled_y, scaled_width, scaled_height}, 1);
             } else {
-                a_DrawFilledRect(scaled_x, scaled_y, scaled_width, scaled_height, 200, 200, 200, 255);
-                a_DrawRect(scaled_x, scaled_y, scaled_width, scaled_height, 100, 100, 100, 255);
+                a_DrawFilledRect((aRectf_t){scaled_x, scaled_y, scaled_width, scaled_height}, (aColor_t){200, 200, 200, 255});
+                a_DrawRect((aRectf_t){scaled_x, scaled_y, scaled_width, scaled_height}, (aColor_t){100, 100, 100, 255});
             }
 
             // Draw ace value text (1 or 11) on hovered card
@@ -316,7 +314,7 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
 
                 // Lighter blue text (dodger blue)
                 a_DrawText((char*)d_StringPeek(ace_text), text_x, text_y,
-                          30, 144, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={30,144,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
                 d_StringDestroy(ace_text);
             }
 
@@ -331,16 +329,14 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                     if (is_valid) {
                         // Bright green border (valid target + hovered = selectable)
                         for (int i = 0; i < border_thickness; i++) {
-                            a_DrawRect(scaled_x - i, scaled_y - i,
-                                      scaled_width + (i * 2), scaled_height + (i * 2),
-                                      0, 255, 0, 255 - (i * 40));  // Fade outer layers
+                            a_DrawRect((aRectf_t){scaled_x - i, scaled_y - i, scaled_width + (i * 2), scaled_height + (i * 2)},
+                                      (aColor_t){0, 255, 0, 255 - (i * 40)});  // Fade outer layers
                         }
                     } else {
                         // Red border (invalid target + hovered = not selectable)
                         for (int i = 0; i < border_thickness; i++) {
-                            a_DrawRect(scaled_x - i, scaled_y - i,
-                                      scaled_width + (i * 2), scaled_height + (i * 2),
-                                      255, 50, 50, 255 - (i * 40));  // Fade outer layers
+                            a_DrawRect((aRectf_t){scaled_x - i, scaled_y - i, scaled_width + (i * 2), scaled_height + (i * 2)},
+                                      (aColor_t){255, 50, 50, 255 - (i * 40)});  // Fade outer layers
                         }
                     }
                 }
@@ -365,8 +361,8 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                         // Get tag color
                         int r, g, b;
                         GetCardTagColor(*tag, &r, &g, &b);
-                        a_DrawFilledRect(badge_x, badge_y, badge_w, badge_h, r, g, b, 255);
-                        a_DrawRect(badge_x, badge_y, badge_w, badge_h, 0, 0, 0, 255);
+                        a_DrawFilledRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){r, g, b, 255});
+                        a_DrawRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){0, 0, 0, 255});
 
                         // Truncate tag text to first 3 letters
                         const char* full_tag_text = GetCardTagName(*tag);
@@ -375,13 +371,13 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                         truncated[3] = '\0';
 
                         // Black text, centered
-                        aFontConfig_t tag_config = {
+                        aTextStyle_t tag_config = {
                             .type = FONT_ENTER_COMMAND,
-                            .color = {0, 0, 0, 255},
+                            .fg = {0, 0, 0, 255},
                             .align = TEXT_ALIGN_CENTER,
                             .scale = 0.7f * scale
                         };
-                        a_DrawTextStyled(truncated, badge_x + badge_w / 2, badge_y + (int)(3 * scale) - 8, &tag_config);
+                        a_DrawText(truncated, badge_x + badge_w / 2, badge_y + (int)(3 * scale) - 8, tag_config);
                     }
                 }
             }

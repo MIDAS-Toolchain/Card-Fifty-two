@@ -6,7 +6,7 @@
 #include "../../../include/scenes/components/deckButton.h"
 
 // External globals
-extern SDL_Texture* g_card_back_texture;
+extern SDL_Surface* g_card_back_texture;
 
 // Color constants
 #define COLOR_HOVER_BORDER      ((aColor_t){232, 193, 112, 255}) // #e8c170 - gold
@@ -129,20 +129,18 @@ void RenderDeckButton(const DeckButton_t* button, const char* count_text) {
 
     // Draw card back texture (face-down card)
     if (g_card_back_texture) {
-        SDL_Rect dst = {button->x, button->y, button->w, button->h};
-        SDL_RenderCopy(app.renderer, g_card_back_texture, NULL, &dst);
+        a_BlitSurfaceRect(g_card_back_texture, (aRectf_t){button->x, button->y, button->w, button->h}, 1);
     } else {
         // Fallback if texture not loaded
-        a_DrawFilledRect(button->x, button->y, button->w, button->h, 80, 80, 120, 255);
-        a_DrawRect(button->x, button->y, button->w, button->h, 200, 200, 200, 255);
+        a_DrawFilledRect((aRectf_t){button->x, button->y, button->w, button->h}, (aColor_t){80, 80, 120, 255});
+        a_DrawRect((aRectf_t){button->x, button->y, button->w, button->h}, (aColor_t){200, 200, 200, 255});
     }
 
     // Draw hover border (gold highlight)
     if (button->enabled && IsDeckButtonHovered(button)) {
         // Draw thick gold border on hover
         for (int i = 0; i < 3; i++) {
-            a_DrawRect(button->x - i, button->y - i, button->w + (i * 2), button->h + (i * 2),
-                       COLOR_HOVER_BORDER.r, COLOR_HOVER_BORDER.g, COLOR_HOVER_BORDER.b, COLOR_HOVER_BORDER.a);
+            a_DrawRect((aRectf_t){button->x - i, button->y - i, button->w + (i * 2), button->h + (i * 2)}, COLOR_HOVER_BORDER);
         }
     }
 
@@ -152,8 +150,7 @@ void RenderDeckButton(const DeckButton_t* button, const char* count_text) {
         int count_y = button->y - DECK_BUTTON_COUNT_OFFSET;
         // Cast safe: a_DrawText is read-only, count_text is temporary from caller
         a_DrawText((char*)count_text, count_x, count_y,
-                   COLOR_COUNT_TEXT.r, COLOR_COUNT_TEXT.g, COLOR_COUNT_TEXT.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_COUNT_TEXT.r,COLOR_COUNT_TEXT.g,COLOR_COUNT_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
     // Draw hotkey below card (centered) - using fixed char buffer
@@ -162,7 +159,6 @@ void RenderDeckButton(const DeckButton_t* button, const char* count_text) {
         int hotkey_y = button->y + button->h + DECK_BUTTON_HOTKEY_OFFSET;
         // Cast safe: a_DrawText is read-only, using fixed char buffer
         a_DrawText((char*)button->hotkey_hint, hotkey_x, hotkey_y,
-                   COLOR_HOTKEY_TEXT.r, COLOR_HOTKEY_TEXT.g, COLOR_HOTKEY_TEXT.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_HOTKEY_TEXT.r,COLOR_HOTKEY_TEXT.g,COLOR_HOTKEY_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 }

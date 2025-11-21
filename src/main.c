@@ -25,8 +25,8 @@ dTable_t* g_card_textures = NULL;
 // Portrait texture cache (defined in common.h, declared here)
 dTable_t* g_portraits = NULL;
 
-// Card back texture (defined in common.h, declared here)
-SDL_Texture* g_card_back_texture = NULL;
+// Card back surface (defined in common.h, declared here)
+SDL_Surface* g_card_back_texture = NULL;
 
 // Sound effects (defined in common.h, declared here)
 aAudioClip_t g_push_chips_sound;
@@ -47,44 +47,54 @@ Hand_t g_player_hand;
 // GLOBAL FONT STYLES
 // ============================================================================
 
-aFontConfig_t FONT_STYLE_TITLE = {
+aTextStyle_t FONT_STYLE_TITLE = {
     .type = FONT_ENTER_COMMAND,
-    .color = {255, 255, 255, 255},
+    .fg = {255, 255, 255, 255},
+    .bg = {0, 0, 0, 0},
     .align = TEXT_ALIGN_CENTER,
     .wrap_width = 0,
-    .scale = 1.0f
+    .scale = 1.0f,
+    .padding = 0
 };
 
-aFontConfig_t FONT_STYLE_BODY = {
+aTextStyle_t FONT_STYLE_BODY = {
     .type = FONT_GAME,
-    .color = {255, 255, 255, 255},
+    .fg = {255, 255, 255, 255},
+    .bg = {0, 0, 0, 0},
     .align = TEXT_ALIGN_CENTER,
     .wrap_width = 0,
-    .scale = 1.0f
+    .scale = 1.0f,
+    .padding = 0
 };
 
-aFontConfig_t FONT_STYLE_CHIP_COUNT = {
+aTextStyle_t FONT_STYLE_CHIP_COUNT = {
     .type = FONT_GAME,
-    .color = {255, 255, 0, 255},  // Yellow
+    .fg = {255, 255, 0, 255},  // Yellow
+    .bg = {0, 0, 0, 0},
     .align = TEXT_ALIGN_CENTER,
     .wrap_width = 0,
-    .scale = 1.0f
+    .scale = 1.0f,
+    .padding = 0
 };
 
-aFontConfig_t FONT_STYLE_DEBUG = {
+aTextStyle_t FONT_STYLE_DEBUG = {
     .type = FONT_GAME,
-    .color = {0, 255, 0, 255},  // Green
+    .fg = {0, 255, 0, 255},  // Green
+    .bg = {0, 0, 0, 0},
     .align = TEXT_ALIGN_RIGHT,
     .wrap_width = 0,
-    .scale = 1.0f
+    .scale = 1.0f,
+    .padding = 0
 };
 
-aFontConfig_t FONT_STYLE_DAMAGE = {
+aTextStyle_t FONT_STYLE_DAMAGE = {
     .type = FONT_GAME,
-    .color = {255, 0, 0, 255},  // Red (overridden for healing)
+    .fg = {255, 0, 0, 255},  // Red (overridden for healing)
+    .bg = {0, 0, 0, 0},
     .align = TEXT_ALIGN_CENTER,
     .wrap_width = 0,
-    .scale = 1.0f
+    .scale = 1.0f,
+    .padding = 0
 };
 
 // ============================================================================
@@ -111,13 +121,13 @@ void Initialize(void) {
     g_players = d_InitTable(sizeof(int), sizeof(Player_t),
                             d_HashInt, d_CompareInt, 16);
 
-    g_card_textures = d_InitTable(sizeof(int), sizeof(SDL_Texture*),
+    g_card_textures = d_InitTable(sizeof(int), sizeof(SDL_Surface*),
                                    d_HashInt, d_CompareInt, 64);
 
-    g_portraits = d_InitTable(sizeof(int), sizeof(SDL_Texture*),
+    g_portraits = d_InitTable(sizeof(int), sizeof(SDL_Surface*),
                               d_HashInt, d_CompareInt, 16);
 
-    g_ability_icons = d_InitTable(sizeof(int), sizeof(SDL_Texture*),
+    g_ability_icons = d_InitTable(sizeof(int), sizeof(SDL_Surface*),
                                    d_HashInt, d_CompareInt, 8);
 
     if (!g_players || !g_card_textures || !g_portraits || !g_ability_icons) {
@@ -126,12 +136,12 @@ void Initialize(void) {
         exit(1);
     }
 
-    // Load card back texture
-    g_card_back_texture = a_LoadTexture("resources/textures/cards/card_back.png");
+    // Load card back surface
+    g_card_back_texture = IMG_Load("resources/textures/cards/card_back.png");
     if (!g_card_back_texture) {
-        d_LogError("Failed to load card back texture");
+        d_LogError("Failed to load card back surface");
     } else {
-        d_LogInfo("Card back texture loaded");
+        d_LogInfo("Card back surface loaded");
     }
 
     // Load sound effects
@@ -139,23 +149,23 @@ void Initialize(void) {
     a_LoadSounds("resources/audio/sound_effects/victory_sound.wav", &g_victory_sound);
     d_LogInfo("Sound effects loaded");
 
-    // Load 52 card face textures from PNG files (0.png - 51.png)
+    // Load 52 card face surfaces from PNG files (0.png - 51.png)
     // Card ID mapping: 0-12 Hearts, 13-25 Diamonds, 26-38 Spades, 39-51 Clubs
     for (int card_id = 0; card_id < 52; card_id++) {
         dString_t* path = d_StringInit();
         d_StringFormat(path, "resources/textures/cards/%d.png", card_id);
 
-        SDL_Texture* tex = a_LoadTexture((char*)d_StringPeek(path));
+        SDL_Surface* surf = IMG_Load((char*)d_StringPeek(path));
         d_StringDestroy(path);
 
-        if (tex) {
-            d_SetDataInTable(g_card_textures, &card_id, &tex);
+        if (surf) {
+            d_SetDataInTable(g_card_textures, &card_id, &surf);
         } else {
-            d_LogErrorF("Failed to load texture for card_id %d", card_id);
+            d_LogErrorF("Failed to load surface for card_id %d", card_id);
         }
     }
 
-    d_LogInfoF("Loaded %d card textures", (int)g_card_textures->count);
+    d_LogInfoF("Loaded %d card surfaces", (int)g_card_textures->count);
 
     // Initialize card metadata system
     InitCardMetadata();
@@ -183,41 +193,41 @@ void Cleanup(void) {
         d_LogInfo("Player registry destroyed");
     }
 
-    // Destroy card back texture
+    // Destroy card back surface
     if (g_card_back_texture) {
-        SDL_DestroyTexture(g_card_back_texture);
+        SDL_FreeSurface(g_card_back_texture);
         g_card_back_texture = NULL;
     }
 
-    // Free all card textures before destroying table
+    // Free all card surfaces before destroying table
     if (g_card_textures) {
         dArray_t* card_ids = d_GetAllKeysFromTable(g_card_textures);
         if (card_ids) {
             for (size_t i = 0; i < card_ids->count; i++) {
                 int* card_id = (int*)d_IndexDataFromArray(card_ids, i);
                 if (card_id) {
-                    SDL_Texture** tex_ptr = (SDL_Texture**)d_GetDataFromTable(g_card_textures, card_id);
-                    if (tex_ptr && *tex_ptr) {
-                        SDL_DestroyTexture(*tex_ptr);
+                    SDL_Surface** surf_ptr = (SDL_Surface**)d_GetDataFromTable(g_card_textures, card_id);
+                    if (surf_ptr && *surf_ptr) {
+                        SDL_FreeSurface(*surf_ptr);
                     }
                 }
             }
             d_DestroyArray(card_ids);
         }
         d_DestroyTable(&g_card_textures);
-        d_LogInfo("Texture cache destroyed");
+        d_LogInfo("Surface cache destroyed");
     }
 
-    // Free all portrait textures before destroying table
+    // Free all portrait surfaces before destroying table
     if (g_portraits) {
         dArray_t* player_ids = d_GetAllKeysFromTable(g_portraits);
         if (player_ids) {
             for (size_t i = 0; i < player_ids->count; i++) {
                 int* player_id = (int*)d_IndexDataFromArray(player_ids, i);
                 if (player_id) {
-                    SDL_Texture** tex_ptr = (SDL_Texture**)d_GetDataFromTable(g_portraits, player_id);
-                    if (tex_ptr && *tex_ptr) {
-                        SDL_DestroyTexture(*tex_ptr);
+                    SDL_Surface** surf_ptr = (SDL_Surface**)d_GetDataFromTable(g_portraits, player_id);
+                    if (surf_ptr && *surf_ptr) {
+                        SDL_FreeSurface(*surf_ptr);
                     }
                 }
             }
@@ -227,16 +237,16 @@ void Cleanup(void) {
         d_LogInfo("Portrait cache destroyed");
     }
 
-    // Free all ability icon textures before destroying table
+    // Free all ability icon surfaces before destroying table
     if (g_ability_icons) {
         dArray_t* keys = d_GetAllKeysFromTable(g_ability_icons);
         if (keys) {
             for (size_t i = 0; i < keys->count; i++) {
                 int* ability_id = (int*)d_IndexDataFromArray(keys, i);
                 if (ability_id) {
-                    SDL_Texture** tex_ptr = (SDL_Texture**)d_GetDataFromTable(g_ability_icons, ability_id);
-                    if (tex_ptr && *tex_ptr) {
-                        SDL_DestroyTexture(*tex_ptr);
+                    SDL_Surface** surf_ptr = (SDL_Surface**)d_GetDataFromTable(g_ability_icons, ability_id);
+                    if (surf_ptr && *surf_ptr) {
+                        SDL_FreeSurface(*surf_ptr);
                     }
                 }
             }
@@ -284,9 +294,7 @@ static void RenderHand(const Hand_t* hand, int start_x, int start_y) {
 
         // Draw card background
         if (g_card_back_texture) {
-            SDL_Rect bg_src = {0, 0, CARD_WIDTH, CARD_HEIGHT};
-            aColor_t white = {255, 255, 255, 255};
-            a_BlitTextureRect(g_card_back_texture, bg_src, x, y, 1, white);
+            a_BlitSurfaceRect(g_card_back_texture, (aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, 1);
         }
 
         // Draw card face if face up
@@ -301,13 +309,11 @@ static void RenderHand(const Hand_t* hand, int start_x, int start_y) {
                 continue;
             }
 
-            // Draw card label centered on card
+            // Draw card label centered on card (using surface API)
             int label_x = x + CARD_WIDTH / 2 - tex_w / 2;
             int label_y = y + CARD_HEIGHT / 2 - tex_h / 2;
 
-            SDL_Rect src = {0, 0, tex_w, tex_h};
-            aColor_t color = {255, 255, 255, 255};
-            a_BlitTextureRect(card->texture, src, label_x, label_y, 1, color);
+            a_BlitSurfaceRect(card->texture, (aRectf_t){label_x, label_y, tex_w, tex_h}, 1);
         }
     }
 }
@@ -330,30 +336,44 @@ static void SceneDraw(float dt) {
     app.background = (aColor_t){10, 80, 30, 255};
 
     // Draw title
-    a_DrawText("Card Fifty-Two", SCREEN_WIDTH / 2, 100,
-               255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+    aTextStyle_t title_style = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = {255, 255, 255, 255},
+        .bg = {0, 0, 0, 0},
+        .align = TEXT_ALIGN_CENTER,
+        .wrap_width = 0,
+        .scale = 1.0f,
+        .padding = 0
+    };
+    a_DrawText("Card Fifty-Two", SCREEN_WIDTH / 2, 100, title_style);
 
     // Draw subtitle (USE FONT_ENTER_COMMAND, BRIGHT WHITE)
-    a_DrawText("Tech Demo - Archimedes & Daedalus", SCREEN_WIDTH / 2, 160,
-               255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+    a_DrawText("Tech Demo - Archimedes & Daedalus", SCREEN_WIDTH / 2, 160, title_style);
 
     // Draw deck info (Constitutional pattern: dString_t, not char[])
     dString_t* deck_info = d_StringInit();
     d_StringFormat(deck_info, "Deck: %zu cards remaining",
                    GetDeckSize(&g_test_deck));
-    a_DrawText((char*)d_StringPeek(deck_info), SCREEN_WIDTH / 2, 220,
-               255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(deck_info), SCREEN_WIDTH / 2, 220, title_style);
     d_StringDestroy(deck_info);
 
-    // Draw player hand info
+    // Draw player hand info (yellow)
+    aTextStyle_t hand_style = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = {255, 255, 0, 255},
+        .bg = {0, 0, 0, 0},
+        .align = TEXT_ALIGN_CENTER,
+        .wrap_width = 0,
+        .scale = 1.0f,
+        .padding = 0
+    };
     dString_t* hand_info = d_StringInit();
     d_StringFormat(hand_info, "Your Hand - Cards: %zu | Value: %d%s",
                    GetHandSize(&g_player_hand),
                    g_player_hand.total_value,
                    g_player_hand.is_blackjack ? " (BLACKJACK!)" :
                    g_player_hand.is_bust ? " (BUST)" : "");
-    a_DrawText((char*)d_StringPeek(hand_info), SCREEN_WIDTH / 2, 280,
-               255, 255, 0, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(hand_info), SCREEN_WIDTH / 2, 280, hand_style);
     d_StringDestroy(hand_info);
 
     // Render player hand visually
@@ -361,15 +381,21 @@ static void SceneDraw(float dt) {
 
     // Draw instructions (BRIGHT YELLOW)
     a_DrawText("[S] Shuffle | [D] Deal Card | [R] Reset | [ESC] Quit",
-               SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100,
-               255, 255, 0, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+               SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100, hand_style);
 
     // Draw status (CYAN instead of green - visible on green bg)
-    // Constitutional pattern: dString_t, not char[]
+    aTextStyle_t status_style = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = {0, 255, 255, 255},
+        .bg = {0, 0, 0, 0},
+        .align = TEXT_ALIGN_RIGHT,
+        .wrap_width = 0,
+        .scale = 1.0f,
+        .padding = 0
+    };
     dString_t* status = d_StringInit();
     d_StringFormat(status, "FPS: %.1f", 1.0f / a_GetDeltaTime());
-    a_DrawText((char*)d_StringPeek(status), SCREEN_WIDTH - 10, 10,
-               0, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_RIGHT, 0);
+    a_DrawText((char*)d_StringPeek(status), SCREEN_WIDTH - 10, 10, status_style);
     d_StringDestroy(status);
 }
 

@@ -28,7 +28,7 @@ DeckViewPanel_t* CreateDeckViewPanel(DeckButton_t** buttons, int button_count, D
 
     // Create horizontal FlexBox for button row
     // Use FLEX_JUSTIFY_SPACE_AROUND to place buttons on left/right with spacing
-    panel->button_row = a_CreateFlexBox(0, 0, SCREEN_WIDTH, DECK_PANEL_ROW_HEIGHT);
+    panel->button_row = a_FlexBoxCreate(0, 0, SCREEN_WIDTH, DECK_PANEL_ROW_HEIGHT);
     a_FlexConfigure(panel->button_row, FLEX_DIR_ROW, FLEX_JUSTIFY_SPACE_AROUND, DECK_BUTTON_SPACING);
 
     // Add buttons to FlexBox
@@ -47,7 +47,7 @@ void DestroyDeckViewPanel(DeckViewPanel_t** panel) {
 
     // Destroy FlexBox (but NOT buttons - caller owns them)
     if ((*panel)->button_row) {
-        a_DestroyFlexBox(&(*panel)->button_row);
+        a_FlexBoxDestroy(&(*panel)->button_row);
     }
 
     free(*panel);

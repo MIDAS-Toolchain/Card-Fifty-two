@@ -677,24 +677,24 @@ EventEncounter_t* CreateSystemMaintenanceEvent(void) {
 
     // Choice A: Investigate panel (-10 sanity, Stack Trace trinket)
     AddEventChoice(event,
-                   "Investigate the panel (-10 sanity, gain Stack Trace)",
-                   "TEXT OUTPUT: \"DIAGNOSTIC_MODE_ACTIVE\"\n\n"
-                   "You dig through system logs. The corruption runs deep.\n"
-                   "The knowledge weighs on your mind.\n\n"
-                   "You recover a diagnostic tool from the wreckage.\n"
-                   "Every crash leaves a trace—now you can read them.",
+                   "Investigate the panel",
+                   "> DIAGNOSTIC_MODE_ACTIVE\n\n"
+                   "You dig through cascading error logs. Corruption spreads through "
+                   "every subroutine—the machine is dying, and it knows it.\n\n"
+                   "A diagnostic tool ejects from the wreckage. Every crash leaves "
+                   "a trace. Now you can read them.",
                    0,    // No chips
                    -10); // -10 sanity
     SetChoiceTrinketReward(event, 0, 2);  // Grant Stack Trace (trinket_id = 2)
 
     // Choice B: Walk away (+20 chips, 3 random cards CURSED)
     AddEventChoice(event,
-                   "Walk away (+20 chips, 3 random cards CURSED)",
-                   "TEXT OUTPUT: \"REBUILD_CANCELLED\"\n"
-                   "TEXT OUTPUT: \"CORRUPTION_SPREADING\"\n\n"
-                   "You pocket some loose chips and leave.\n"
-                   "The panel's glow casts shadows on your cards.\n"
-                   "Three of them feel... wrong.",
+                   "Walk away",
+                   "> REBUILD_CANCELLED\n\n"
+                   "You pocket loose chips scattered near the panel. The maintenance "
+                   "cycle aborts. Something in the static reaches out—three cards in "
+                   "your deck pulse with wrongness.\n\n"
+                   "The corruption has spread to you.",
                    20,  // +20 chips
                    0);  // No sanity change
     // Tag 3 random cards as CURSED
@@ -704,12 +704,11 @@ EventEncounter_t* CreateSystemMaintenanceEvent(void) {
 
     // Choice C: Sabotage maintenance [REQUIRES 1 CURSED CARD]
     AddEventChoice(event,
-                   "Sabotage the maintenance (Daemon 75% HP, -20 sanity) [LOCKED]",
-                   "TEXT OUTPUT: \"MANUAL_OVERRIDE_ACCEPTED\"\n"
-                   "TEXT OUTPUT: \"CORRUPTION_ACCELERATED\"\n\n"
-                   "You leverage the corrupted cards to sabotage the rebuild.\n"
-                   "The system destabilizes. The Daemon will be weakened...\n"
-                   "but your mind fractures further.",
+                   "Sabotage the maintenance",
+                   "> MANUAL_OVERRIDE_ACCEPTED\n\n"
+                   "Your cursed cards interface directly with the corrupted system. "
+                   "Feedback screeches through your skull as you accelerate the decay.\n\n"
+                   "The Daemon will boot incomplete. Weakened. Your mind pays the price.",
                    0,    // No chips
                    -20); // -20 sanity
     // Set requirement: needs at least 1 CURSED card
@@ -746,26 +745,26 @@ EventEncounter_t* CreateHouseOddsEvent(void) {
 
     // Choice A: Accept upgrade (Daemon +50% HP, Elite Membership trinket)
     AddEventChoice(event,
-                   "Accept the upgrade (Daemon +50% HP, Elite Membership)",
+                   "Accept the upgrade",
                    "\"Excellent choice.\"\n\n"
-                   "The dealer slides a black card across the table.\n"
-                   "You've been granted Elite Membership—wins boost rewards by 30%%,\n"
-                   "and losses refund 30%% of your bet.\n\n"
-                   "The Daemon awaits... but it's grown stronger.",
+                   "The dealer slides a black card across the table. Your fingers tingle "
+                   "as you accept it. The card hums with probability manipulation.\n\n"
+                   "Elite Status granted. The casino's algorithms now favor you... "
+                   "but the Daemon has been enhanced to match.",
                    0,  // No chips (rewards come later via trinket)
                    0); // No sanity change
     // Grant Elite Membership trinket (ID 1)
     SetChoiceTrinketReward(event, 0, 1);
-    // Set enemy HP multiplier: Daemon starts at 150% HP
-    SetChoiceEnemyHPMultiplier(event, 0, 1.5f);
+    // Set enemy HP multiplier: Daemon starts at 130% HP
+    SetChoiceEnemyHPMultiplier(event, 0, 1.3f);
 
     // Choice B: Refuse (-15 sanity, all Aces → LUCKY)
     AddEventChoice(event,
-                   "Refuse the upgrade (-15 sanity, all Aces → LUCKY)",
+                   "Refuse the upgrade",
                    "\"Disappointing.\"\n\n"
-                   "The dealer's smile fades. Reality warps for a moment.\n"
-                   "When it stabilizes, your Aces shimmer with probability.\n\n"
-                   "The House punishes your refusal, but glitches—aces become luck.",
+                   "The dealer's smile freezes. Reality hiccups. When the world stabilizes, "
+                   "your Aces shimmer with stolen luck. The House's punishment backfired.\n\n"
+                   "You feel the sanity drain, but your deck pulses with new power.",
                    0,    // No chips
                    -15); // -15 sanity
     // Tag all 4 Aces as LUCKY
@@ -773,11 +772,11 @@ EventEncounter_t* CreateHouseOddsEvent(void) {
 
     // Choice C: Negotiate terms [REQUIRES 1 LUCKY CARD]
     AddEventChoice(event,
-                   "Negotiate terms (+30 chips, face cards → BRUTAL) [LOCKED]",
-                   "\"Ah, you have luck on your side. Let's renegotiate.\"\n\n"
-                   "You leverage your lucky card to manipulate the terms.\n"
-                   "The dealer agrees. Face cards become weapons.\n\n"
-                   "The Daemon awaits at normal strength.",
+                   "Negotiate terms",
+                   "\"Ah, you have luck on your side.\" The dealer inclines their head.\n\n"
+                   "Your lucky card catches the light as leverage. The terms shift in your favor. "
+                   "Face cards darken with brutal intent.\n\n"
+                   "The deal is struck. The Daemon awaits at standard strength.",
                    30,  // +30 chips
                    0);  // No sanity change
     // Set requirement: needs at least 1 LUCKY card

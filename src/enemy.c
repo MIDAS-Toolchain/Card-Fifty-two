@@ -569,8 +569,8 @@ bool LoadEnemyPortrait(Enemy_t* enemy, const char* filename) {
         return false;
     }
 
-    // Load image as surface using Archimedes
-    SDL_Surface* surface = a_Image(filename);
+    // Load image as surface using SDL_image
+    SDL_Surface* surface = IMG_Load(filename);
     if (!surface) {
         d_LogError("LoadEnemyPortrait: Failed to load image");
         return false;
@@ -581,15 +581,9 @@ bool LoadEnemyPortrait(Enemy_t* enemy, const char* filename) {
         SDL_FreeSurface(enemy->portrait_surface);
     }
 
-    // Free existing texture if any
-    if (enemy->portrait_texture) {
-        SDL_DestroyTexture(enemy->portrait_texture);
-        enemy->portrait_texture = NULL;
-    }
-
-    // Store surface and mark as dirty
+    // Store surface (no texture needed - we use surfaces directly now)
     enemy->portrait_surface = surface;
-    enemy->portrait_dirty = true;
+    enemy->portrait_dirty = false;  // Mark as clean since we just loaded it
 
     d_LogInfoF("Loaded portrait for %s: %s", d_StringPeek(enemy->name), filename);
     return true;
@@ -598,23 +592,13 @@ bool LoadEnemyPortrait(Enemy_t* enemy, const char* filename) {
 void RefreshEnemyPortraitTexture(Enemy_t* enemy) {
     if (!enemy || !enemy->portrait_surface) return;
 
-    // Free existing texture
-    if (enemy->portrait_texture) {
-        SDL_DestroyTexture(enemy->portrait_texture);
-        enemy->portrait_texture = NULL;
-    }
-
-    // Convert surface to texture using Archimedes (destroy=0, we own the surface)
-    enemy->portrait_texture = a_ToTexture(enemy->portrait_surface, 0);
-    if (!enemy->portrait_texture) {
-        d_LogError("RefreshEnemyPortraitTexture: Failed to create texture");
-        return;
-    }
+    // No texture conversion needed - we use surfaces directly now
+    // Portrait surface is already loaded and ready to use
 
     // Clear dirty flag
     enemy->portrait_dirty = false;
 
-    d_LogInfo("Enemy portrait texture refreshed");
+    d_LogInfo("Enemy portrait surface ready (no texture conversion needed)");
 }
 
 SDL_Texture* GetEnemyPortraitTexture(Enemy_t* enemy) {

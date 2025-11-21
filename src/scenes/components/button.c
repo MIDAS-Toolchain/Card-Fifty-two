@@ -146,25 +146,25 @@ void RenderButton(const Button_t* button) {
     }
 
     // Draw filled rectangle
-    a_DrawFilledRect(button->x, button->y, button->w, button->h,
-                     bg_color.r, bg_color.g, bg_color.b, bg_color.a);
+    a_DrawFilledRect((aRectf_t){button->x, button->y, button->w, button->h},
+                     bg_color);
 
     // Draw yellow selection overlay if arrow-key selected (~25% opacity)
     if (button->is_selected && button->enabled) {
-        a_DrawFilledRect(button->x, button->y, button->w, button->h, 232, 193, 112, 64);  // #e8c170
+        a_DrawFilledRect((aRectf_t){button->x, button->y, button->w, button->h},
+                        (aColor_t){232, 193, 112, 64});  // #e8c170
     }
 
     // Draw border (off-white to match text)
-    a_DrawRect(button->x, button->y, button->w, button->h,
-               COLOR_BUTTON_BORDER.r, COLOR_BUTTON_BORDER.g, COLOR_BUTTON_BORDER.b, COLOR_BUTTON_BORDER.a);
+    a_DrawRect((aRectf_t){button->x, button->y, button->w, button->h},
+               COLOR_BUTTON_BORDER);
 
     // Draw selection indicator ">" if selected (to the LEFT of button, vertically centered)
     if (button->is_selected && button->enabled) {
         int indicator_x = button->x - 25;  // 25px to the left of button
         int indicator_y = button->y + button->h / 2 - 8;  // Vertically centered
         a_DrawText(">", indicator_x, indicator_y,
-                   COLOR_BUTTON_INDICATOR.r, COLOR_BUTTON_INDICATOR.g, COLOR_BUTTON_INDICATOR.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_BUTTON_INDICATOR.r,COLOR_BUTTON_INDICATOR.g,COLOR_BUTTON_INDICATOR.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
     // Draw label (properly centered, off-white text)
@@ -175,15 +175,13 @@ void RenderButton(const Button_t* button) {
     int text_y = button->y + (button->h - text_h) / 2;
     // Cast safe: a_DrawText is read-only
     a_DrawText((char*)button->label, text_x, text_y,
-               COLOR_BUTTON_TEXT.r, COLOR_BUTTON_TEXT.g, COLOR_BUTTON_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_BUTTON_TEXT.r,COLOR_BUTTON_TEXT.g,COLOR_BUTTON_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Draw hotkey hint if present
     if (button->hotkey_hint[0] != '\0') {
         int hotkey_y = button->y + button->h + 5;
         // Cast safe: a_DrawText is read-only
-        a_DrawText((char*)button->hotkey_hint,
-                   text_x, hotkey_y,
-                   180, 180, 180, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+        a_DrawText((char*)button->hotkey_hint, text_x, hotkey_y,
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={180,180,180,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 }

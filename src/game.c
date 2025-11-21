@@ -249,7 +249,7 @@ bool Game_ProcessBettingInput(GameContext_t* game, Player_t* player, int bet_amo
     if (PlaceBet(player, bet_amount)) {
         // Play chip sound effect
         d_LogInfo("Playing push_chips sound effect");
-        a_PlaySoundEffect(&g_push_chips_sound);
+        a_AudioPlayEffect(&g_push_chips_sound);
 
         d_LogInfoF("Player bet %d chips", bet_amount);
         // State machine will handle transition to DEALING

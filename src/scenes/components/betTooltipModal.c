@@ -119,94 +119,94 @@ void RenderBetTooltipModal(const BetTooltipModal_t* modal, const Player_t* playe
     modal_height += total_wagered_height + padding; // Total wagered + bottom padding
 
     // Draw background (modern dark style)
-    a_DrawFilledRect(modal->x, modal->y, BET_TOOLTIP_WIDTH, modal_height,
-                     COLOR_BG.r, COLOR_BG.g, COLOR_BG.b, COLOR_BG.a);
+    a_DrawFilledRect((aRectf_t){modal->x, modal->y, BET_TOOLTIP_WIDTH, modal_height},
+                     COLOR_BG);
 
     // Draw border
-    a_DrawRect(modal->x, modal->y, BET_TOOLTIP_WIDTH, modal_height,
-               COLOR_BORDER.r, COLOR_BORDER.g, COLOR_BORDER.b, COLOR_BORDER.a);
+    a_DrawRect((aRectf_t){modal->x, modal->y, BET_TOOLTIP_WIDTH, modal_height},
+               COLOR_BORDER);
 
     int content_x = modal->x + padding;
     int current_y = modal->y + padding;
 
     // Title
-    aFontConfig_t title_config = {
+    aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = COLOR_TITLE,
+        .fg = COLOR_TITLE,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
 
-    a_DrawTextStyled("Betting System", content_x, current_y, &title_config);
+    a_DrawText("Betting System", content_x, current_y, title_config);
     current_y += title_height + 8;  // Actual height + margin
 
     // Description
-    aFontConfig_t desc_config = {
+    aTextStyle_t desc_config = {
         .type = FONT_GAME,
-        .color = COLOR_TEXT,
+        .fg = COLOR_TEXT,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f  // ADR-008: Consistent readability
     };
 
-    a_DrawTextStyled("Risk chips to damage enemies.", content_x, current_y, &desc_config);
+    a_DrawText("Risk chips to damage enemies.", content_x, current_y, desc_config);
     current_y += desc1_height + 4;
-    a_DrawTextStyled("Win = bet profit + damage dealt.", content_x, current_y, &desc_config);
+    a_DrawText("Win = bet profit + damage dealt.", content_x, current_y, desc_config);
     current_y += desc2_height + 4;
-    a_DrawTextStyled("Push = bet returned + half damage.", content_x, current_y, &desc_config);
+    a_DrawText("Push = bet returned + half damage.", content_x, current_y, desc_config);
     current_y += desc3_height + 4;
-    a_DrawTextStyled("Lose = chips lost, no damage.", content_x, current_y, &desc_config);
+    a_DrawText("Lose = chips lost, no damage.", content_x, current_y, desc_config);
     current_y += desc4_height + 8;
 
     // Divider line
-    a_DrawFilledRect(content_x, current_y, content_width, 1,
-                     COLOR_DIVIDER.r, COLOR_DIVIDER.g, COLOR_DIVIDER.b, COLOR_DIVIDER.a);
+    a_DrawFilledRect((aRectf_t){content_x, current_y, content_width, 1},
+                     COLOR_DIVIDER);
     current_y += 1 + 8;  // Divider + spacing
 
     // Stats - Current bet (color-coded)
     aColor_t current_bet_color = (player->current_bet > 0) ? COLOR_BET_ACTIVE : COLOR_BET_INACTIVE;
-    aFontConfig_t current_bet_config = {
+    aTextStyle_t current_bet_config = {
         .type = FONT_GAME,
-        .color = current_bet_color,
+        .fg = current_bet_color,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f  // ADR-008: Consistent readability
     };
-    a_DrawTextStyled((char*)d_StringPeek(current_bet_str), content_x, current_y, &current_bet_config);
+    a_DrawText((char*)d_StringPeek(current_bet_str), content_x, current_y, current_bet_config);
     current_y += current_bet_height + 4;
 
     // Stats - Highest bet
-    aFontConfig_t highest_bet_config = {
+    aTextStyle_t highest_bet_config = {
         .type = FONT_GAME,
-        .color = COLOR_STAT_GOOD,
+        .fg = COLOR_STAT_GOOD,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f  // ADR-008: Consistent readability
     };
-    a_DrawTextStyled((char*)d_StringPeek(highest_bet_str), content_x, current_y, &highest_bet_config);
+    a_DrawText((char*)d_StringPeek(highest_bet_str), content_x, current_y, highest_bet_config);
     current_y += highest_bet_height + 4;
 
     // Stats - Average bet
-    aFontConfig_t average_bet_config = {
+    aTextStyle_t average_bet_config = {
         .type = FONT_GAME,
-        .color = COLOR_TEXT,
+        .fg = COLOR_TEXT,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f  // ADR-008: Consistent readability
     };
-    a_DrawTextStyled((char*)d_StringPeek(average_bet_str), content_x, current_y, &average_bet_config);
+    a_DrawText((char*)d_StringPeek(average_bet_str), content_x, current_y, average_bet_config);
     current_y += average_bet_height + 4;
 
     // Stats - Total wagered
-    aFontConfig_t total_wagered_config = {
+    aTextStyle_t total_wagered_config = {
         .type = FONT_GAME,
-        .color = COLOR_TEXT,
+        .fg = COLOR_TEXT,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f  // ADR-008: Consistent readability
     };
-    a_DrawTextStyled((char*)d_StringPeek(total_wagered_str), content_x, current_y, &total_wagered_config);
+    a_DrawText((char*)d_StringPeek(total_wagered_str), content_x, current_y, total_wagered_config);
 
     // Cleanup
     d_StringDestroy(current_bet_str);

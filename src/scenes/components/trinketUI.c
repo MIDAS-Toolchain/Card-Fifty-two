@@ -190,10 +190,10 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
     }
 
     // Background
-    a_DrawFilledRect(tooltip_x, tooltip_y, tooltip_width, tooltip_height,
-                    20, 20, 30, 230);
-    a_DrawRect(tooltip_x, tooltip_y, tooltip_width, tooltip_height,
-              255, 255, 255, 255);
+    a_DrawFilledRect((aRectf_t){tooltip_x, tooltip_y, tooltip_width, tooltip_height},
+                    (aColor_t){20, 20, 30, 230});
+    a_DrawRect((aRectf_t){tooltip_x, tooltip_y, tooltip_width, tooltip_height},
+              (aColor_t){255, 255, 255, 255});
 
     // Render content
     int content_x = tooltip_x + padding;
@@ -201,26 +201,26 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
 
     // Class trinket header (if applicable)
     if (is_class_trinket) {
-        aFontConfig_t class_header_config = {
+        aTextStyle_t class_header_config = {
             .type = FONT_ENTER_COMMAND,
-            .color = {200, 180, 50, 255},  // Gold
+            .fg = {200, 180, 50, 255},  // Gold
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = 0,
             .scale = 0.6f
         };
-        a_DrawTextStyled("CLASS TRINKET", content_x, current_y, &class_header_config);
+        a_DrawText("CLASS TRINKET", content_x, current_y, class_header_config);
         current_y += 20;
     }
 
     // Title
-    aFontConfig_t title_config = {
+    aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = {232, 193, 112, 255},
+        .fg = {232, 193, 112, 255},
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
-    a_DrawTextStyled((char*)name, content_x, current_y, &title_config);
+    a_DrawText((char*)name, content_x, current_y, title_config);
     current_y += name_height + 8;
 
     // Rarity tag (colored by rarity)
@@ -228,52 +228,52 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
         int rarity_r, rarity_g, rarity_b;
         GetTrinketRarityColor(trinket->rarity, &rarity_r, &rarity_g, &rarity_b);
 
-        aFontConfig_t rarity_config = {
+        aTextStyle_t rarity_config = {
             .type = FONT_GAME,
-            .color = {(uint8_t)rarity_r, (uint8_t)rarity_g, (uint8_t)rarity_b, 255},
+            .fg = {(uint8_t)rarity_r, (uint8_t)rarity_g, (uint8_t)rarity_b, 255},
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width,
             .scale = 0.85f
         };
-        a_DrawTextStyled((char*)rarity_name, content_x, current_y, &rarity_config);
+        a_DrawText((char*)rarity_name, content_x, current_y, rarity_config);
         current_y += rarity_height + 10;
     }
 
     // Description
-    aFontConfig_t desc_config = {
+    aTextStyle_t desc_config = {
         .type = FONT_GAME,
-        .color = {180, 180, 180, 255},
+        .fg = {180, 180, 180, 255},
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
-    a_DrawTextStyled((char*)description, content_x, current_y, &desc_config);
+    a_DrawText((char*)description, content_x, current_y, desc_config);
     current_y += desc_height + 12;
 
     // Divider
-    a_DrawFilledRect(content_x, current_y, content_width, 1, 100, 100, 100, 200);
+    a_DrawFilledRect((aRectf_t){content_x, current_y, content_width, 1}, (aColor_t){100, 100, 100, 200});
     current_y += 12;
 
     // Passive
-    aFontConfig_t passive_config = {
+    aTextStyle_t passive_config = {
         .type = FONT_GAME,
-        .color = {168, 202, 88, 255},
+        .fg = {168, 202, 88, 255},
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
-    a_DrawTextStyled((char*)passive_desc, content_x, current_y, &passive_config);
+    a_DrawText((char*)passive_desc, content_x, current_y, passive_config);
     current_y += passive_height + 8;
 
     // Active
-    aFontConfig_t active_config = {
+    aTextStyle_t active_config = {
         .type = FONT_GAME,
-        .color = {207, 87, 60, 255},
+        .fg = {207, 87, 60, 255},
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
-    a_DrawTextStyled((char*)active_desc, content_x, current_y, &active_config);
+    a_DrawText((char*)active_desc, content_x, current_y, active_config);
     current_y += active_height + 8;
 
     // Cooldown status
@@ -281,14 +281,14 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
         dString_t* cd_text = d_StringInit();
         d_StringFormat(cd_text, "Cooldown: %d turns remaining", trinket->active_cooldown_current);
 
-        aFontConfig_t cd_config = {
+        aTextStyle_t cd_config = {
             .type = FONT_GAME,
-            .color = {255, 100, 100, 255},
+            .fg = {255, 100, 100, 255},
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width,
             .scale = 1.0f
         };
-        a_DrawTextStyled((char*)d_StringPeek(cd_text), content_x, current_y, &cd_config);
+        a_DrawText((char*)d_StringPeek(cd_text), content_x, current_y, cd_config);
         d_StringDestroy(cd_text);
         current_y += 20;
     }
@@ -298,14 +298,14 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
         dString_t* dmg_text = d_StringInit();
         d_StringFormat(dmg_text, "Total Damage Dealt: %d", trinket->total_damage_dealt);
 
-        aFontConfig_t dmg_config = {
+        aTextStyle_t dmg_config = {
             .type = FONT_GAME,
-            .color = {255, 255, 255, 255},  // White text
+            .fg = {255, 255, 255, 255},  // White text
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width,
             .scale = 1.0f
         };
-        a_DrawTextStyled((char*)d_StringPeek(dmg_text), content_x, current_y, &dmg_config);
+        a_DrawText((char*)d_StringPeek(dmg_text), content_x, current_y, dmg_config);
         d_StringDestroy(dmg_text);
         current_y += 20;
     }
@@ -315,14 +315,14 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
         dString_t* bonus_text = d_StringInit();
         d_StringFormat(bonus_text, "Bonus Chips Won: %d", trinket->total_bonus_chips);
 
-        aFontConfig_t bonus_config = {
+        aTextStyle_t bonus_config = {
             .type = FONT_GAME,
-            .color = {100, 255, 100, 255},  // Green text
+            .fg = {100, 255, 100, 255},  // Green text
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width,
             .scale = 1.0f
         };
-        a_DrawTextStyled((char*)d_StringPeek(bonus_text), content_x, current_y, &bonus_config);
+        a_DrawText((char*)d_StringPeek(bonus_text), content_x, current_y, bonus_config);
         d_StringDestroy(bonus_text);
         current_y += 20;
     }
@@ -332,14 +332,14 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
         dString_t* refund_text = d_StringInit();
         d_StringFormat(refund_text, "Chips Refunded: %d", trinket->total_refunded_chips);
 
-        aFontConfig_t refund_config = {
+        aTextStyle_t refund_config = {
             .type = FONT_GAME,
-            .color = {100, 200, 255, 255},  // Blue text
+            .fg = {100, 200, 255, 255},  // Blue text
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width,
             .scale = 1.0f
         };
-        a_DrawTextStyled((char*)d_StringPeek(refund_text), content_x, current_y, &refund_config);
+        a_DrawText((char*)d_StringPeek(refund_text), content_x, current_y, refund_config);
         d_StringDestroy(refund_text);
         current_y += 20;
     }
@@ -468,54 +468,54 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
         int shake_y = CLASS_TRINKET_Y + (int)class_trinket->shake_offset_y;
 
         // Background
-        a_DrawFilledRect(shake_x, shake_y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE,
-                       bg_r, bg_g, bg_b, 255);
+        a_DrawFilledRect((aRectf_t){shake_x, shake_y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE},
+                       (aColor_t){bg_r, bg_g, bg_b, 255});
 
         // Gold border (thicker, 2px)
-        a_DrawRect(shake_x, shake_y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE,
-                  border_r, border_g, border_b, 255);  // Gold
-        a_DrawRect(shake_x + 1, shake_y + 1, CLASS_TRINKET_SIZE - 2, CLASS_TRINKET_SIZE - 2,
-                  border_r, border_g, border_b, 255);  // Double border for emphasis
+        a_DrawRect((aRectf_t){shake_x, shake_y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE},
+                  (aColor_t){border_r, border_g, border_b, 255});  // Gold
+        a_DrawRect((aRectf_t){shake_x + 1, shake_y + 1, CLASS_TRINKET_SIZE - 2, CLASS_TRINKET_SIZE - 2},
+                  (aColor_t){border_r, border_g, border_b, 255});  // Double border for emphasis
 
         // Hover glow effect (subtle overlay)
         if (class_hovered && is_clickable) {
-            a_DrawFilledRect(shake_x, shake_y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE,
-                           255, 255, 200, 30);  // Subtle yellow glow
+            a_DrawFilledRect((aRectf_t){shake_x, shake_y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE},
+                           (aColor_t){255, 255, 200, 30});  // Subtle yellow glow
         }
 
         // Draw red flash overlay when trinket procs
         if (class_trinket->flash_alpha > 0.0f) {
             Uint8 flash = (Uint8)class_trinket->flash_alpha;
-            a_DrawFilledRect(shake_x, shake_y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE,
-                           255, 0, 0, flash);
+            a_DrawFilledRect((aRectf_t){shake_x, shake_y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE},
+                           (aColor_t){255, 0, 0, flash});
         }
 
         // "CLASS" label at top
-        aFontConfig_t class_label_config = {
+        aTextStyle_t class_label_config = {
             .type = FONT_ENTER_COMMAND,
-            .color = {200, 180, 50, 255},  // Gold text
+            .fg = {200, 180, 50, 255},  // Gold text
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = 0,
             .scale = 0.5f
         };
-        a_DrawTextStyled("CLASS",
+        a_DrawText("CLASS",
                        shake_x + CLASS_TRINKET_SIZE / 2,
                        shake_y + 6,
-                       &class_label_config);
+                       class_label_config);
 
         // Draw trinket name
         const char* trinket_name = GetTrinketName(class_trinket);
-        aFontConfig_t name_config = {
+        aTextStyle_t name_config = {
             .type = FONT_ENTER_COMMAND,
-            .color = {255, 255, 255, 255},
+            .fg = {255, 255, 255, 255},
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = CLASS_TRINKET_SIZE - 8,
             .scale = 0.6f
         };
-        a_DrawTextStyled((char*)trinket_name,
+        a_DrawText((char*)trinket_name,
                        shake_x + CLASS_TRINKET_SIZE / 2,
                        shake_y + 24,
-                       &name_config);
+                       name_config);
 
         // Draw indicator boxes below trinket (cooldown left, damage bonus right)
         const int indicator_width = 40;
@@ -530,70 +530,70 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
         // Left indicator: Cooldown
         if (on_cooldown) {
             // Red background for cooldown
-            a_DrawFilledRect(left_indicator_x, indicators_y, indicator_width, indicator_height,
-                           60, 20, 20, 255);
-            a_DrawRect(left_indicator_x, indicators_y, indicator_width, indicator_height,
-                      255, 100, 100, 255);
+            a_DrawFilledRect((aRectf_t){left_indicator_x, indicators_y, indicator_width, indicator_height},
+                           (aColor_t){60, 20, 20, 255});
+            a_DrawRect((aRectf_t){left_indicator_x, indicators_y, indicator_width, indicator_height},
+                      (aColor_t){255, 100, 100, 255});
 
             char cooldown_text[8];
             snprintf(cooldown_text, sizeof(cooldown_text), "%d", class_trinket->active_cooldown_current);
 
-            aFontConfig_t cd_config = {
+            aTextStyle_t cd_config = {
                 .type = FONT_ENTER_COMMAND,
-                .color = {255, 150, 150, 255},
+                .fg = {255, 150, 150, 255},
                 .align = TEXT_ALIGN_CENTER,
                 .wrap_width = 0,
                 .scale = 0.8f
             };
-            a_DrawTextStyled(cooldown_text,
+            a_DrawText(cooldown_text,
                            left_indicator_x + indicator_width / 2,
                            indicators_y + 3,
-                           &cd_config);
+                           cd_config);
         } else {
             // Dimmed background when ready
-            a_DrawFilledRect(left_indicator_x, indicators_y, indicator_width, indicator_height,
-                           30, 30, 30, 255);
-            a_DrawRect(left_indicator_x, indicators_y, indicator_width, indicator_height,
-                      80, 80, 80, 255);
+            a_DrawFilledRect((aRectf_t){left_indicator_x, indicators_y, indicator_width, indicator_height},
+                           (aColor_t){30, 30, 30, 255});
+            a_DrawRect((aRectf_t){left_indicator_x, indicators_y, indicator_width, indicator_height},
+                      (aColor_t){80, 80, 80, 255});
 
-            aFontConfig_t ready_config = {
+            aTextStyle_t ready_config = {
                 .type = FONT_ENTER_COMMAND,
-                .color = {100, 255, 100, 255},  // Green for ready
+                .fg = {100, 255, 100, 255},  // Green for ready
                 .align = TEXT_ALIGN_CENTER,
                 .wrap_width = 0,
                 .scale = 0.8f
             };
-            a_DrawTextStyled("0",
+            a_DrawText("0",
                            left_indicator_x + indicator_width / 2,
                            indicators_y + 3,
-                           &ready_config);
+                           ready_config);
         }
 
         // Right indicator: Damage bonus (shows scaling bonus, not base damage)
         // Green background for damage
-        a_DrawFilledRect(right_indicator_x, indicators_y, indicator_width, indicator_height,
-                       20, 60, 20, 255);
-        a_DrawRect(right_indicator_x, indicators_y, indicator_width, indicator_height,
-                  100, 255, 100, 255);
+        a_DrawFilledRect((aRectf_t){right_indicator_x, indicators_y, indicator_width, indicator_height},
+                       (aColor_t){20, 60, 20, 255});
+        a_DrawRect((aRectf_t){right_indicator_x, indicators_y, indicator_width, indicator_height},
+                  (aColor_t){100, 255, 100, 255});
 
         char bonus_text[16];
         snprintf(bonus_text, sizeof(bonus_text), "+%d", class_trinket->passive_damage_bonus);
 
-        aFontConfig_t bonus_config = {
+        aTextStyle_t bonus_config = {
             .type = FONT_ENTER_COMMAND,
-            .color = {150, 255, 150, 255},
+            .fg = {150, 255, 150, 255},
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = 0,
             .scale = 0.8f
         };
-        a_DrawTextStyled(bonus_text,
+        a_DrawText(bonus_text,
                        right_indicator_x + indicator_width / 2,
                        indicators_y + 3,
-                       &bonus_config);
+                       bonus_config);
     } else {
         // Empty class trinket slot - draw dimmed gold outline
-        a_DrawRect(CLASS_TRINKET_X, CLASS_TRINKET_Y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE,
-                  100, 90, 25, 128);  // Dimmed gold
+        a_DrawRect((aRectf_t){CLASS_TRINKET_X, CLASS_TRINKET_Y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE},
+                  (aColor_t){100, 90, 25, 128});  // Dimmed gold
     }
 
     // ========================================================================
@@ -638,74 +638,74 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
             int shake_y = slot_y + (int)trinket->shake_offset_y;
 
             // Background
-            a_DrawFilledRect(shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE,
-                           bg_r, bg_g, bg_b, 255);
+            a_DrawFilledRect((aRectf_t){shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
+                           (aColor_t){bg_r, bg_g, bg_b, 255});
 
             // Border
-            a_DrawRect(shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE,
-                      border_r, border_g, border_b, 255);
+            a_DrawRect((aRectf_t){shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
+                      (aColor_t){border_r, border_g, border_b, 255});
 
             // Hover glow effect (subtle overlay)
             if (is_hovered && is_clickable) {
-                a_DrawFilledRect(shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE,
-                               255, 255, 200, 30);  // Subtle yellow glow
+                a_DrawFilledRect((aRectf_t){shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
+                               (aColor_t){255, 255, 200, 30});  // Subtle yellow glow
             }
 
             // Draw red flash overlay when trinket procs
             if (trinket->flash_alpha > 0.0f) {
                 Uint8 flash = (Uint8)trinket->flash_alpha;
-                a_DrawFilledRect(shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE,
-                               255, 0, 0, flash);
+                a_DrawFilledRect((aRectf_t){shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
+                               (aColor_t){255, 0, 0, flash});
             }
 
             // Draw trinket name (small, wrapped)
             const char* trinket_name = GetTrinketName(trinket);
-            aFontConfig_t name_config = {
+            aTextStyle_t name_config = {
                 .type = FONT_ENTER_COMMAND,
-                .color = {255, 255, 255, 255},
+                .fg = {255, 255, 255, 255},
                 .align = TEXT_ALIGN_CENTER,
                 .wrap_width = TRINKET_SLOT_SIZE - 4,
                 .scale = 0.5f
             };
-            a_DrawTextStyled((char*)trinket_name,
+            a_DrawText((char*)trinket_name,
                            shake_x + TRINKET_SLOT_SIZE / 2,
                            shake_y + 6,
-                           &name_config);
+                           name_config);
 
             // Cooldown overlay (centered countdown)
             if (on_cooldown) {
                 char cd_text[8];
                 snprintf(cd_text, sizeof(cd_text), "%d", trinket->active_cooldown_current);
 
-                aFontConfig_t cd_config = {
+                aTextStyle_t cd_config = {
                     .type = FONT_ENTER_COMMAND,
-                    .color = {255, 150, 150, 255},
+                    .fg = {255, 150, 150, 255},
                     .align = TEXT_ALIGN_CENTER,
                     .wrap_width = 0,
                     .scale = 1.5f
                 };
-                a_DrawTextStyled(cd_text,
+                a_DrawText(cd_text,
                                shake_x + TRINKET_SLOT_SIZE / 2,
                                shake_y + TRINKET_SLOT_SIZE / 2 - 8,
-                               &cd_config);
+                               cd_config);
             }
         } else {
             // Empty slot - draw dimmed border
-            a_DrawRect(slot_x, slot_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE,
-                      80, 80, 80, 128);  // Dimmed gray
+            a_DrawRect((aRectf_t){slot_x, slot_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
+                      (aColor_t){80, 80, 80, 128});  // Dimmed gray
 
             // "EMPTY" label
-            aFontConfig_t empty_config = {
+            aTextStyle_t empty_config = {
                 .type = FONT_ENTER_COMMAND,
-                .color = {100, 100, 100, 255},
+                .fg = {100, 100, 100, 255},
                 .align = TEXT_ALIGN_CENTER,
                 .wrap_width = TRINKET_SLOT_SIZE - 4,
                 .scale = 0.5f
             };
-            a_DrawTextStyled("EMPTY",
+            a_DrawText("EMPTY",
                            slot_x + TRINKET_SLOT_SIZE / 2,
                            slot_y + TRINKET_SLOT_SIZE / 2 - 6,
-                           &empty_config);
+                           empty_config);
         }
     }
 }

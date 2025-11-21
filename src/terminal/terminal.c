@@ -72,7 +72,7 @@ Terminal_t* InitTerminal(void) {
 
     // Create FlexBox for output layout (vertical column)
     int term_height = (int)(SCREEN_HEIGHT * TERMINAL_HEIGHT_RATIO);
-    terminal->output_layout = a_CreateFlexBox(10, 10,  // 10px margin from edges
+    terminal->output_layout = a_FlexBoxCreate(10, 10,  // 10px margin from edges
                                                SCREEN_WIDTH - 20,
                                                term_height - 60);  // Leave room for input line
     if (!terminal->output_layout) {
@@ -145,7 +145,7 @@ void CleanupTerminal(Terminal_t** terminal) {
 
     // Clean up FlexBox layout
     if (t->output_layout) {
-        a_DestroyFlexBox(&t->output_layout);
+        a_FlexBoxDestroy(&t->output_layout);
     }
 
     d_StringDestroy(t->input_buffer);
@@ -362,9 +362,9 @@ void RenderTerminal(Terminal_t* terminal) {
     int term_height = (int)(SCREEN_HEIGHT * TERMINAL_HEIGHT_RATIO);
 
     // Draw background
-    a_DrawFilledRect(0, 0, SCREEN_WIDTH, term_height,
-                     TERMINAL_BG_COLOR.r, TERMINAL_BG_COLOR.g,
-                     TERMINAL_BG_COLOR.b, TERMINAL_BG_COLOR.a);
+    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, term_height},
+                     (aColor_t){TERMINAL_BG_COLOR.r, TERMINAL_BG_COLOR.g,
+                     TERMINAL_BG_COLOR.b, TERMINAL_BG_COLOR.a});
 
     // Apply scroll offset to FlexBox and recalculate layout
     if (terminal->output_layout) {
@@ -383,8 +383,7 @@ void RenderTerminal(Terminal_t* terminal) {
                 if (line_ptr && *line_ptr) {
                     const char* line = d_StringPeek(*line_ptr);
                     a_DrawText((char*)line, 10, item_y,
-                              TERMINAL_TEXT_COLOR.r, TERMINAL_TEXT_COLOR.g, TERMINAL_TEXT_COLOR.b,
-                              FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                              (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={TERMINAL_TEXT_COLOR.r, TERMINAL_TEXT_COLOR.g, TERMINAL_TEXT_COLOR.b, 255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
                 }
             }
         }
@@ -395,8 +394,7 @@ void RenderTerminal(Terminal_t* terminal) {
     d_StringFormat(input_line, "%s%s", TERMINAL_PROMPT, d_StringPeek(terminal->input_buffer));
 
     a_DrawText((char*)d_StringPeek(input_line), 10, term_height - 20,
-              TERMINAL_INPUT_COLOR.r, TERMINAL_INPUT_COLOR.g, TERMINAL_INPUT_COLOR.b,
-              FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+              (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={TERMINAL_INPUT_COLOR.r, TERMINAL_INPUT_COLOR.g, TERMINAL_INPUT_COLOR.b, 255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Draw cursor
     if (terminal->cursor_visible) {
@@ -407,8 +405,7 @@ void RenderTerminal(Terminal_t* terminal) {
         int cursor_x = 10 + text_width;  // Position cursor right after the text
 
         a_DrawText("_", cursor_x, term_height - 20,
-                  TERMINAL_CURSOR_COLOR.r, TERMINAL_CURSOR_COLOR.g, TERMINAL_CURSOR_COLOR.b,
-                  FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                  (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={TERMINAL_CURSOR_COLOR.r, TERMINAL_CURSOR_COLOR.g, TERMINAL_CURSOR_COLOR.b, 255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
     d_StringDestroy(input_line);
@@ -426,8 +423,8 @@ void RenderTerminal(Terminal_t* terminal) {
         int scrollbar_height = visible_height;
 
         // Draw track (dark background)
-        a_DrawFilledRect(scrollbar_x, scrollbar_y, scrollbar_width, scrollbar_height,
-                        40, 40, 40, 200);
+        a_DrawFilledRect((aRectf_t){scrollbar_x, scrollbar_y, scrollbar_width, scrollbar_height},
+                        (aColor_t){40, 40, 40, 200});
 
         // Calculate thumb size and position
         float content_ratio = (float)visible_height / (float)total_content_height;
@@ -442,8 +439,8 @@ void RenderTerminal(Terminal_t* terminal) {
         int thumb_y = scrollbar_y + (int)((scrollbar_height - thumb_height) * scroll_ratio);
 
         // Draw thumb (lighter gray)
-        a_DrawFilledRect(scrollbar_x, thumb_y, scrollbar_width, thumb_height,
-                        100, 100, 100, 255);
+        a_DrawFilledRect((aRectf_t){scrollbar_x, thumb_y, scrollbar_width, thumb_height},
+                        (aColor_t){100, 100, 100, 255});
     }
 }
 
@@ -520,9 +517,9 @@ void TerminalClear(Terminal_t* terminal) {
 
     // Recreate FlexBox layout (clears all items)
     if (terminal->output_layout) {
-        a_DestroyFlexBox(&terminal->output_layout);
+        a_FlexBoxDestroy(&terminal->output_layout);
         int term_height = (int)(SCREEN_HEIGHT * TERMINAL_HEIGHT_RATIO);
-        terminal->output_layout = a_CreateFlexBox(10, 10,
+        terminal->output_layout = a_FlexBoxCreate(10, 10,
                                                    SCREEN_WIDTH - 20,
                                                    term_height - 60);
         a_FlexConfigure(terminal->output_layout, FLEX_DIR_COLUMN, FLEX_JUSTIFY_START, 8);

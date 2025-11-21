@@ -108,67 +108,64 @@ void RenderChipsTooltipModal(const ChipsTooltipModal_t* modal) {
     modal_height += lowest_height + padding;  // Lowest stat + bottom padding
 
     // Draw background (modern dark style)
-    a_DrawFilledRect(modal->x, modal->y, CHIPS_TOOLTIP_WIDTH, modal_height,
-                     COLOR_BG.r, COLOR_BG.g, COLOR_BG.b, COLOR_BG.a);
+    a_DrawFilledRect((aRectf_t){modal->x, modal->y, CHIPS_TOOLTIP_WIDTH, modal_height}, COLOR_BG);
 
     // Draw border
-    a_DrawRect(modal->x, modal->y, CHIPS_TOOLTIP_WIDTH, modal_height,
-               COLOR_BORDER.r, COLOR_BORDER.g, COLOR_BORDER.b, COLOR_BORDER.a);
+    a_DrawRect((aRectf_t){modal->x, modal->y, CHIPS_TOOLTIP_WIDTH, modal_height}, COLOR_BORDER);
 
     int content_x = modal->x + padding;
     int current_y = modal->y + padding;
 
     // Title
-    aFontConfig_t title_config = {
+    aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = COLOR_CHIPS,
+        .fg = COLOR_CHIPS,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
 
-    a_DrawTextStyled("Chips = Life", content_x, current_y, &title_config);
+    a_DrawText("Chips = Life", content_x, current_y, title_config);
     current_y += title_height + 8;  // Actual height + margin
 
     // Description
-    aFontConfig_t desc_config = {
+    aTextStyle_t desc_config = {
         .type = FONT_GAME,
-        .color = COLOR_TEXT,
+        .fg = COLOR_TEXT,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f  // ADR-008: Consistent readability
     };
 
-    a_DrawTextStyled("Run out and you die.", content_x, current_y, &desc_config);
+    a_DrawText("Run out and you die.", content_x, current_y, desc_config);
     current_y += desc1_height + 4;  // Actual height + small spacing
-    a_DrawTextStyled("Bet wisely.", content_x, current_y, &desc_config);
+    a_DrawText("Bet wisely.", content_x, current_y, desc_config);
     current_y += desc2_height + 8;  // Spacing before divider
 
     // Divider line
-    a_DrawFilledRect(content_x, current_y, content_width, 1,
-                     COLOR_DIVIDER.r, COLOR_DIVIDER.g, COLOR_DIVIDER.b, COLOR_DIVIDER.a);
+    a_DrawFilledRect((aRectf_t){content_x, current_y, content_width, 1}, COLOR_DIVIDER);
     current_y += 1 + 8;  // Divider + spacing
 
     // Stats - Highest chips
-    aFontConfig_t highest_config = {
+    aTextStyle_t highest_config = {
         .type = FONT_GAME,
-        .color = COLOR_STAT_GOOD,
+        .fg = COLOR_STAT_GOOD,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f  // ADR-008: Consistent readability
     };
-    a_DrawTextStyled((char*)d_StringPeek(highest_str), content_x, current_y, &highest_config);
+    a_DrawText((char*)d_StringPeek(highest_str), content_x, current_y, highest_config);
     current_y += highest_height + 4;  // Spacing between stats
 
     // Stats - Lowest chips
-    aFontConfig_t lowest_config = {
+    aTextStyle_t lowest_config = {
         .type = FONT_GAME,
-        .color = COLOR_STAT_BAD,
+        .fg = COLOR_STAT_BAD,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f  // ADR-008: Consistent readability
     };
-    a_DrawTextStyled((char*)d_StringPeek(lowest_str), content_x, current_y, &lowest_config);
+    a_DrawText((char*)d_StringPeek(lowest_str), content_x, current_y, lowest_config);
 
     // Cleanup
     d_StringDestroy(highest_str);

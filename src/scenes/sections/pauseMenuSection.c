@@ -339,7 +339,7 @@ static void RenderStatsOverlay(void) {
     const GlobalStats_t* stats = Stats_GetCurrent();
 
     // Full-screen darkened overlay
-    a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, 200);
+    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 200});
 
     // Stats panel
     int panel_w = 700;
@@ -348,15 +348,14 @@ static void RenderStatsOverlay(void) {
     int panel_y = (SCREEN_HEIGHT - panel_h) / 2;
 
     // Panel background
-    a_DrawFilledRect(panel_x, panel_y, panel_w, panel_h,
-                     COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, 250);
+    a_DrawFilledRect((aRectf_t){panel_x, panel_y, panel_w, panel_h},
+                     (aColor_t){COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, 250});
 
     // Header
-    a_DrawFilledRect(panel_x, panel_y, panel_w, PAUSE_PANEL_HEADER_HEIGHT,
-                     COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, 255);
+    a_DrawFilledRect((aRectf_t){panel_x, panel_y, panel_w, PAUSE_PANEL_HEADER_HEIGHT},
+                     (aColor_t){COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, 255});
     a_DrawText("RUN STATS", SCREEN_WIDTH / 2, panel_y + 12,
-               COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_HEADER_TEXT.r,COLOR_HEADER_TEXT.g,COLOR_HEADER_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Stats content (using dString_t per Constitutional pattern)
     int y = panel_y + 80;
@@ -365,32 +364,32 @@ static void RenderStatsOverlay(void) {
 
     // Cards Drawn
     d_StringFormat(text, "Cards Drawn: %llu", stats->cards_drawn);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 200, 200, 255, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={200,200,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += line_height;
 
     // Turns
     y += 10;
     d_StringFormat(text, "Turns Played: %llu  Won: %llu  Lost: %llu  Pushed: %llu",
                    stats->turns_played, stats->turns_won, stats->turns_lost, stats->turns_pushed);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 255, 255, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={255,255,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += line_height;
 
     // Combat
     d_StringFormat(text, "Combats Won: %llu", stats->combats_won);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 150, 255, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={150,255,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += line_height;
 
     // Damage
     y += 10;
     d_StringFormat(text, "Total Damage: %llu", stats->damage_dealt_total);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 255, 150, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={255,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += line_height;
 
     // Damage breakdown
     const char* damage_sources[] = {"Turn Wins", "Turn Pushes", "Trinket Passives", "Trinket Actives", "Abilities", "Card Tags"};
     for (int i = 0; i < DAMAGE_SOURCE_MAX; i++) {
         d_StringFormat(text, "  %s: %llu", damage_sources[i], stats->damage_by_source[i]);
-        a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 200, 150, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+        a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={200,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
         y += line_height;
     }
 
@@ -398,12 +397,11 @@ static void RenderStatsOverlay(void) {
     y += 10;
     d_StringFormat(text, "Chips Bet: %llu  Won: %llu  Lost: %llu  Drained: %llu",
                    stats->chips_bet, stats->chips_won, stats->chips_lost, stats->chips_drained);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 150, 255, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={150,255,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Footer hint
     a_DrawText("Press ESC or Enter to close", SCREEN_WIDTH / 2, panel_y + panel_h - 30,
-               COLOR_MENU_NORMAL.r, COLOR_MENU_NORMAL.g, COLOR_MENU_NORMAL.b,
-               FONT_GAME, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_GAME, .fg={COLOR_MENU_NORMAL.r,COLOR_MENU_NORMAL.g,COLOR_MENU_NORMAL.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     d_StringDestroy(text);
 }
@@ -416,8 +414,8 @@ void RenderPauseMenuSection(PauseMenuSection_t* section) {
     if (!section || !section->is_visible) return;
 
     // Full-screen semi-transparent overlay
-    a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
-                     COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b, COLOR_OVERLAY.a);
+    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT},
+                     (aColor_t){COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b, COLOR_OVERLAY.a});
 
     // Centered menu panel
     int panel_x = (SCREEN_WIDTH - PAUSE_PANEL_WIDTH) / 2;
@@ -426,22 +424,21 @@ void RenderPauseMenuSection(PauseMenuSection_t* section) {
     // Draw main panel background (below header)
     int panel_body_y = panel_y + PAUSE_PANEL_HEADER_HEIGHT;
     int panel_body_height = PAUSE_PANEL_HEIGHT - PAUSE_PANEL_HEADER_HEIGHT;
-    a_DrawFilledRect(panel_x, panel_body_y, PAUSE_PANEL_WIDTH, panel_body_height,
-                     COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, COLOR_PANEL_BG.a);
+    a_DrawFilledRect((aRectf_t){panel_x, panel_body_y, PAUSE_PANEL_WIDTH, panel_body_height},
+                     (aColor_t){COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, COLOR_PANEL_BG.a});
 
     // Draw header bar at top
     int header_y = panel_y;
-    a_DrawFilledRect(panel_x, header_y, PAUSE_PANEL_WIDTH, PAUSE_PANEL_HEADER_HEIGHT,
-                     COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, COLOR_HEADER_BG.a);
+    a_DrawFilledRect((aRectf_t){panel_x, header_y, PAUSE_PANEL_WIDTH, PAUSE_PANEL_HEADER_HEIGHT},
+                     (aColor_t){COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, COLOR_HEADER_BG.a});
 
     // Draw header bottom border line
-    a_DrawRect(panel_x, header_y, PAUSE_PANEL_WIDTH, PAUSE_PANEL_HEADER_HEIGHT,
-               COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, COLOR_HEADER_BORDER.a);
+    a_DrawRect((aRectf_t){panel_x, header_y, PAUSE_PANEL_WIDTH, PAUSE_PANEL_HEADER_HEIGHT},
+               (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, COLOR_HEADER_BORDER.a});
 
     // Draw header text "PAUSE MENU"
     a_DrawText("PAUSE MENU", SCREEN_WIDTH / 2, header_y + 12,
-               COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_HEADER_TEXT.r,COLOR_HEADER_TEXT.g,COLOR_HEADER_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Render menu items with custom colors
     for (int i = 0; i < 5; i++) {
@@ -449,7 +446,7 @@ void RenderPauseMenuSection(PauseMenuSection_t* section) {
         if (!item) continue;
 
         // Calculate text dimensions for hover background
-        int text_w, text_h;
+        float text_w, text_h;
         a_CalcTextDimensions((char*)item->label, FONT_ENTER_COMMAND, &text_w, &text_h);
 
         // Disable hover effects when confirmation dialog or stats overlay is open
@@ -488,54 +485,50 @@ void RenderPauseMenuSection(PauseMenuSection_t* section) {
             int left = item->x - (item->w / 2);
             int top = item->y - 2;
             int width = item->w;
-            int height = text_h + 4;
-            a_DrawFilledRect(left, top, width, height, 255, 255, 255, 25);
+            int height = (int)text_h + 4;
+            a_DrawFilledRect((aRectf_t){left, top, width, height}, (aColor_t){255, 255, 255, 25});
         }
 
         // Draw selection indicator ">" if selected (dynamically positioned)
         if (item->is_selected) {
             // Position indicator based on text width to prevent overlap
             int indicator_gap = 15;  // Gap between ">" and text
-            int indicator_x = item->x - (text_w / 2) - indicator_gap;
+            int indicator_x = item->x - ((int)text_w / 2) - indicator_gap;
 
             a_DrawText(">", indicator_x, item->y,
-                       text_color.r, text_color.g, text_color.b,
-                       FONT_ENTER_COMMAND, TEXT_ALIGN_RIGHT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={text_color.r,text_color.g,text_color.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_RIGHT, .wrap_width=0, .scale=1.0f, .padding=0});
         }
 
         // Draw label
         a_DrawText((char*)item->label, item->x, item->y,
-                   text_color.r, text_color.g, text_color.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={text_color.r,text_color.g,text_color.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
     // Render confirmation dialog if visible
     if (section->show_confirm_dialog) {
         // Draw modal backdrop overlay (dims everything beneath)
-        a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, 120);
+        a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 120});
 
         // Confirmation panel (centered on screen, on top of pause menu)
         int confirm_x = (SCREEN_WIDTH - CONFIRM_PANEL_WIDTH) / 2;
         int confirm_y = (SCREEN_HEIGHT - CONFIRM_PANEL_HEIGHT) / 2;
-        a_DrawFilledRect(confirm_x, confirm_y, CONFIRM_PANEL_WIDTH, CONFIRM_PANEL_HEIGHT,
-                         COLOR_CONFIRM_BG.r, COLOR_CONFIRM_BG.g, COLOR_CONFIRM_BG.b, COLOR_CONFIRM_BG.a);
+        a_DrawFilledRect((aRectf_t){confirm_x, confirm_y, CONFIRM_PANEL_WIDTH, CONFIRM_PANEL_HEIGHT},
+                         (aColor_t){COLOR_CONFIRM_BG.r, COLOR_CONFIRM_BG.g, COLOR_CONFIRM_BG.b, COLOR_CONFIRM_BG.a});
 
         // Confirmation title
         a_DrawText("Are you sure?", SCREEN_WIDTH / 2, confirm_y + 40,
-                   COLOR_CONFIRM_TEXT.r, COLOR_CONFIRM_TEXT.g, COLOR_CONFIRM_TEXT.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_CONFIRM_TEXT.r,COLOR_CONFIRM_TEXT.g,COLOR_CONFIRM_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         // Confirmation subtitle
         a_DrawText("Your progress will be lost", SCREEN_WIDTH / 2, confirm_y + 70,
-                   COLOR_MENU_NORMAL.r, COLOR_MENU_NORMAL.g, COLOR_MENU_NORMAL.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_MENU_NORMAL.r,COLOR_MENU_NORMAL.g,COLOR_MENU_NORMAL.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         // Render Yes/No buttons
         for (int i = 0; i < 2; i++) {
             MenuItemRow_t* item = section->confirm_items[i];
             if (!item) continue;
 
-            int text_w, text_h;
+            float text_w, text_h;
             a_CalcTextDimensions((char*)item->label, FONT_ENTER_COMMAND, &text_w, &text_h);
 
             aColor_t text_color;
@@ -556,8 +549,8 @@ void RenderPauseMenuSection(PauseMenuSection_t* section) {
                 int left = item->x - (item->w / 2);
                 int top = item->y - 2;
                 int width = item->w;
-                int height = text_h + 4;
-                a_DrawFilledRect(left, top, width, height, 255, 255, 255, 25);
+                int height = (int)text_h + 4;
+                a_DrawFilledRect((aRectf_t){left, top, width, height}, (aColor_t){255, 255, 255, 25});
             }
 
             // Draw selection indicator ">" if selected (dynamically positioned)
@@ -567,13 +560,11 @@ void RenderPauseMenuSection(PauseMenuSection_t* section) {
                 int indicator_x = item->x - (text_w / 2) - indicator_gap;
 
                 a_DrawText(">", indicator_x, item->y,
-                           text_color.r, text_color.g, text_color.b,
-                           FONT_ENTER_COMMAND, TEXT_ALIGN_RIGHT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={text_color.r,text_color.g,text_color.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_RIGHT, .wrap_width=0, .scale=1.0f, .padding=0});
             }
 
             a_DrawText((char*)item->label, item->x, item->y,
-                       text_color.r, text_color.g, text_color.b,
-                       FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={text_color.r,text_color.g,text_color.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
         }
     }
 

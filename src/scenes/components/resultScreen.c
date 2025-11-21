@@ -92,7 +92,7 @@ void RenderResultScreen(ResultScreen_t* screen, Player_t* player, GameState_t st
     if (!screen || !player) return;
 
     // Semi-transparent overlay
-    a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, OVERLAY_ALPHA);
+    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, OVERLAY_ALPHA});
 
     // Determine result message
     const char* message = "";
@@ -123,14 +123,14 @@ void RenderResultScreen(ResultScreen_t* screen, Player_t* player, GameState_t st
     }
 
     // Draw result message
-    aFontConfig_t result_config = {
+    aTextStyle_t result_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = msg_color,
+        .fg = msg_color,
         .align = TEXT_ALIGN_CENTER,
         .wrap_width = 0,
         .scale = 1.0f
     };
-    a_DrawTextStyled((char*)message, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 40, &result_config);
+    a_DrawText((char*)message, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 40, result_config);
 
     // ========================================================================
     // RESULT SCREEN ANIMATIONS (Win/Loss + Status Drain)
@@ -171,7 +171,7 @@ void RenderResultScreen(ResultScreen_t* screen, Player_t* player, GameState_t st
     int chip_y = SCREEN_HEIGHT / 2 + 20;
 
     // Draw chip count (centered)
-    a_DrawTextStyled((char*)d_StringPeek(chip_info), chip_center_x, chip_y, &FONT_STYLE_TITLE);
+    a_DrawText((char*)d_StringPeek(chip_info), chip_center_x, chip_y, FONT_STYLE_TITLE);
     d_StringDestroy(chip_info);
 
     // Track win/loss message bounds for collision detection
@@ -200,14 +200,14 @@ void RenderResultScreen(ResultScreen_t* screen, Player_t* player, GameState_t st
         Uint8 g = (screen->chip_delta > 0) ? 255 : 0;
         Uint8 b = (screen->chip_delta > 0) ? 67 : 0;
 
-        aFontConfig_t winloss_config = {
+        aTextStyle_t winloss_config = {
             .type = FONT_GAME,
-            .color = {r, g, b, (Uint8)screen->winloss_alpha},
+            .fg = {r, g, b, (Uint8)screen->winloss_alpha},
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = 0,
             .scale = 2.0f  // Bigger for readability
         };
-        a_DrawTextStyled((char*)d_StringPeek(winloss_text), winloss_x, winloss_y, &winloss_config);
+        a_DrawText((char*)d_StringPeek(winloss_text), winloss_x, winloss_y, winloss_config);
         d_StringDestroy(winloss_text);
     }
 
@@ -238,21 +238,21 @@ void RenderResultScreen(ResultScreen_t* screen, Player_t* player, GameState_t st
             }
         }
 
-        aFontConfig_t bleed_config = {
+        aTextStyle_t bleed_config = {
             .type = FONT_GAME,
-            .color = {255, 0, 0, (Uint8)screen->bleed_alpha},  // Always red
+            .fg = {255, 0, 0, (Uint8)screen->bleed_alpha},  // Always red
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = 0,
             .scale = 2.0f  // Bigger for readability
         };
-        a_DrawTextStyled((char*)d_StringPeek(bleed_text), bleed_x, bleed_y, &bleed_config);
+        a_DrawText((char*)d_StringPeek(bleed_text), bleed_x, bleed_y, bleed_config);
         d_StringDestroy(bleed_text);
     }
 
     // Next round prompt
-    aFontConfig_t gray_text = {
+    aTextStyle_t gray_text = {
         .type = FONT_ENTER_COMMAND,
-        .color = {200, 200, 200, 255},
+        .fg = {200, 200, 200, 255},
         .align = TEXT_ALIGN_CENTER,
         .wrap_width = 0,
         .scale = 1.0f

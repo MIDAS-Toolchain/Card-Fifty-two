@@ -116,14 +116,14 @@ void RenderDamageNumbers(VisualEffects_t* vfx) {
         }
 
         // Render at current position with alpha and scale
-        aFontConfig_t dmg_config = {
+        aTextStyle_t dmg_config = {
             .type = FONT_ENTER_COMMAND,
-            .color = color,
+            .fg = color,
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = 0,
             .scale = scale
         };
-        a_DrawTextStyled((char*)d_StringPeek(dmg_text), (int)dmg->x, (int)dmg->y, &dmg_config);
+        a_DrawText((char*)d_StringPeek(dmg_text), (int)dmg->x, (int)dmg->y, dmg_config);
 
         d_StringDestroy(dmg_text);
     }

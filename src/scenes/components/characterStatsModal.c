@@ -106,12 +106,10 @@ void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
     int header_height = a_GetWrappedTextHeight("Sanity Effects:", FONT_ENTER_COMMAND, content_width);
 
     // Draw background (modern dark style)
-    a_DrawFilledRect(modal->x, modal->y, modal_width, modal_height,
-                     COLOR_BG.r, COLOR_BG.g, COLOR_BG.b, COLOR_BG.a);
+    a_DrawFilledRect((aRectf_t){modal->x, modal->y, modal_width, modal_height}, COLOR_BG);
 
     // Draw border
-    a_DrawRect(modal->x, modal->y, modal_width, modal_height,
-               COLOR_BORDER.r, COLOR_BORDER.g, COLOR_BORDER.b, COLOR_BORDER.a);
+    a_DrawRect((aRectf_t){modal->x, modal->y, modal_width, modal_height}, COLOR_BORDER);
 
     // Content positioning
     int content_x = modal->x + padding;
@@ -121,16 +119,16 @@ void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
     // Title - Class Name (e.g., "The Degenerate")
     // ========================================================================
 
-    aFontConfig_t title_config = {
+    aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = COLOR_TITLE,
+        .fg = COLOR_TITLE,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
 
     const char* class_name = GetClassName(modal->player->class);
-    a_DrawTextStyled((char*)class_name, content_x, current_y, &title_config);
+    a_DrawText((char*)class_name, content_x, current_y, title_config);
     current_y += title_height + 8;  // Actual height + margin
 
     // ========================================================================
@@ -144,15 +142,15 @@ void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
     float sanity_percent = (float)modal->player->sanity / (float)modal->player->max_sanity;
     aColor_t sanity_color = (sanity_percent >= 0.5f) ? COLOR_SANITY_GOOD : COLOR_SANITY_LOW;
 
-    aFontConfig_t sanity_config = {
+    aTextStyle_t sanity_config = {
         .type = FONT_GAME,
-        .color = sanity_color,
+        .fg = sanity_color,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
 
-    a_DrawTextStyled((char*)d_StringPeek(sanity_text), content_x, current_y, &sanity_config);
+    a_DrawText((char*)d_StringPeek(sanity_text), content_x, current_y, sanity_config);
     d_StringDestroy(sanity_text);
     current_y += sanity_height + 8;  // Actual height + spacing
 
@@ -160,8 +158,7 @@ void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
     // Divider Line
     // ========================================================================
 
-    a_DrawFilledRect(content_x, current_y, content_width, 1,
-                     COLOR_DIVIDER.r, COLOR_DIVIDER.g, COLOR_DIVIDER.b, COLOR_DIVIDER.a);
+    a_DrawFilledRect((aRectf_t){content_x, current_y, content_width, 1}, COLOR_DIVIDER);
     current_y += 1 + 8;  // Divider height + spacing
 
     // ========================================================================
@@ -169,15 +166,15 @@ void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
     // ========================================================================
 
     // Header
-    aFontConfig_t header_config = {
+    aTextStyle_t header_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = COLOR_SANITY_GOOD,
+        .fg = COLOR_SANITY_GOOD,
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
 
-    a_DrawTextStyled("Sanity Effects:", content_x, current_y, &header_config);
+    a_DrawText("Sanity Effects:", content_x, current_y, header_config);
     current_y += header_height + 8;  // Actual height + margin
 
     // Correct threshold ranges (matching sanity tier system)
@@ -223,16 +220,15 @@ void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
         // Draw gold background highlight for current tier
         if (is_current) {
             int highlight_height = range_height + effect_height + 10;
-            a_DrawFilledRect(content_x - 5, current_y - 2,
-                           content_width + 10, highlight_height,
-                           232, 193, 112, 64);  // Gold 25% opacity
+            a_DrawFilledRect((aRectf_t){content_x - 5, current_y - 2, content_width + 10, highlight_height},
+                           (aColor_t){232, 193, 112, 64});  // Gold 25% opacity
         }
 
         // Draw bullet indicator for current tier
         if (is_current) {
             a_DrawText("●", content_x - 15, current_y,
-                      232, 193, 112,  // Gold bullet (RGB)
-                      FONT_GAME, TEXT_ALIGN_LEFT, 0);
+                   (aTextStyle_t){.type=// Gold bullet (RGB)
+                      FONT_GAME, .fg={232,193,112,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
         }
 
         // Determine text color based on state
@@ -253,27 +249,27 @@ void RenderCharacterStatsModal(CharacterStatsModal_t* modal) {
         }
 
         // Threshold range label
-        aFontConfig_t range_config = {
+        aTextStyle_t range_config = {
             .type = FONT_GAME,
-            .color = range_text_color,
+            .fg = range_text_color,
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width,
             .scale = 1.1f  // ADR-008: Consistent readability
         };
 
-        a_DrawTextStyled((char*)threshold_ranges[i], content_x, current_y, &range_config);
+        a_DrawText((char*)threshold_ranges[i], content_x, current_y, range_config);
         current_y += range_height + 4;  // Actual height + small spacing
 
         // Effect description (indented slightly)
-        aFontConfig_t effect_config = {
+        aTextStyle_t effect_config = {
             .type = FONT_GAME,
-            .color = effect_text_color,
+            .fg = effect_text_color,
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width - 10,  // Indent effect text
             .scale = 1.1f  // Match ability/status tooltip size for readability
         };
 
-        a_DrawTextStyled((char*)effect, content_x + 10, current_y, &effect_config);
+        a_DrawText((char*)effect, content_x + 10, current_y, effect_config);
         current_y += effect_height + 6;  // Actual height + spacing between entries
     }
 }

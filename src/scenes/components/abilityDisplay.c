@@ -172,37 +172,29 @@ void RenderAbilityDisplay(AbilityDisplay_t* display) {
         // Draw card background (color-coded by ability type)
         aColor_t bg_color = GetAbilityColor(ability->ability_id);
         bg_color.a = alpha;
-        a_DrawFilledRect(current_x, current_y, ABILITY_CARD_WIDTH, ABILITY_CARD_HEIGHT,
-                        bg_color.r, bg_color.g, bg_color.b, bg_color.a);
+        a_DrawFilledRect((aRectf_t){current_x, current_y, ABILITY_CARD_WIDTH, ABILITY_CARD_HEIGHT},
+                        bg_color);
 
         // Draw yellow border if hovered, white otherwise
         if (is_hovered) {
-            a_DrawRect(current_x, current_y, ABILITY_CARD_WIDTH, ABILITY_CARD_HEIGHT,
-                      255, 255, 100, 255);  // Yellow border when hovered
+            a_DrawRect((aRectf_t){current_x, current_y, ABILITY_CARD_WIDTH, ABILITY_CARD_HEIGHT},
+                      (aColor_t){255, 255, 100, 255});  // Yellow border when hovered
         } else {
             Uint8 border_alpha = (Uint8)(alpha * 0.8f);
-            a_DrawRect(current_x, current_y, ABILITY_CARD_WIDTH, ABILITY_CARD_HEIGHT,
-                      255, 255, 255, border_alpha);  // White border normally
+            a_DrawRect((aRectf_t){current_x, current_y, ABILITY_CARD_WIDTH, ABILITY_CARD_HEIGHT},
+                      (aColor_t){255, 255, 255, border_alpha});  // White border normally
         }
 
         // Draw icon (2-letter abbreviation)
         const char* icon = GetAbilityAbbreviation(ability->ability_id);
-        aFontConfig_t icon_config = {
-            .type = FONT_ENTER_COMMAND,
-            .color = {255, 255, 255, alpha},
-            .align = TEXT_ALIGN_CENTER,
-            .wrap_width = 0,
-            .scale = 1.2f
-        };
-        a_DrawTextStyled((char*)icon,
-                        current_x + ABILITY_CARD_WIDTH / 2,
-                        current_y + 18,
-                        &icon_config);
+        a_DrawText((char*)icon,
+                  current_x + ABILITY_CARD_WIDTH / 2,
+                  current_y + 18,
+                  (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,255,alpha}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.2f, .padding=0});
 
         // Draw divider line (using filled rect as a thin line)
-        a_DrawFilledRect(current_x + 10, current_y + 48,
-                        ABILITY_CARD_WIDTH - 20, 1,
-                        255, 255, 255, (Uint8)(alpha * 0.5f));
+        a_DrawFilledRect((aRectf_t){current_x + 10, current_y + 48, ABILITY_CARD_WIDTH - 20, 1},
+                        (aColor_t){255, 255, 255, (Uint8)(alpha * 0.5f)});
 
         // Draw badge (universal for all ability types)
         char badge_text[16];
@@ -219,36 +211,26 @@ void RenderAbilityDisplay(AbilityDisplay_t* display) {
             int badge_y = is_numeric ? current_y + 56 : current_y + 60;
 
             // Draw badge background (dark with transparency, like modal)
-            a_DrawFilledRect(badge_x, badge_y, badge_width, badge_height,
-                            20, 20, 30, (Uint8)(230 * (alpha / 255.0f)));
+            a_DrawFilledRect((aRectf_t){badge_x, badge_y, badge_width, badge_height},
+                            (aColor_t){20, 20, 30, (Uint8)(230 * (alpha / 255.0f))});
 
             // Draw badge border (white, like modal)
-            a_DrawRect(badge_x, badge_y, badge_width, badge_height,
-                      255, 255, 255, alpha);
-
-            // Draw badge text (centered in badge)
-            aFontConfig_t badge_config = {
-                .type = is_numeric ? FONT_ENTER_COMMAND : FONT_GAME,
-                .color = {badge_color.r, badge_color.g, badge_color.b, badge_color.a},
-                .align = TEXT_ALIGN_CENTER,
-                .wrap_width = 0,
-                .scale = is_numeric ? 1.2f : 0.9f
-            };
+            a_DrawRect((aRectf_t){badge_x, badge_y, badge_width, badge_height},
+                      (aColor_t){255, 255, 255, alpha});
 
             // Text Y position: move numeric text up for better centering
             int text_y_offset = is_numeric ? -6 : 2;
 
-            a_DrawTextStyled(badge_text,
-                            current_x + ABILITY_CARD_WIDTH / 2,
-                            badge_y + text_y_offset,
-                            &badge_config);
+            a_DrawText(badge_text,
+                      current_x + ABILITY_CARD_WIDTH / 2,
+                      badge_y + text_y_offset,
+                      (aTextStyle_t){.type=(is_numeric ? FONT_ENTER_COMMAND : FONT_GAME), .fg={badge_color.r,badge_color.g,badge_color.b,badge_color.a}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=(is_numeric ? 1.2f : 0.9f), .padding=0});
         }
 
         // Draw red flash overlay if ability is animating
         if (ability->flash_alpha > 0.0f) {
-            a_DrawFilledRect(current_x, current_y,
-                            ABILITY_CARD_WIDTH, ABILITY_CARD_HEIGHT,
-                            255, 0, 0, (Uint8)ability->flash_alpha);
+            a_DrawFilledRect((aRectf_t){current_x, current_y, ABILITY_CARD_WIDTH, ABILITY_CARD_HEIGHT},
+                            (aColor_t){255, 0, 0, (Uint8)ability->flash_alpha});
         }
 
         // Move to next card (VERTICAL stack) - use base_y for consistent spacing

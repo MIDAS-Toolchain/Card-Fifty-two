@@ -40,14 +40,14 @@
 // Player registry: Key = int (player_id), Value = Player_t*
 extern dTable_t* g_players;
 
-// Texture cache: Key = int (card_id), Value = SDL_Texture*
+// Surface cache: Key = int (card_id), Value = SDL_Surface*
 extern dTable_t* g_card_textures;
 
-// Portrait texture cache: Key = int (player_id), Value = SDL_Texture*
+// Portrait surface cache: Key = int (player_id), Value = SDL_Surface*
 extern dTable_t* g_portraits;
 
-// Card back texture
-extern SDL_Texture* g_card_back_texture;
+// Card back surface
+extern SDL_Surface* g_card_back_texture;
 
 // Sound effects
 extern aAudioClip_t g_push_chips_sound;
@@ -61,10 +61,10 @@ extern dTable_t* g_ability_icons;
 // GLOBAL FONT STYLES (defined in main.c)
 // ============================================================================
 
-extern aFontConfig_t FONT_STYLE_TITLE;       // Large centered white text
-extern aFontConfig_t FONT_STYLE_BODY;        // Default body text
-extern aFontConfig_t FONT_STYLE_CHIP_COUNT;  // Chip count display
-extern aFontConfig_t FONT_STYLE_DEBUG;       // FPS and debug info
-extern aFontConfig_t FONT_STYLE_DAMAGE;      // Damage numbers
+extern aTextStyle_t FONT_STYLE_TITLE;       // Large centered white text
+extern aTextStyle_t FONT_STYLE_BODY;        // Default body text
+extern aTextStyle_t FONT_STYLE_CHIP_COUNT;  // Chip count display
+extern aTextStyle_t FONT_STYLE_DEBUG;       // FPS and debug info
+extern aTextStyle_t FONT_STYLE_DAMAGE;      // Damage numbers
 
 #endif // COMMON_H

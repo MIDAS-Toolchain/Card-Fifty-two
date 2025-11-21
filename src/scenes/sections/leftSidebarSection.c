@@ -43,17 +43,17 @@ static aColor_t GetSanityColor(float sanity_percent) {
  */
 static void RenderSanityBar(int x, int y, int width, int height, float sanity_percent) {
     // Background (black)
-    a_DrawFilledRect(x, y, width, height, 0, 0, 0, 255);
+    a_DrawFilledRect((aRectf_t){x, y, width, height}, (aColor_t){0, 0, 0, 255});
 
     // Border
-    a_DrawRect(x, y, width, height, 100, 100, 100, 255);
+    a_DrawRect((aRectf_t){x, y, width, height}, (aColor_t){100, 100, 100, 255});
 
     // Filled portion based on sanity percentage
     int filled_width = (int)(width * sanity_percent);
     if (filled_width > 0) {
         aColor_t bar_color = GetSanityColor(sanity_percent);
-        a_DrawFilledRect(x, y, filled_width, height,
-                         bar_color.r, bar_color.g, bar_color.b, bar_color.a);
+        a_DrawFilledRect((aRectf_t){x, y, filled_width, height},
+                         (aColor_t){bar_color.r, bar_color.g, bar_color.b, bar_color.a});
     }
 }
 
@@ -139,7 +139,7 @@ LeftSidebarSection_t* CreateLeftSidebarSection(SidebarButton_t** sidebar_buttons
 
     // Create vertical FlexBox for sidebar layout (initial bounds - updated in render)
     // Using pattern from actionPanel.c - bounds set dynamically in RenderLeftSidebarSection
-    section->layout = a_CreateFlexBox(0, 0, SIDEBAR_WIDTH, 600);
+    section->layout = a_FlexBoxCreate(0, 0, SIDEBAR_WIDTH, 600);
     a_FlexConfigure(section->layout, FLEX_DIR_COLUMN, FLEX_JUSTIFY_SPACE_BETWEEN, ELEMENT_VERTICAL_GAP);
     a_FlexSetPadding(section->layout, SIDEBAR_PADDING);
 
@@ -191,7 +191,7 @@ void DestroyLeftSidebarSection(LeftSidebarSection_t** section) {
 
     // Destroy FlexBox if it exists
     if ((*section)->layout) {
-        a_DestroyFlexBox(&(*section)->layout);
+        a_FlexBoxDestroy(&(*section)->layout);
     }
 
     free(*section);
@@ -207,8 +207,8 @@ void RenderLeftSidebarSection(LeftSidebarSection_t* section, Player_t* player, i
     if (!section || !player || !section->layout) return;
 
     // Background for sidebar (dark semi-transparent)
-    a_DrawFilledRect(x, y, SIDEBAR_WIDTH, height, 20, 20, 30, 200);
-    a_DrawRect(x, y, SIDEBAR_WIDTH, height, 60, 60, 80, 255);
+    a_DrawFilledRect((aRectf_t){x, y, SIDEBAR_WIDTH, height}, (aColor_t){20, 20, 30, 200});
+    a_DrawRect((aRectf_t){x, y, SIDEBAR_WIDTH, height}, (aColor_t){60, 60, 80, 255});
 
     // Update FlexBox bounds (pattern from actionPanel.c)
     a_FlexSetBounds(section->layout, x, y, SIDEBAR_WIDTH, height);
@@ -245,8 +245,7 @@ void RenderLeftSidebarSection(LeftSidebarSection_t* section, Player_t* player, i
         ? (aColor_t){255, 220, 100, 255}  // Yellow (hovered)
         : (aColor_t){200, 200, 200, 255}; // Gray (normal)
     a_DrawText("Betting Power", center_x, chips_label_y,
-               chips_label_color.r, chips_label_color.g, chips_label_color.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={chips_label_color.r,chips_label_color.g,chips_label_color.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Chips value (item 1) - yellow when hovered
     aColor_t chips_value_color = hovering_chips
@@ -255,8 +254,7 @@ void RenderLeftSidebarSection(LeftSidebarSection_t* section, Player_t* player, i
     dString_t* chips_text = d_StringInit();
     d_StringFormat(chips_text, "%d chips", player->chips);
     a_DrawText((char*)d_StringPeek(chips_text), center_x, chips_value_y,
-               chips_value_color.r, chips_value_color.g, chips_value_color.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={chips_value_color.r,chips_value_color.g,chips_value_color.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     d_StringDestroy(chips_text);
 
     // Render bet damage number (floating up and fading out)
@@ -267,14 +265,14 @@ void RenderLeftSidebarSection(LeftSidebarSection_t* section, Player_t* player, i
         int damage_x = center_x;
         int damage_y = chips_value_y - 20 + (int)section->bet_damage_y_offset;  // Start 20px higher
 
-        aFontConfig_t damage_config = {
+        aTextStyle_t damage_config = {
             .type = FONT_GAME,
-            .color = {255, 0, 0, (Uint8)section->bet_damage_alpha},  // Red, fading
+            .fg = {255, 0, 0, (Uint8)section->bet_damage_alpha},  // Red, fading
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = 0,
             .scale = 1.5f
         };
-        a_DrawTextStyled((char*)d_StringPeek(damage_text), damage_x, damage_y, &damage_config);
+        a_DrawText((char*)d_StringPeek(damage_text), damage_x, damage_y, damage_config);
         d_StringDestroy(damage_text);
 
         // Deactivate when fully faded
@@ -292,8 +290,7 @@ void RenderLeftSidebarSection(LeftSidebarSection_t* section, Player_t* player, i
         ? (aColor_t){255, 220, 100, 255}  // Yellow (hovered)
         : (aColor_t){200, 200, 200, 255}; // Gray (normal)
     a_DrawText("Active Bet", center_x, bet_label_y,
-               bet_label_color.r, bet_label_color.g, bet_label_color.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={bet_label_color.r,bet_label_color.g,bet_label_color.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Bet value (item 3) - yellow when hovered, else orange/gray based on bet state
     dString_t* bet_text = d_StringInit();
@@ -309,7 +306,7 @@ void RenderLeftSidebarSection(LeftSidebarSection_t* section, Player_t* player, i
     }
 
     a_DrawText((char*)d_StringPeek(bet_text), center_x, bet_value_y,
-               bet_color.r, bet_color.g, bet_color.b, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={bet_color.r,bet_color.g,bet_color.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     d_StringDestroy(bet_text);
 
     // ========================================================================
@@ -418,10 +415,10 @@ void RenderLeftSidebarSection(LeftSidebarSection_t* section, Player_t* player, i
         SDL_SetTextureAlphaMod(portrait_texture, 255);  // Reset to full opacity
     } else {
         // Fallback: Draw placeholder rect
-        a_DrawFilledRect(portrait_x, portrait_y, PORTRAIT_SIZE, PORTRAIT_SIZE, 100, 100, 100, 255);
-        a_DrawRect(portrait_x, portrait_y, PORTRAIT_SIZE, PORTRAIT_SIZE, 150, 150, 150, 255);
+        a_DrawFilledRect((aRectf_t){portrait_x, portrait_y, PORTRAIT_SIZE, PORTRAIT_SIZE}, (aColor_t){100, 100, 100, 255});
+        a_DrawRect((aRectf_t){portrait_x, portrait_y, PORTRAIT_SIZE, PORTRAIT_SIZE}, (aColor_t){150, 150, 150, 255});
         a_DrawText("?", center_x, portrait_y + PORTRAIT_SIZE / 2 - 10,
-                   200, 200, 200, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={200,200,200,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
     // ========================================================================

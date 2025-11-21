@@ -42,7 +42,7 @@ typedef struct Deck Deck_t;
  *   29-31: _padding (3 bytes, explicit)
  */
 typedef struct Card {
-    SDL_Texture* texture;  // Cached texture pointer (not owned by card) - MUST be first for alignment
+    SDL_Surface* texture;  // Cached surface pointer (not owned by card) - MUST be first for alignment
     int card_id;           // Unique identifier: 0-51 for standard deck
     int x;                 // Screen X coordinate for rendering
     int y;                 // Screen Y coordinate for rendering

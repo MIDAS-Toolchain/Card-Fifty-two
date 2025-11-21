@@ -427,11 +427,11 @@ static void DrawTutorialButton(int x, int y, int w, int h,
     }
 
     // Draw background with hover color
-    a_DrawFilledRect(x, y, w, h, final_bg.r, final_bg.g, final_bg.b, final_bg.a);
+    a_DrawFilledRect((aRectf_t){x, y, w, h}, (aColor_t){final_bg.r, final_bg.g, final_bg.b, final_bg.a});
 
     // Draw border if requested
     if (draw_border) {
-        a_DrawRect(x, y, w, h, 255, 255, 255, 255);
+        a_DrawRect((aRectf_t){x, y, w, h}, (aColor_t){255, 255, 255, 255});
     }
 
     // Calculate text dimensions and center properly (like Button component)
@@ -442,8 +442,7 @@ static void DrawTutorialButton(int x, int y, int w, int h,
     int text_y = y + (h - text_h) / 2;  // Proper vertical centering!
 
     a_DrawText((char*)text, text_x, text_y,
-               text_color.r, text_color.g, text_color.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={text_color.r,text_color.g,text_color.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 }
 
 // ============================================================================
@@ -463,12 +462,12 @@ static void RenderDialogue(const TutorialStep_t* step) {
     int dialogue_y = step->dialogue_y_position;
 
     // Draw dialogue background
-    a_DrawFilledRect(dialogue_x, dialogue_y, dialogue_width, dialogue_height,
-                     DIALOGUE_BG.r, DIALOGUE_BG.g, DIALOGUE_BG.b, DIALOGUE_BG.a);
+    a_DrawFilledRect((aRectf_t){dialogue_x, dialogue_y, dialogue_width, dialogue_height},
+                     (aColor_t){DIALOGUE_BG.r, DIALOGUE_BG.g, DIALOGUE_BG.b, DIALOGUE_BG.a});
 
     // Draw dialogue border
-    a_DrawRect(dialogue_x, dialogue_y, dialogue_width, dialogue_height,
-               DIALOGUE_BORDER.r, DIALOGUE_BORDER.g, DIALOGUE_BORDER.b, DIALOGUE_BORDER.a);
+    a_DrawRect((aRectf_t){dialogue_x, dialogue_y, dialogue_width, dialogue_height},
+               (aColor_t){DIALOGUE_BORDER.r, DIALOGUE_BORDER.g, DIALOGUE_BORDER.b, DIALOGUE_BORDER.a});
 
     // Draw dialogue text (split by \n and render each line separately)
     int text_x = dialogue_x + DIALOGUE_PADDING;
@@ -493,8 +492,7 @@ static void RenderDialogue(const TutorialStep_t* step) {
 
             // Render line
             a_DrawText(line_buffer, text_x, text_y,
-                      DIALOGUE_TEXT.r, DIALOGUE_TEXT.g, DIALOGUE_TEXT.b,
-                      FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={DIALOGUE_TEXT.r,DIALOGUE_TEXT.g,DIALOGUE_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
 
             // Move Y position down by line height
             text_y += line_h;
@@ -512,8 +510,7 @@ static void RenderDialogue(const TutorialStep_t* step) {
     if (char_index > 0) {
         line_buffer[char_index] = '\0';
         a_DrawText(line_buffer, text_x, text_y,
-                  DIALOGUE_TEXT.r, DIALOGUE_TEXT.g, DIALOGUE_TEXT.b,
-                  FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={DIALOGUE_TEXT.r,DIALOGUE_TEXT.g,DIALOGUE_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
     // Draw arrow if enabled (pointing from dialogue to target)
@@ -606,17 +603,16 @@ static void RenderSkipConfirmation(void) {
     int conf_y = (SCREEN_HEIGHT - conf_h) / 2;
 
     // Draw confirmation background
-    a_DrawFilledRect(conf_x, conf_y, conf_w, conf_h,
-                     DIALOGUE_BG.r, DIALOGUE_BG.g, DIALOGUE_BG.b, DIALOGUE_BG.a);
+    a_DrawFilledRect((aRectf_t){conf_x, conf_y, conf_w, conf_h},
+                     (aColor_t){DIALOGUE_BG.r, DIALOGUE_BG.g, DIALOGUE_BG.b, DIALOGUE_BG.a});
 
     // Draw confirmation border
-    a_DrawRect(conf_x, conf_y, conf_w, conf_h,
-               DIALOGUE_BORDER.r, DIALOGUE_BORDER.g, DIALOGUE_BORDER.b, DIALOGUE_BORDER.a);
+    a_DrawRect((aRectf_t){conf_x, conf_y, conf_w, conf_h},
+               (aColor_t){DIALOGUE_BORDER.r, DIALOGUE_BORDER.g, DIALOGUE_BORDER.b, DIALOGUE_BORDER.a});
 
     // Draw confirmation text
     a_DrawText("Skip Tutorial?", conf_x + conf_w / 2, conf_y + 30,
-               DIALOGUE_TEXT.r, DIALOGUE_TEXT.g, DIALOGUE_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={DIALOGUE_TEXT.r,DIALOGUE_TEXT.g,DIALOGUE_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Draw YES button using helper with hover detection
     int yes_x = conf_x + 60;

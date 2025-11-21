@@ -150,8 +150,8 @@ void RenderTopBarSection(TopBarSection_t* section, const GameContext_t* game, in
     if (!section) return;
 
     // Draw top bar background
-    a_DrawFilledRect(0, y, SCREEN_WIDTH, TOP_BAR_HEIGHT,
-                     TOP_BAR_BG.r, TOP_BAR_BG.g, TOP_BAR_BG.b, TOP_BAR_BG.a);
+    a_DrawFilledRect((aRectf_t){0, y, SCREEN_WIDTH, TOP_BAR_HEIGHT},
+                     (aColor_t){TOP_BAR_BG.r, TOP_BAR_BG.g, TOP_BAR_BG.b, TOP_BAR_BG.a});
 
     // Draw combat showcase text (left side)
     if (game && game->current_enemy && game->is_combat_mode && section->showcase_text && d_StringGetLength(section->showcase_text) > 0) {
@@ -159,10 +159,9 @@ void RenderTopBarSection(TopBarSection_t* section, const GameContext_t* game, in
         int text_y = y + SHOWCASE_TEXT_Y_OFFSET;
 
         // Draw showcase text "Player faces The Broken Dealer"
-        a_DrawText((char*)d_StringPeek(section->showcase_text),
-                   text_x, text_y,
-                   232, 193, 112,  // Gold color
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+        a_DrawText((char*)d_StringPeek(section->showcase_text), text_x, text_y,
+                   (aTextStyle_t){.type=// Gold color
+                   FONT_ENTER_COMMAND, .fg={232,193,112,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
     // Update settings button Y position (centered in top bar)

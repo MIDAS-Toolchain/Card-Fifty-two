@@ -32,7 +32,7 @@ MainMenuSection_t* CreateMainMenuSection(MenuItem_t** menu_items, int item_count
     section->item_count = item_count;
 
     // Create FlexBox for menu items (vertical layout)
-    section->menu_layout = a_CreateFlexBox(0, MENU_START_Y,
+    section->menu_layout = a_FlexBoxCreate(0, MENU_START_Y,
                                             SCREEN_WIDTH,
                                             item_count * (MENU_ITEM_HEIGHT + MENU_ITEM_GAP));
     if (!section->menu_layout) {
@@ -71,7 +71,7 @@ void DestroyMainMenuSection(MainMenuSection_t** section) {
 
     // Destroy FlexBox
     if (sec->menu_layout) {
-        a_DestroyFlexBox(&sec->menu_layout);
+        a_FlexBoxDestroy(&sec->menu_layout);
     }
 
     // NOTE: No string cleanup needed - using fixed buffers!
@@ -130,11 +130,11 @@ void RenderMainMenuSection(MainMenuSection_t* section) {
 
     // Title (cream color #e7d5b3 from palette)
     a_DrawText(section->title, SCREEN_WIDTH / 2, MENU_TITLE_Y,
-               231, 213, 179, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={231,213,179,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Subtitle (light cyan #73bed3 from palette)
     a_DrawText(section->subtitle, SCREEN_WIDTH / 2, MENU_SUBTITLE_Y,
-               115, 190, 211, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={115,190,211,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Update menu item positions from FlexBox
     UpdateMainMenuItemPositions(section);
@@ -148,5 +148,5 @@ void RenderMainMenuSection(MainMenuSection_t* section) {
 
     // Instructions (medium gray #394a50 from palette)
     a_DrawText(section->instructions, SCREEN_WIDTH / 2, MENU_INSTRUCTIONS_Y,
-               57, 74, 80, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={57,74,80,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 }

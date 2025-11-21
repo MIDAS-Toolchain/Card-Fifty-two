@@ -60,7 +60,7 @@ IntroNarrativeModal_t* CreateIntroNarrativeModal(void) {
     int content_y = modal_y + HEADER_HEIGHT;
     int content_height = MODAL_HEIGHT - HEADER_HEIGHT;
 
-    modal->layout = a_CreateFlexBox(
+    modal->layout = a_FlexBoxCreate(
         modal_x + PADDING,  // x position (inside modal padding)
         content_y + PADDING,  // y position (below header, inside padding)
         MODAL_WIDTH - (PADDING * 2),  // width (modal width minus left+right padding)
@@ -95,7 +95,7 @@ IntroNarrativeModal_t* CreateIntroNarrativeModal(void) {
     modal->continue_button = CreateButton(button_x, button_y, button_w, button_h, "Continue");
     if (!modal->continue_button) {
         d_LogError("Failed to create continue button for IntroNarrativeModal");
-        a_DestroyFlexBox(&modal->layout);
+        a_FlexBoxDestroy(&modal->layout);
         free(modal);
         return NULL;
     }
@@ -111,7 +111,7 @@ void DestroyIntroNarrativeModal(IntroNarrativeModal_t** modal) {
 
     // Destroy FlexBox layout
     if (m->layout) {
-        a_DestroyFlexBox(&m->layout);
+        a_FlexBoxDestroy(&m->layout);
     }
 
     // Destroy button
@@ -268,38 +268,38 @@ void RenderIntroNarrativeModal(const IntroNarrativeModal_t* modal) {
     Uint8 fade_alpha = (Uint8)(modal->fade_in_alpha * 255);
 
     // Draw full-screen dark overlay
-    a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
-                     COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b,
-                     (Uint8)(COLOR_OVERLAY.a * modal->fade_in_alpha / 255.0f));
+    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT},
+                     (aColor_t){COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b,
+                     (Uint8)(COLOR_OVERLAY.a * modal->fade_in_alpha / 255.0f)});
 
     // Calculate modal position (centered, then shifted right)
     int modal_x = (SCREEN_WIDTH - MODAL_WIDTH) / 2 + MODAL_OFFSET_X;
     int modal_y = (SCREEN_HEIGHT - MODAL_HEIGHT) / 2;
 
     // Draw main panel background
-    a_DrawFilledRect(modal_x, modal_y, MODAL_WIDTH, MODAL_HEIGHT,
-                     COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, fade_alpha);
+    a_DrawFilledRect((aRectf_t){modal_x, modal_y, MODAL_WIDTH, MODAL_HEIGHT},
+                     (aColor_t){COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, fade_alpha});
 
     // Draw header background
-    a_DrawFilledRect(modal_x, modal_y, MODAL_WIDTH, HEADER_HEIGHT,
-                     COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, fade_alpha);
+    a_DrawFilledRect((aRectf_t){modal_x, modal_y, MODAL_WIDTH, HEADER_HEIGHT},
+                     (aColor_t){COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, fade_alpha});
 
     // Draw header border
-    a_DrawRect(modal_x, modal_y, MODAL_WIDTH, HEADER_HEIGHT,
-               COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, fade_alpha);
+    a_DrawRect((aRectf_t){modal_x, modal_y, MODAL_WIDTH, HEADER_HEIGHT},
+               (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, fade_alpha});
 
     // Draw title (centered in header, moved up slightly)
-    aFontConfig_t title_config = {
+    aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = {COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b, fade_alpha},
+        .fg = {COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b, fade_alpha},
         .align = TEXT_ALIGN_CENTER,
         .wrap_width = 0,
         .scale = 1.2f
     };
-    a_DrawTextStyled(modal->title,
+    a_DrawText(modal->title,
                      modal_x + MODAL_WIDTH / 2,
                      modal_y,  // Fixed position from top of header
-                     &title_config);
+                     title_config);
 
     // Get FlexBox calculated positions
     const FlexItem_t* portrait_item = a_FlexGetItem(modal->layout, 0);  // Portrait (left)
@@ -314,8 +314,8 @@ void RenderIntroNarrativeModal(const IntroNarrativeModal_t* modal) {
             SDL_RenderCopy(app.renderer, modal->portrait, NULL, &dst);
         } else {
             // Black placeholder using FlexBox calculated position
-            a_DrawFilledRect(portrait_item->calc_x, portrait_item->calc_y, portrait_item->w, portrait_item->h,
-                             0, 0, 0, fade_alpha);
+            a_DrawFilledRect((aRectf_t){portrait_item->calc_x, portrait_item->calc_y, portrait_item->w, portrait_item->h},
+                             (aColor_t){0, 0, 0, fade_alpha});
         }
     }
 
@@ -328,16 +328,16 @@ void RenderIntroNarrativeModal(const IntroNarrativeModal_t* modal) {
         for (int i = 0; i < modal->line_count; i++) {
             Uint8 block_alpha = (Uint8)(modal->line_fade_alpha[i] * 255);
 
-            aFontConfig_t text_config = {
+            aTextStyle_t text_config = {
                 .type = FONT_ENTER_COMMAND,
-                .color = {COLOR_NARRATIVE_TEXT.r, COLOR_NARRATIVE_TEXT.g, COLOR_NARRATIVE_TEXT.b, block_alpha},
+                .fg = {COLOR_NARRATIVE_TEXT.r, COLOR_NARRATIVE_TEXT.g, COLOR_NARRATIVE_TEXT.b, block_alpha},
                 .align = TEXT_ALIGN_LEFT,
                 .wrap_width = text_w,
                 .scale = 1.0f
             };
 
             // Draw this narrative block
-            a_DrawTextStyled(modal->narrative_lines[i], text_item->calc_x, current_y, &text_config);
+            a_DrawText(modal->narrative_lines[i], text_item->calc_x, current_y, text_config);
 
             // Get actual wrapped text height from Archimedes (cast away const)
             int block_height = a_GetWrappedTextHeight((char*)modal->narrative_lines[i], FONT_ENTER_COMMAND, text_w);

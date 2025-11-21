@@ -286,30 +286,34 @@ static void StatsSceneDraw(float dt) {
 
     // Title
     a_DrawText("RUN STATISTICS", SCREEN_WIDTH / 2, 80,
-               255, 255, 100, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+               (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,100,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     dString_t* text = d_StringInit();
     int y = 140;
 
     // Cards
     d_StringFormat(text, "Cards Drawn: %llu", stats->cards_drawn);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 200, 255, 200, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y,
+               (aTextStyle_t){.type=FONT_GAME, .fg={200,255,200,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += 40;
 
     // Turns
     d_StringFormat(text, "Turns: %llu  Won: %llu  Lost: %llu  Push: %llu",
                    stats->turns_played, stats->turns_won, stats->turns_lost, stats->turns_pushed);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 180, 220, 255, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y,
+               (aTextStyle_t){.type=FONT_GAME, .fg={180,220,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += 40;
 
     // Combat
     d_StringFormat(text, "Combats Won: %llu", stats->combats_won);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 255, 150, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y,
+               (aTextStyle_t){.type=FONT_GAME, .fg={255,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += 50;
 
     // Damage
     d_StringFormat(text, "Total Damage: %llu", stats->damage_dealt_total);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 255, 180, 100, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y,
+               (aTextStyle_t){.type=FONT_GAME, .fg={255,180,100,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += 35;
 
     // Damage breakdown
@@ -320,7 +324,8 @@ static void StatsSceneDraw(float dt) {
                     (float)dmg / stats->damage_dealt_total * 100.0f : 0.0f;
         d_StringFormat(text, "  %s: %llu (%.1f%%)",
                        Stats_GetDamageSourceName((DamageSource_t)i), dmg, pct);
-        a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 200, 200, 200, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+        a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y,
+                   (aTextStyle_t){.type=FONT_GAME, .fg={200,200,200,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
         y += 32;
     }
 
@@ -329,11 +334,12 @@ static void StatsSceneDraw(float dt) {
     // Chips
     d_StringFormat(text, "Chips Bet: %llu  Won: %llu  Lost: %llu  Drained: %llu",
                    stats->chips_bet, stats->chips_won, stats->chips_lost, stats->chips_drained);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, 150, 255, 150, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y,
+               (aTextStyle_t){.type=FONT_GAME, .fg={150,255,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     d_StringDestroy(text);
 
     // Instructions
     a_DrawText("[ESC] Back to Menu", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 50,
-               150, 150, 150, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+               (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={150,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 }

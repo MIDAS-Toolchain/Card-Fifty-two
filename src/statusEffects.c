@@ -509,51 +509,54 @@ void RenderStatusEffects(const StatusEffectManager_t* manager, int x, int y) {
         // Draw icon background (color-coded by effect type)
         aColor_t bg_color = GetStatusEffectColor(effect->type);
         bg_color.a = 200;
-        a_DrawFilledRect(shake_x, shake_y, ICON_SIZE, ICON_SIZE,
-                        bg_color.r, bg_color.g, bg_color.b, bg_color.a);
+        a_DrawFilledRect((aRectf_t){shake_x, shake_y, ICON_SIZE, ICON_SIZE}, bg_color);
 
         // Draw border (pulsing based on intensity)
         Uint8 border_alpha = (Uint8)(150 + 100 * effect->intensity);
-        a_DrawRect(shake_x, shake_y, ICON_SIZE, ICON_SIZE,
-                  255, 255, 255, border_alpha);
+        a_DrawRect((aRectf_t){shake_x, shake_y, ICON_SIZE, ICON_SIZE},
+                  (aColor_t){255, 255, 255, border_alpha});
 
         // Draw red flash overlay (triggered when effect is applied)
         if (effect->flash_alpha > 0.0f) {
             Uint8 flash = (Uint8)effect->flash_alpha;
-            a_DrawFilledRect(shake_x, shake_y, ICON_SIZE, ICON_SIZE,
-                            255, 0, 0, flash);
+            a_DrawFilledRect((aRectf_t){shake_x, shake_y, ICON_SIZE, ICON_SIZE},
+                            (aColor_t){255, 0, 0, flash});
         }
 
         // Draw effect icon (custom 2-letter abbreviation)
         const char* icon_text = GetStatusEffectAbbreviation(effect->type);
 
-        aFontConfig_t icon_config = {
+        aTextStyle_t icon_config = {
             .type = FONT_ENTER_COMMAND,
-            .color = {255, 255, 255, 255},
+            .fg = {255, 255, 255, 255},
+            .bg = {0, 0, 0, 0},
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = 0,
-            .scale = 1.0f
+            .scale = 1.0f,
+            .padding = 0
         };
-        a_DrawTextStyled(icon_text,
+        a_DrawText(icon_text,
                         shake_x + ICON_SIZE/2,
                         shake_y + ICON_SIZE/2 - 8,
-                        &icon_config);
+                        icon_config);
 
         // Draw duration counter (bottom right)
         dString_t* duration_str = d_StringInit();
         d_StringFormat(duration_str, "%d", effect->duration);
 
-        aFontConfig_t duration_config = {
+        aTextStyle_t duration_config = {
             .type = FONT_GAME,
-            .color = {255, 255, 0, 255},  // Yellow
+            .fg = {255, 255, 0, 255},  // Yellow
+            .bg = {0, 0, 0, 0},
             .align = TEXT_ALIGN_CENTER,
             .wrap_width = 0,
-            .scale = 1.0f
+            .scale = 1.0f,
+            .padding = 0
         };
-        a_DrawTextStyled((char*)d_StringPeek(duration_str),
+        a_DrawText((char*)d_StringPeek(duration_str),
                         shake_x + ICON_SIZE - 10,
                         shake_y + ICON_SIZE - 12,
-                        &duration_config);
+                        duration_config);
         d_StringDestroy(duration_str);
 
         // Draw value if applicable (e.g., "10" for chip drain)
@@ -561,17 +564,19 @@ void RenderStatusEffects(const StatusEffectManager_t* manager, int x, int y) {
             dString_t* value_str = d_StringInit();
             d_StringFormat(value_str, "%d", effect->value);
 
-            aFontConfig_t value_config = {
+            aTextStyle_t value_config = {
                 .type = FONT_GAME,
-                .color = {255, 150, 150, 255},
+                .fg = {255, 150, 150, 255},
+                .bg = {0, 0, 0, 0},
                 .align = TEXT_ALIGN_LEFT,
                 .wrap_width = 0,
-                .scale = 0.8f
+                .scale = 0.8f,
+                .padding = 0
             };
-            a_DrawTextStyled((char*)d_StringPeek(value_str),
+            a_DrawText((char*)d_StringPeek(value_str),
                             shake_x + 4,
                             shake_y + 4,
-                            &value_config);
+                            value_config);
             d_StringDestroy(value_str);
         }
 

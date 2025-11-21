@@ -9,8 +9,12 @@
 #include "../../../include/event.h"
 #include "../../../include/player.h"
 #include "../../../include/trinket.h"
+#include "../../../include/tween/tween.h"
 #include <stdio.h>
 #include <string.h>
+
+// External tween manager (from sceneBlackjack.c)
+extern TweenManager_t g_tween_manager;
 
 // Color palette (EXACTLY matching RewardModal)
 static const SDL_Color COLOR_OVERLAY = {9, 10, 20, 180};         // #090a14 - almost black overlay
@@ -23,6 +27,25 @@ static const SDL_Color COLOR_CHOICE_BG = {37, 58, 94, 255};      // #253a5e - da
 static const SDL_Color COLOR_CHOICE_HOVER = {60, 94, 139, 255};  // #3c5e8b - medium blue (same as border)
 static const SDL_Color COLOR_CHOICE_LOCKED = {20, 20, 25, 255};  // Very dark gray (locked choice)
 static const SDL_Color COLOR_LOCKED_TEXT = {100, 100, 110, 255}; // Dim gray (locked choice text)
+
+// Tooltip line sentiment colors (from palette)
+static const SDL_Color COLOR_TOOLTIP_POSITIVE = {117, 167, 67, 255};  // #75a743 - green (upside)
+static const SDL_Color COLOR_TOOLTIP_NEGATIVE = {165, 48, 48, 255};   // #a53030 - red (downside)
+static const SDL_Color COLOR_TOOLTIP_NEUTRAL = {232, 193, 112, 255};  // #e8c170 - yellow (neutral)
+
+// Tooltip line data structure
+#define MAX_TOOLTIP_LINES 8
+
+typedef enum {
+    TOOLTIP_LINE_POSITIVE,
+    TOOLTIP_LINE_NEGATIVE,
+    TOOLTIP_LINE_NEUTRAL
+} TooltipLineSentiment_t;
+
+typedef struct {
+    char text[128];
+    TooltipLineSentiment_t sentiment;
+} TooltipLine_t;
 
 // ============================================================================
 // TEXT PREPROCESSING HELPERS
@@ -65,35 +88,34 @@ static void StripNewlinesFromText(const char* source, char* dest, size_t dest_si
 // ============================================================================
 
 /**
- * GenerateChoiceTooltip - Build tooltip text with all choice consequences
+ * GenerateChoiceTooltipLines - Build tooltip lines with sentiments
  *
  * @param choice - The event choice to describe
- * @param tooltip - Output dString_t to append tooltip text
- *
- * Generates multi-line tooltip with: chips, sanity, tags, HP modifier, trinkets
+ * @param lines - Output array of TooltipLine_t
+ * @param max_lines - Maximum number of lines to generate
+ * @return Number of lines generated
  */
-static void GenerateChoiceTooltip(const EventChoice_t* choice, dString_t* tooltip) {
-    if (!choice || !tooltip) return;
+static int GenerateChoiceTooltipLines(const EventChoice_t* choice, TooltipLine_t* lines, int max_lines) {
+    if (!choice || !lines || max_lines <= 0) return 0;
+
+    int count = 0;
 
     // Chips delta
-    if (choice->chips_delta != 0) {
-        char line[64];
-        snprintf(line, sizeof(line), "%s%+d chips\n",
-                 choice->chips_delta > 0 ? "[+] " : "[-] ", choice->chips_delta);
-        d_StringAppend(tooltip, line, strlen(line));
+    if (choice->chips_delta != 0 && count < max_lines) {
+        snprintf(lines[count].text, sizeof(lines[count].text), "%+d chips", choice->chips_delta);
+        lines[count].sentiment = (choice->chips_delta > 0) ? TOOLTIP_LINE_POSITIVE : TOOLTIP_LINE_NEGATIVE;
+        count++;
     }
 
     // Sanity delta
-    if (choice->sanity_delta != 0) {
-        char line[64];
-        snprintf(line, sizeof(line), "%s%+d sanity\n",
-                 choice->sanity_delta > 0 ? "[+] " : "[-] ", choice->sanity_delta);
-        d_StringAppend(tooltip, line, strlen(line));
+    if (choice->sanity_delta != 0 && count < max_lines) {
+        snprintf(lines[count].text, sizeof(lines[count].text), "%+d sanity", choice->sanity_delta);
+        lines[count].sentiment = (choice->sanity_delta > 0) ? TOOLTIP_LINE_POSITIVE : TOOLTIP_LINE_NEGATIVE;
+        count++;
     }
 
-    // Tag grants - consolidate duplicates (e.g., 3x CURSED random -> "3x Cursed (random cards)")
-    // Count tags by type+strategy combination
-    int tag_counts[CARD_TAG_MAX][16] = {0};  // [tag][strategy] = count
+    // Tag grants - consolidate duplicates
+    int tag_counts[CARD_TAG_MAX][16] = {0};
     for (size_t i = 0; i < choice->granted_tags->count; i++) {
         CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray(choice->granted_tags, i);
         TagTargetStrategy_t* strategy = (TagTargetStrategy_t*)d_IndexDataFromArray(choice->tag_target_strategies, i);
@@ -102,72 +124,70 @@ static void GenerateChoiceTooltip(const EventChoice_t* choice, dString_t* toolti
         }
     }
 
-    // Output consolidated tags
-    for (int t = 0; t < CARD_TAG_MAX; t++) {
-        for (int s = 0; s < 16; s++) {
+    for (int t = 0; t < CARD_TAG_MAX && count < max_lines; t++) {
+        for (int s = 0; s < 16 && count < max_lines; s++) {
             if (tag_counts[t][s] == 0) continue;
 
             const char* target = "";
-            const char* target_plural = "";
             switch (s) {
                 case TAG_TARGET_RANDOM_CARD:
-                    target = "(random card)";
-                    target_plural = "(random cards)";
+                    target = tag_counts[t][s] > 1 ? "(random cards)" : "(random card)";
                     break;
-                case TAG_TARGET_HIGHEST_UNTAGGED: target = target_plural = "(highest card)"; break;
-                case TAG_TARGET_LOWEST_UNTAGGED:  target = target_plural = "(lowest card)"; break;
-                case TAG_TARGET_SUIT_HEARTS:      target = target_plural = "(all hearts)"; break;
-                case TAG_TARGET_SUIT_DIAMONDS:    target = target_plural = "(all diamonds)"; break;
-                case TAG_TARGET_SUIT_CLUBS:       target = target_plural = "(all clubs)"; break;
-                case TAG_TARGET_SUIT_SPADES:      target = target_plural = "(all spades)"; break;
-                case TAG_TARGET_RANK_ACES:        target = target_plural = "(all aces)"; break;
-                case TAG_TARGET_RANK_FACE_CARDS:  target = target_plural = "(all face cards)"; break;
-                case TAG_TARGET_ALL_CARDS:        target = target_plural = "(all cards)"; break;
-                default: target = target_plural = ""; break;
+                case TAG_TARGET_HIGHEST_UNTAGGED: target = "(highest card)"; break;
+                case TAG_TARGET_LOWEST_UNTAGGED:  target = "(lowest card)"; break;
+                case TAG_TARGET_SUIT_HEARTS:      target = "(all hearts)"; break;
+                case TAG_TARGET_SUIT_DIAMONDS:    target = "(all diamonds)"; break;
+                case TAG_TARGET_SUIT_CLUBS:       target = "(all clubs)"; break;
+                case TAG_TARGET_SUIT_SPADES:      target = "(all spades)"; break;
+                case TAG_TARGET_RANK_ACES:        target = "(all aces)"; break;
+                case TAG_TARGET_RANK_FACE_CARDS:  target = "(all face cards)"; break;
+                case TAG_TARGET_ALL_CARDS:        target = "(all cards)"; break;
+                default: target = ""; break;
             }
 
-            char line[128];
             if (tag_counts[t][s] > 1) {
-                snprintf(line, sizeof(line), "[+] %dx %s %s\n",
-                         tag_counts[t][s], GetCardTagName((CardTag_t)t), target_plural);
+                snprintf(lines[count].text, sizeof(lines[count].text), "%dx %s %s",
+                         tag_counts[t][s], GetCardTagName((CardTag_t)t), target);
             } else {
-                snprintf(line, sizeof(line), "[+] %s %s\n",
+                snprintf(lines[count].text, sizeof(lines[count].text), "%s %s",
                          GetCardTagName((CardTag_t)t), target);
             }
-            d_StringAppend(tooltip, line, strlen(line));
+            lines[count].sentiment = TOOLTIP_LINE_POSITIVE;  // Tags are beneficial
+            count++;
         }
     }
 
     // Tag removals
-    for (size_t i = 0; i < choice->removed_tags->count; i++) {
+    for (size_t i = 0; i < choice->removed_tags->count && count < max_lines; i++) {
         CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray(choice->removed_tags, i);
         if (!tag) continue;
 
-        char line[128];
-        snprintf(line, sizeof(line), "[-] Lose %s (all cards)\n", GetCardTagName(*tag));
-        d_StringAppend(tooltip, line, strlen(line));
+        snprintf(lines[count].text, sizeof(lines[count].text), "Lose %s (all cards)", GetCardTagName(*tag));
+        lines[count].sentiment = TOOLTIP_LINE_NEGATIVE;
+        count++;
     }
 
     // Enemy HP modifier
-    if (choice->enemy_hp_multiplier != 1.0f) {
-        char line[64];
+    if (choice->enemy_hp_multiplier != 1.0f && count < max_lines) {
         int hp_percent = (int)(choice->enemy_hp_multiplier * 100);
-        snprintf(line, sizeof(line), "%sDaemon at %d%% HP\n",
-                 choice->enemy_hp_multiplier > 1.0f ? "[-] " : "[+] ", hp_percent);
-        d_StringAppend(tooltip, line, strlen(line));
+        snprintf(lines[count].text, sizeof(lines[count].text), "Daemon at %d%% HP", hp_percent);
+        lines[count].sentiment = (choice->enemy_hp_multiplier < 1.0f) ? TOOLTIP_LINE_POSITIVE : TOOLTIP_LINE_NEGATIVE;
+        count++;
     }
 
     // Trinket reward
-    if (choice->trinket_reward_id >= 0) {
+    if (choice->trinket_reward_id >= 0 && count < max_lines) {
         Trinket_t* trinket = GetTrinketByID(choice->trinket_reward_id);
-        char line[128];
         if (trinket && trinket->name) {
-            snprintf(line, sizeof(line), "[+] Trinket: %s\n", d_StringPeek(trinket->name));
+            snprintf(lines[count].text, sizeof(lines[count].text), "Trinket: %s", d_StringPeek(trinket->name));
         } else {
-            snprintf(line, sizeof(line), "[+] Trinket (ID: %d)\n", choice->trinket_reward_id);
+            snprintf(lines[count].text, sizeof(lines[count].text), "Trinket (ID: %d)", choice->trinket_reward_id);
         }
-        d_StringAppend(tooltip, line, strlen(line));
+        lines[count].sentiment = TOOLTIP_LINE_POSITIVE;
+        count++;
     }
+
+    return count;
 }
 
 // ============================================================================
@@ -186,16 +206,20 @@ EventModal_t* CreateEventModal(void) {
     modal->current_event = NULL;
     modal->hovered_choice = -1;
     modal->selected_choice = -1;
+    modal->phase = EVENT_PHASE_CHOOSING;
+    modal->confirmed_choice = -1;
     modal->fade_in_alpha = 0.0f;
+    modal->choices_alpha = 1.0f;
+    modal->result_alpha = 0.0f;
 
     // Calculate modal position (matching RewardModal pattern)
-    int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 96;  // Match RewardModal offset
+    int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 128;  // Offset right (past deck UI)
     int modal_y = (SCREEN_HEIGHT - EVENT_MODAL_HEIGHT) / 2;
     int panel_body_y = modal_y + EVENT_MODAL_HEADER_HEIGHT;
 
     // Create FlexBox for header (vertical layout for description)
     int header_y = panel_body_y + 20;
-    modal->header_layout = a_CreateFlexBox(
+    modal->header_layout = a_FlexBoxCreate(
         modal_x + EVENT_MODAL_PADDING,
         header_y,
         EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2),
@@ -204,7 +228,7 @@ EventModal_t* CreateEventModal(void) {
 
     // Create FlexBox for choice list (vertical layout for choice buttons)
     int choice_y = header_y + 120;  // Below description area
-    modal->choice_layout = a_CreateFlexBox(
+    modal->choice_layout = a_FlexBoxCreate(
         modal_x + EVENT_MODAL_PADDING,
         choice_y,
         EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2),
@@ -213,8 +237,8 @@ EventModal_t* CreateEventModal(void) {
 
     if (!modal->header_layout || !modal->choice_layout) {
         d_LogError("Failed to create EventModal FlexBox layouts");
-        if (modal->header_layout) a_DestroyFlexBox(&modal->header_layout);
-        if (modal->choice_layout) a_DestroyFlexBox(&modal->choice_layout);
+        if (modal->header_layout) a_FlexBoxDestroy(&modal->header_layout);
+        if (modal->choice_layout) a_FlexBoxDestroy(&modal->choice_layout);
         free(modal);
         return NULL;
     }
@@ -235,10 +259,10 @@ void DestroyEventModal(EventModal_t** modal) {
 
     // Destroy FlexBox layouts
     if ((*modal)->header_layout) {
-        a_DestroyFlexBox(&(*modal)->header_layout);
+        a_FlexBoxDestroy(&(*modal)->header_layout);
     }
     if ((*modal)->choice_layout) {
-        a_DestroyFlexBox(&(*modal)->choice_layout);
+        a_FlexBoxDestroy(&(*modal)->choice_layout);
     }
 
     free(*modal);
@@ -260,7 +284,11 @@ void ShowEventModal(EventModal_t* modal, EventEncounter_t* event) {
     modal->current_event = event;  // Reference, not owned
     modal->hovered_choice = -1;
     modal->selected_choice = -1;
+    modal->phase = EVENT_PHASE_CHOOSING;  // Start in choosing phase
+    modal->confirmed_choice = -1;
     modal->fade_in_alpha = 0.0f;  // Start fade animation
+    modal->choices_alpha = 1.0f;  // Choices fully visible
+    modal->result_alpha = 0.0f;   // Result hidden
 
     d_LogInfoF("EventModal shown: %s", d_StringPeek(event->title));
 }
@@ -280,6 +308,18 @@ bool IsEventModalVisible(const EventModal_t* modal) {
 // INPUT & UPDATE
 // ============================================================================
 
+// Helper: Confirm a choice and start transition to result phase
+static void ConfirmChoice(EventModal_t* modal, int choice_index) {
+    modal->confirmed_choice = choice_index;
+    modal->selected_choice = choice_index;
+    modal->phase = EVENT_PHASE_FADE_OUT;
+
+    // Start fade-out tween for choices
+    TweenFloat(&g_tween_manager, &modal->choices_alpha, 0.0f, 0.3f, TWEEN_EASE_OUT_QUAD);
+
+    d_LogInfoF("Event choice confirmed: %d, transitioning to result", choice_index);
+}
+
 bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt) {
     if (!modal || !modal->is_visible || !modal->current_event) {
         return false;
@@ -293,101 +333,105 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
         }
     }
 
-    // Get choice count
-    int choice_count = (int)modal->current_event->choices->count;
-    if (choice_count == 0) {
-        d_LogWarning("Event has no choices!");
-        return false;
-    }
-
-    // Calculate modal bounds
-    int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 96;
-    int modal_y = (SCREEN_HEIGHT - EVENT_MODAL_HEIGHT) / 2;
-    int content_row_height = 282;  // Match rendering
-    int choice_start_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + content_row_height + 20;  // Match rendering position
-
-    // Mouse position
-    int mx = app.mouse.x;
-    int my = app.mouse.y;
-
-    // Check hover state (skip locked choices)
-    modal->hovered_choice = -1;
-    for (int i = 0; i < choice_count; i++) {
-        EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, i);
-        if (!choice) continue;
-
-        // Skip locked choices for hover
-        bool is_locked = !IsChoiceRequirementMet(&choice->requirement, player);
-        if (is_locked) {
-            // Allow hover for tooltip display, but don't enable selection
-            int choice_y = choice_start_y + i * (EVENT_CHOICE_HEIGHT + EVENT_CHOICE_SPACING);
-            int choice_x = modal_x + EVENT_MODAL_PADDING;
-            int choice_w = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
-
-            if (mx >= choice_x && mx <= choice_x + choice_w &&
-                my >= choice_y && my <= choice_y + EVENT_CHOICE_HEIGHT) {
-                modal->hovered_choice = i;  // Allow hover for tooltip
-                break;
+    // Phase-specific logic
+    switch (modal->phase) {
+        case EVENT_PHASE_CHOOSING: {
+            // Get choice count
+            int choice_count = (int)modal->current_event->choices->count;
+            if (choice_count == 0) {
+                d_LogWarning("Event has no choices!");
+                return false;
             }
-            continue;  // Don't allow selection though
-        }
 
-        int choice_y = choice_start_y + i * (EVENT_CHOICE_HEIGHT + EVENT_CHOICE_SPACING);
-        int choice_x = modal_x + EVENT_MODAL_PADDING;
-        int choice_w = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
+            // Calculate modal bounds
+            int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 128;
+            int modal_y = (SCREEN_HEIGHT - EVENT_MODAL_HEIGHT) / 2;
+            int content_row_height = 282;
+            int choice_start_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + content_row_height + 20;
 
-        if (mx >= choice_x && mx <= choice_x + choice_w &&
-            my >= choice_y && my <= choice_y + EVENT_CHOICE_HEIGHT) {
-            modal->hovered_choice = i;
+            // Mouse position
+            int mx = app.mouse.x;
+            int my = app.mouse.y;
+
+            // Check hover state
+            modal->hovered_choice = -1;
+            for (int i = 0; i < choice_count; i++) {
+                EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, i);
+                if (!choice) continue;
+
+                int choice_y = choice_start_y + i * (EVENT_CHOICE_HEIGHT + EVENT_CHOICE_SPACING);
+                int choice_x = modal_x + EVENT_MODAL_PADDING;
+                int choice_w = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
+
+                if (mx >= choice_x && mx <= choice_x + choice_w &&
+                    my >= choice_y && my <= choice_y + EVENT_CHOICE_HEIGHT) {
+                    modal->hovered_choice = i;
+                    break;
+                }
+            }
+
+            // Handle keyboard hotkeys (1, 2, 3)
+            for (int i = 0; i < choice_count && i < 3; i++) {
+                SDL_Scancode key = (i == 0) ? SDL_SCANCODE_1 : (i == 1) ? SDL_SCANCODE_2 : SDL_SCANCODE_3;
+                if (app.keyboard[key]) {
+                    app.keyboard[key] = 0;
+                    EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, i);
+                    if (choice && IsChoiceRequirementMet(&choice->requirement, player)) {
+                        ConfirmChoice(modal, i);
+                        return false;  // Don't close yet - show result first
+                    } else {
+                        d_LogInfoF("Choice %d is locked", i + 1);
+                    }
+                }
+            }
+
+            // Check for click
+            if (app.mouse.pressed && modal->hovered_choice != -1) {
+                EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, modal->hovered_choice);
+                if (choice && IsChoiceRequirementMet(&choice->requirement, player)) {
+                    ConfirmChoice(modal, modal->hovered_choice);
+                    return false;  // Don't close yet - show result first
+                } else {
+                    d_LogInfo("Clicked choice is locked");
+                }
+            }
             break;
         }
-    }
 
-    // Handle keyboard hotkeys (1, 2, 3) - block locked choices
-    if (choice_count >= 1 && app.keyboard[SDL_SCANCODE_1]) {
-        app.keyboard[SDL_SCANCODE_1] = 0;  // Clear key
-        EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, 0);
-        if (choice && IsChoiceRequirementMet(&choice->requirement, player)) {
-            modal->selected_choice = 0;
-            d_LogInfoF("Event choice selected via hotkey: 1");
-            return true;
-        } else {
-            d_LogInfo("Choice 1 is locked (requirement not met)");
-        }
-    }
-    if (choice_count >= 2 && app.keyboard[SDL_SCANCODE_2]) {
-        app.keyboard[SDL_SCANCODE_2] = 0;  // Clear key
-        EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, 1);
-        if (choice && IsChoiceRequirementMet(&choice->requirement, player)) {
-            modal->selected_choice = 1;
-            d_LogInfoF("Event choice selected via hotkey: 2");
-            return true;
-        } else {
-            d_LogInfo("Choice 2 is locked (requirement not met)");
-        }
-    }
-    if (choice_count >= 3 && app.keyboard[SDL_SCANCODE_3]) {
-        app.keyboard[SDL_SCANCODE_3] = 0;  // Clear key
-        EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, 2);
-        if (choice && IsChoiceRequirementMet(&choice->requirement, player)) {
-            modal->selected_choice = 2;
-            d_LogInfoF("Event choice selected via hotkey: 3");
-            return true;
-        } else {
-            d_LogInfo("Choice 3 is locked (requirement not met)");
-        }
-    }
+        case EVENT_PHASE_FADE_OUT:
+            // Wait for fade-out to complete
+            if (modal->choices_alpha <= 0.01f) {
+                modal->choices_alpha = 0.0f;
+                modal->phase = EVENT_PHASE_RESULT;
+                // Start fade-in for result
+                TweenFloat(&g_tween_manager, &modal->result_alpha, 1.0f, 0.4f, TWEEN_EASE_OUT_QUAD);
+                d_LogInfo("Transitioned to result phase");
+            }
+            break;
 
-    // Check for click (block locked choices)
-    if (app.mouse.pressed && modal->hovered_choice != -1) {
-        EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, modal->hovered_choice);
-        if (choice && IsChoiceRequirementMet(&choice->requirement, player)) {
-            modal->selected_choice = modal->hovered_choice;
-            d_LogInfoF("Event choice selected: %d", modal->selected_choice);
-            return true;  // Choice made, caller should close modal
-        } else {
-            d_LogInfo("Clicked choice is locked (requirement not met)");
-        }
+        case EVENT_PHASE_RESULT:
+            // Wait for result fade-in, then check for Continue input
+            if (modal->result_alpha >= 0.99f) {
+                // Check for ENTER or click to continue
+                if (app.keyboard[SDL_SCANCODE_RETURN] || app.keyboard[SDL_SCANCODE_KP_ENTER]) {
+                    app.keyboard[SDL_SCANCODE_RETURN] = 0;
+                    app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+                    modal->phase = EVENT_PHASE_COMPLETE;
+                    d_LogInfo("Result confirmed, completing event");
+                    return true;  // NOW signal to close
+                }
+
+                // Check for mouse click anywhere to continue
+                if (app.mouse.pressed) {
+                    modal->phase = EVENT_PHASE_COMPLETE;
+                    d_LogInfo("Result confirmed via click, completing event");
+                    return true;
+                }
+            }
+            break;
+
+        case EVENT_PHASE_COMPLETE:
+            return true;  // Ready to close
     }
 
     return false;
@@ -397,6 +441,160 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
 // RENDERING
 // ============================================================================
 
+/**
+ * SplitTextIntoBlocks - Split text by double newlines into separate blocks
+ *
+ * @param source - Source text with \n\n as block separators
+ * @param blocks - Output array of block strings
+ * @param max_blocks - Maximum number of blocks
+ * @param block_size - Size of each block buffer
+ * @return Number of blocks extracted
+ */
+static int SplitTextIntoBlocks(const char* source, char blocks[][512], int max_blocks, size_t block_size) {
+    if (!source || !blocks || max_blocks <= 0) return 0;
+
+    int count = 0;
+    const char* start = source;
+    const char* end;
+
+    while (*start && count < max_blocks) {
+        // Skip leading whitespace/newlines
+        while (*start == '\n' || *start == ' ') start++;
+        if (!*start) break;
+
+        // Find double newline or end of string
+        end = strstr(start, "\n\n");
+        if (!end) {
+            end = start + strlen(start);
+        }
+
+        // Copy block (strip single newlines within block)
+        size_t len = end - start;
+        if (len >= block_size) len = block_size - 1;
+
+        size_t dst_idx = 0;
+        for (size_t i = 0; i < len && dst_idx < block_size - 1; i++) {
+            if (start[i] == '\n') {
+                // Replace single newlines with space
+                if (dst_idx > 0 && blocks[count][dst_idx - 1] != ' ') {
+                    blocks[count][dst_idx++] = ' ';
+                }
+            } else {
+                blocks[count][dst_idx++] = start[i];
+            }
+        }
+        blocks[count][dst_idx] = '\0';
+
+        count++;
+        start = end;
+        if (*start) start += 2;  // Skip past \n\n
+    }
+
+    return count;
+}
+
+/**
+ * RenderEventResult - Render Phase 2: result text + reward summary
+ * Uses block-based layout like introNarrativeModal
+ */
+static void RenderEventResult(const EventModal_t* modal, int modal_x, int modal_y, Uint8 fade_alpha) {
+    if (!modal || modal->confirmed_choice < 0) return;
+
+    const EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(
+        modal->current_event->choices, modal->confirmed_choice);
+    if (!choice) return;
+
+    Uint8 result_alpha = (Uint8)(modal->result_alpha * fade_alpha);
+
+    // Content area for result
+    int content_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + EVENT_MODAL_PADDING;
+    int content_w = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
+    int text_x = modal_x + EVENT_MODAL_PADDING;
+    const int BLOCK_SPACING = 30;  // Space between narrative blocks
+
+    // Draw result narrative text as separate blocks (split by \n\n)
+    if (choice->result_text && d_StringGetLength(choice->result_text) > 0) {
+        char blocks[4][512];  // Up to 4 blocks
+        int block_count = SplitTextIntoBlocks(d_StringPeek(choice->result_text), blocks, 4, 512);
+
+        for (int i = 0; i < block_count; i++) {
+            aTextStyle_t block_config = {
+                .type = FONT_ENTER_COMMAND,
+                .fg = {COLOR_EVENT_INFO_TEXT.r, COLOR_EVENT_INFO_TEXT.g, COLOR_EVENT_INFO_TEXT.b, result_alpha},
+                .align = TEXT_ALIGN_LEFT,
+                .wrap_width = content_w,
+                .scale = 1.0f
+            };
+            a_DrawText(blocks[i], text_x, content_y, block_config);
+
+            int block_h = a_GetWrappedTextHeight(blocks[i], FONT_ENTER_COMMAND, content_w);
+            content_y += block_h + BLOCK_SPACING;
+        }
+    }
+
+    // Draw divider line
+    a_DrawFilledRect((aRectf_t){text_x, content_y, content_w, 2},
+                     (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, result_alpha});
+    content_y += 20;
+
+    // Draw "Outcome:" header
+    aTextStyle_t header_config = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = {COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b, result_alpha},
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = 0,
+        .scale = 1.2f
+    };
+    a_DrawText("Outcome:", text_x, content_y, header_config);
+    content_y += 35;
+
+    // Generate and render color-coded consequence lines
+    TooltipLine_t lines[MAX_TOOLTIP_LINES];
+    int line_count = GenerateChoiceTooltipLines(choice, lines, MAX_TOOLTIP_LINES);
+    int text_w = content_w;
+    int line_spacing = 8;
+
+    for (int i = 0; i < line_count; i++) {
+        SDL_Color line_color;
+        switch (lines[i].sentiment) {
+            case TOOLTIP_LINE_POSITIVE:
+                line_color = COLOR_TOOLTIP_POSITIVE;
+                break;
+            case TOOLTIP_LINE_NEGATIVE:
+                line_color = COLOR_TOOLTIP_NEGATIVE;
+                break;
+            default:
+                line_color = COLOR_TOOLTIP_NEUTRAL;
+                break;
+        }
+
+        aTextStyle_t line_config = {
+            .type = FONT_ENTER_COMMAND,
+            .fg = {line_color.r, line_color.g, line_color.b, result_alpha},
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = text_w,
+            .scale = 1.0f
+        };
+        a_DrawText(lines[i].text, text_x, content_y, line_config);
+
+        int line_h = a_GetWrappedTextHeight(lines[i].text, FONT_ENTER_COMMAND, text_w);
+        content_y += line_h + line_spacing;
+    }
+
+    // Draw "Click to continue" prompt at bottom
+    int prompt_y = modal_y + EVENT_MODAL_HEIGHT - 60;
+    aTextStyle_t prompt_config = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = {COLOR_EVENT_INFO_TEXT.r, COLOR_EVENT_INFO_TEXT.g, COLOR_EVENT_INFO_TEXT.b,
+                  (Uint8)(result_alpha * 0.7f)},
+        .align = TEXT_ALIGN_CENTER,
+        .wrap_width = 0,
+        .scale = 0.9f
+    };
+    a_DrawText("[ Click or press ENTER to continue ]",
+                     modal_x + EVENT_MODAL_WIDTH / 2, prompt_y, prompt_config);
+}
+
 void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
     if (!modal || !modal->is_visible || !modal->current_event) return;
 
@@ -404,231 +602,296 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
     Uint8 fade_alpha = (Uint8)(modal->fade_in_alpha * 255);
 
     // Full-screen overlay
-    a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
-                     COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b,
-                     (Uint8)(COLOR_OVERLAY.a * modal->fade_in_alpha));
+    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT},
+                     (aColor_t){COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b,
+                     (Uint8)(COLOR_OVERLAY.a * modal->fade_in_alpha)});
 
     // Modal panel (shifted 96px right from center, matching RewardModal)
-    int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 96;
+    int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 128;
     int modal_y = (SCREEN_HEIGHT - EVENT_MODAL_HEIGHT) / 2;
 
     // Draw panel body
     int panel_body_y = modal_y + EVENT_MODAL_HEADER_HEIGHT;
     int panel_body_height = EVENT_MODAL_HEIGHT - EVENT_MODAL_HEADER_HEIGHT;
-    a_DrawFilledRect(modal_x, panel_body_y, EVENT_MODAL_WIDTH, panel_body_height,
-                     COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, fade_alpha);
+    a_DrawFilledRect((aRectf_t){modal_x, panel_body_y, EVENT_MODAL_WIDTH, panel_body_height},
+                     (aColor_t){COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, fade_alpha});
 
     // Draw header
-    a_DrawFilledRect(modal_x, modal_y, EVENT_MODAL_WIDTH, EVENT_MODAL_HEADER_HEIGHT,
-                     COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, fade_alpha);
-    a_DrawRect(modal_x, modal_y, EVENT_MODAL_WIDTH, EVENT_MODAL_HEADER_HEIGHT,
-               COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, fade_alpha);
+    a_DrawFilledRect((aRectf_t){modal_x, modal_y, EVENT_MODAL_WIDTH, EVENT_MODAL_HEADER_HEIGHT},
+                     (aColor_t){COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, fade_alpha});
+    a_DrawRect((aRectf_t){modal_x, modal_y, EVENT_MODAL_WIDTH, EVENT_MODAL_HEADER_HEIGHT},
+               (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, fade_alpha});
 
     // Draw title in header (centered on modal panel)
     int title_center_x = modal_x + (EVENT_MODAL_WIDTH / 2);
-    aFontConfig_t title_config = {
+    aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = {COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b, fade_alpha},
+        .fg = {COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b, fade_alpha},
         .align = TEXT_ALIGN_CENTER,
         .wrap_width = 0,
         .scale = 1.3f
     };
-    a_DrawTextStyled((char*)d_StringPeek(modal->current_event->title),
-                     title_center_x, modal_y + 10, &title_config);
+    a_DrawText((char*)d_StringPeek(modal->current_event->title),
+                     title_center_x, modal_y, title_config);
 
-    // Content row: Two-column layout using FlexBox (like IntroNarrativeModal)
-    int content_row_y = modal_y + EVENT_MODAL_HEADER_HEIGHT;
-    int content_area_width = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
-    int content_area_height = 282;  // Taller to fill space (250 + 32px)
+    // Content area height (needed for choice positioning)
+    int content_area_height = 282;
 
-    // Create temporary FlexBox for two-column layout (image left, text right)
-    FlexBox_t* content_box = a_CreateFlexBox(
-        modal_x + EVENT_MODAL_PADDING,
-        content_row_y + EVENT_MODAL_PADDING,
-        content_area_width,
-        content_area_height - (EVENT_MODAL_PADDING * 2)
-    );
+    // Phase 1: Draw event description + image (only during CHOOSING/FADE_OUT)
+    if (modal->phase == EVENT_PHASE_CHOOSING || modal->phase == EVENT_PHASE_FADE_OUT) {
+        Uint8 content_alpha = (Uint8)(modal->choices_alpha * fade_alpha);
 
-    if (content_box) {
-        a_FlexConfigure(content_box, FLEX_DIR_ROW, FLEX_JUSTIFY_START, EVENT_MODAL_PADDING);
+        int content_row_y = modal_y + EVENT_MODAL_HEADER_HEIGHT;
+        int content_area_width = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
 
-        // Left item: Image (1/3 of content width)
-        int image_width = content_area_width / 3;
-        int image_height = content_area_height - (EVENT_MODAL_PADDING * 2);
-        a_FlexAddItem(content_box, image_width, image_height, NULL);
+        // Create temporary FlexBox for two-column layout (image left, text right)
+        FlexBox_t* content_box = a_FlexBoxCreate(
+            modal_x + EVENT_MODAL_PADDING,
+            content_row_y + EVENT_MODAL_PADDING,
+            content_area_width,
+            content_area_height - (EVENT_MODAL_PADDING * 2)
+        );
 
-        // Right item: Description text (fills remaining space)
-        int text_width = content_area_width - image_width - EVENT_MODAL_PADDING;
-        a_FlexAddItem(content_box, text_width, image_height, NULL);
+        if (content_box) {
+            a_FlexConfigure(content_box, FLEX_DIR_ROW, FLEX_JUSTIFY_START, EVENT_MODAL_PADDING);
 
-        // Calculate layout
-        a_FlexLayout(content_box);
+            // Left item: Image (1/3 of content width)
+            int image_width = content_area_width / 3;
+            int image_height = content_area_height - (EVENT_MODAL_PADDING * 2);
+            a_FlexAddItem(content_box, image_width, image_height, NULL);
 
-        // Draw image placeholder using FlexBox position
-        const FlexItem_t* image_item = a_FlexGetItem(content_box, 0);
-        if (image_item) {
-            a_DrawFilledRect(image_item->calc_x, image_item->calc_y,
-                           image_item->w, image_item->h,
-                           0, 0, 0, fade_alpha);
-        }
+            // Right item: Description text (fills remaining space)
+            int text_width = content_area_width - image_width - EVENT_MODAL_PADDING;
+            a_FlexAddItem(content_box, text_width, image_height, NULL);
 
-        // Draw description text using FlexBox position
-        const FlexItem_t* text_item = a_FlexGetItem(content_box, 1);
-        if (text_item) {
-            // Preprocess description text (strip newlines for proper wrapping)
-            char processed_desc[2048];
-            StripNewlinesFromText(d_StringPeek(modal->current_event->description),
-                                processed_desc, sizeof(processed_desc));
+            // Calculate layout
+            a_FlexLayout(content_box);
 
-            aFontConfig_t desc_config = {
-                .type = FONT_ENTER_COMMAND,
-                .color = {COLOR_EVENT_INFO_TEXT.r, COLOR_EVENT_INFO_TEXT.g, COLOR_EVENT_INFO_TEXT.b, fade_alpha},
-                .align = TEXT_ALIGN_LEFT,
-                .wrap_width = text_item->w,  // Use FlexBox calculated width (no +100 hack!)
-                .scale = 0.85f
-            };
-            a_DrawTextStyled(processed_desc, text_item->calc_x, text_item->calc_y, &desc_config);
-        }
-
-        // Cleanup temporary FlexBox
-        a_DestroyFlexBox(&content_box);
-    }
-
-    // Draw choice buttons (pushed down below the taller content row)
-    int choice_count = (int)modal->current_event->choices->count;
-    int choice_start_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + content_area_height + 20;
-
-    for (int i = 0; i < choice_count; i++) {
-        EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, i);
-        if (!choice || !choice->text) continue;
-
-        int choice_y = choice_start_y + i * (EVENT_CHOICE_HEIGHT + EVENT_CHOICE_SPACING);
-        int choice_x = modal_x + EVENT_MODAL_PADDING;
-        int choice_w = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
-
-        // Check if choice is locked (requirement not met)
-        bool is_locked = !IsChoiceRequirementMet(&choice->requirement, player);
-
-        // Background (gray if locked, highlight if hovered, normal otherwise)
-        SDL_Color bg_color = COLOR_CHOICE_BG;
-        if (is_locked) {
-            bg_color = COLOR_CHOICE_LOCKED;
-        } else if (modal->hovered_choice == i) {
-            bg_color = COLOR_CHOICE_HOVER;
-        }
-        a_DrawFilledRect(choice_x, choice_y, choice_w, EVENT_CHOICE_HEIGHT,
-                         bg_color.r, bg_color.g, bg_color.b, fade_alpha);
-        a_DrawRect(choice_x, choice_y, choice_w, EVENT_CHOICE_HEIGHT,
-                   COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, fade_alpha);
-
-        // Big number hotkey OR lock icon (left side, matching RewardModal style)
-        int number_x = choice_x + 25;
-        int number_y = choice_y + (EVENT_CHOICE_HEIGHT / 2) - 20;
-
-        if (is_locked) {
-            // Draw lock icon (🔒 unicode character)
-            aFontConfig_t lock_font = {
-                .type = FONT_GAME,
-                .align = TEXT_ALIGN_LEFT,
-                .scale = 2.5f,
-                .color = {COLOR_LOCKED_TEXT.r, COLOR_LOCKED_TEXT.g, COLOR_LOCKED_TEXT.b, fade_alpha}
-            };
-            a_DrawTextStyled("🔒", number_x, number_y + 5, &lock_font);
-        } else {
-            // Draw number hotkey
-            dString_t* number_str = d_StringInit();
-            d_StringFormat(number_str, "%d", i + 1);
-
-            aFontConfig_t number_font = {
-                .type = FONT_GAME,
-                .align = TEXT_ALIGN_LEFT,
-                .scale = 3.0f,  // Big like RewardModal
-                .color = {255, 255, 255, (Uint8)(fade_alpha * 0.6f)}  // White 60% opacity
-            };
-            a_DrawTextStyled(d_StringPeek(number_str), number_x, number_y, &number_font);
-            d_StringDestroy(number_str);
-        }
-
-        // Choice text (left-aligned, shifted right to make room for number)
-        int text_padding = 75;  // Shifted right for number space
-        SDL_Color text_color = is_locked ? COLOR_LOCKED_TEXT : (SDL_Color){255, 255, 255, 255};
-        aFontConfig_t choice_text_config = {
-            .type = FONT_ENTER_COMMAND,
-            .color = {text_color.r, text_color.g, text_color.b, fade_alpha},
-            .align = TEXT_ALIGN_LEFT,
-            .wrap_width = choice_w - text_padding - 20,
-            .scale = 1.0f
-        };
-        a_DrawTextStyled((char*)d_StringPeek(choice->text),
-                         choice_x + text_padding, choice_y + 10, &choice_text_config);
-    }
-
-    // Render tooltip AFTER all choices (so it's on top / higher z-order)
-    if (modal->hovered_choice >= 0 && modal->hovered_choice < (int)modal->current_event->choices->count) {
-        const EventChoice_t* hovered = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, modal->hovered_choice);
-        bool hovered_locked = !IsChoiceRequirementMet(&hovered->requirement, player);
-
-        // Generate tooltip text
-        dString_t* tooltip = d_StringInit();
-
-        if (hovered_locked) {
-            // Locked: show requirement
-            GetRequirementTooltip(&hovered->requirement, tooltip);
-        } else {
-            // Unlocked: show consequences (rewards/risks)
-            GenerateChoiceTooltip(hovered, tooltip);
-        }
-
-        // Only render if we have content
-        if (d_StringGetLength(tooltip) > 0) {
-            // Strip newlines for proper Archimedes wrapping (like introNarrativeModal)
-            char processed_tooltip[1024];
-            StripNewlinesFromText(d_StringPeek(tooltip), processed_tooltip, sizeof(processed_tooltip));
-
-            // Tooltip sizing
-            int tooltip_padding = 12;
-            int text_w = 350;  // Content width for text wrapping
-
-            // Use Archimedes to calculate actual wrapped text height
-            int text_h = a_GetWrappedTextHeight(processed_tooltip, FONT_ENTER_COMMAND, text_w);
-
-            int tooltip_w = text_w + (tooltip_padding * 2);
-            int tooltip_h = text_h + (tooltip_padding * 2);
-            if (tooltip_h < 40) tooltip_h = 40;  // Minimum height
-
-            // Position near mouse cursor
-            int mx = app.mouse.x;
-            int my = app.mouse.y;
-            int tooltip_x = mx + 15;
-            int tooltip_y = my + 15;
-
-            // Clamp tooltip to screen bounds
-            if (tooltip_x + tooltip_w > SCREEN_WIDTH) {
-                tooltip_x = mx - tooltip_w - 15;
-            }
-            if (tooltip_y + tooltip_h > SCREEN_HEIGHT) {
-                tooltip_y = my - tooltip_h - 15;
+            // Draw image placeholder using FlexBox position
+            const FlexItem_t* image_item = a_FlexGetItem(content_box, 0);
+            if (image_item) {
+                a_DrawFilledRect((aRectf_t){image_item->calc_x, image_item->calc_y,
+                               image_item->w, image_item->h},
+                               (aColor_t){0, 0, 0, content_alpha});
             }
 
-            // Draw tooltip background
-            a_DrawFilledRect(tooltip_x, tooltip_y, tooltip_w, tooltip_h,
-                            COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, 250);
-            a_DrawRect(tooltip_x, tooltip_y, tooltip_w, tooltip_h,
-                       COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, 255);
+            // Draw description text using FlexBox position
+            const FlexItem_t* text_item = a_FlexGetItem(content_box, 1);
+            if (text_item) {
+                // Preprocess description text (strip newlines for proper wrapping)
+                char processed_desc[2048];
+                StripNewlinesFromText(d_StringPeek(modal->current_event->description),
+                                    processed_desc, sizeof(processed_desc));
 
-            // Draw tooltip text with proper wrap_width (like introNarrativeModal)
-            aFontConfig_t tooltip_config = {
+                aTextStyle_t desc_config = {
+                    .type = FONT_ENTER_COMMAND,
+                    .fg = {COLOR_EVENT_INFO_TEXT.r, COLOR_EVENT_INFO_TEXT.g, COLOR_EVENT_INFO_TEXT.b, content_alpha},
+                    .align = TEXT_ALIGN_LEFT,
+                    .wrap_width = text_item->w,
+                    .scale = 0.85f
+                };
+                a_DrawText(processed_desc, text_item->calc_x, text_item->calc_y, desc_config);
+            }
+
+            // Cleanup temporary FlexBox
+            a_FlexBoxDestroy(&content_box);
+        }
+    } else if (modal->phase == EVENT_PHASE_RESULT || modal->phase == EVENT_PHASE_COMPLETE) {
+        // Phase 2: Darken the panel body further for result screen
+        int panel_body_y_inner = modal_y + EVENT_MODAL_HEADER_HEIGHT;
+        int panel_body_height_inner = EVENT_MODAL_HEIGHT - EVENT_MODAL_HEADER_HEIGHT;
+        a_DrawFilledRect((aRectf_t){modal_x, panel_body_y_inner, EVENT_MODAL_WIDTH, panel_body_height_inner},
+                         (aColor_t){0, 0, 0, (Uint8)(150 * modal->result_alpha)});  // Extra dark overlay
+    }
+
+    // Phase-specific rendering
+    if (modal->phase == EVENT_PHASE_CHOOSING || modal->phase == EVENT_PHASE_FADE_OUT) {
+        // PHASE 1: Draw choice buttons (with fade-out alpha during transition)
+        Uint8 choices_alpha_scaled = (Uint8)(modal->choices_alpha * fade_alpha);
+
+        int choice_count = (int)modal->current_event->choices->count;
+        int choice_start_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + content_area_height + 20;
+
+        for (int i = 0; i < choice_count; i++) {
+            EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, i);
+            if (!choice || !choice->text) continue;
+
+            int choice_y = choice_start_y + i * (EVENT_CHOICE_HEIGHT + EVENT_CHOICE_SPACING);
+            int choice_x = modal_x + EVENT_MODAL_PADDING;
+            int choice_w = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
+
+            // Check if choice is locked (requirement not met)
+            bool is_locked = !IsChoiceRequirementMet(&choice->requirement, player);
+
+            // Background (gray if locked, highlight if hovered, normal otherwise)
+            SDL_Color bg_color = COLOR_CHOICE_BG;
+            if (is_locked) {
+                bg_color = COLOR_CHOICE_LOCKED;
+            } else if (modal->hovered_choice == i) {
+                bg_color = COLOR_CHOICE_HOVER;
+            }
+            a_DrawFilledRect((aRectf_t){choice_x, choice_y, choice_w, EVENT_CHOICE_HEIGHT},
+                             (aColor_t){bg_color.r, bg_color.g, bg_color.b, choices_alpha_scaled});
+            a_DrawRect((aRectf_t){choice_x, choice_y, choice_w, EVENT_CHOICE_HEIGHT},
+                       (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, choices_alpha_scaled});
+
+            // Big number hotkey OR lock icon (left side, matching RewardModal style)
+            int number_x = choice_x + 25;
+            int number_y = choice_y + (EVENT_CHOICE_HEIGHT / 2) - 20;
+
+            if (is_locked) {
+                // Draw lock icon (🔒 unicode character)
+                aTextStyle_t lock_font = {
+                    .type = FONT_GAME,
+                    .align = TEXT_ALIGN_LEFT,
+                    .scale = 2.5f,
+                    .fg = {COLOR_LOCKED_TEXT.r, COLOR_LOCKED_TEXT.g, COLOR_LOCKED_TEXT.b, choices_alpha_scaled}
+                };
+                a_DrawText("🔒", number_x, number_y + 5, lock_font);
+            } else {
+                // Draw number hotkey
+                dString_t* number_str = d_StringInit();
+                d_StringFormat(number_str, "%d", i + 1);
+
+                aTextStyle_t number_font = {
+                    .type = FONT_GAME,
+                    .align = TEXT_ALIGN_LEFT,
+                    .scale = 3.0f,  // Big like RewardModal
+                    .fg = {255, 255, 255, (Uint8)(choices_alpha_scaled * 0.6f)}  // White 60% opacity
+                };
+                a_DrawText(d_StringPeek(number_str), number_x, number_y, number_font);
+                d_StringDestroy(number_str);
+            }
+
+            // Choice text (left-aligned, shifted right to make room for number)
+            int text_padding = 75;  // Shifted right for number space
+            SDL_Color text_color = is_locked ? COLOR_LOCKED_TEXT : (SDL_Color){255, 255, 255, 255};
+            aTextStyle_t choice_text_config = {
                 .type = FONT_ENTER_COMMAND,
-                .color = {COLOR_EVENT_INFO_TEXT.r, COLOR_EVENT_INFO_TEXT.g, COLOR_EVENT_INFO_TEXT.b, 255},
+                .fg = {text_color.r, text_color.g, text_color.b, choices_alpha_scaled},
                 .align = TEXT_ALIGN_LEFT,
-                .wrap_width = text_w,
+                .wrap_width = choice_w - text_padding - 20,
                 .scale = 1.0f
             };
-            a_DrawTextStyled(processed_tooltip,
-                            tooltip_x + tooltip_padding, tooltip_y + tooltip_padding, &tooltip_config);
+            a_DrawText((char*)d_StringPeek(choice->text),
+                             choice_x + text_padding, choice_y + 10, choice_text_config);
         }
 
-        d_StringDestroy(tooltip);
+        // Render tooltip AFTER all choices (so it's on top / higher z-order)
+        // Only during CHOOSING phase (not during fade-out)
+        if (modal->phase == EVENT_PHASE_CHOOSING &&
+            modal->hovered_choice >= 0 && modal->hovered_choice < (int)modal->current_event->choices->count) {
+            const EventChoice_t* hovered = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, modal->hovered_choice);
+            bool hovered_locked = !IsChoiceRequirementMet(&hovered->requirement, player);
+
+            // Tooltip sizing constants
+            int tooltip_padding = 12;
+            int text_w = 320;
+            int line_spacing = 6;
+
+            if (hovered_locked) {
+                // Locked: show requirement (single gray text)
+                dString_t* tooltip = d_StringInit();
+                GetRequirementTooltip(&hovered->requirement, tooltip);
+
+                if (d_StringGetLength(tooltip) > 0) {
+                    char processed[512];
+                    StripNewlinesFromText(d_StringPeek(tooltip), processed, sizeof(processed));
+
+                    int text_h = a_GetWrappedTextHeight(processed, FONT_ENTER_COMMAND, text_w);
+                    int tooltip_w = text_w + (tooltip_padding * 2);
+                    int tooltip_h = text_h + (tooltip_padding * 2);
+                    if (tooltip_h < 40) tooltip_h = 40;
+
+                    int mx = app.mouse.x;
+                    int my = app.mouse.y;
+                    int tooltip_x = mx + 15;
+                    int tooltip_y = my + 15;
+
+                    if (tooltip_x + tooltip_w > SCREEN_WIDTH) tooltip_x = mx - tooltip_w - 15;
+                    if (tooltip_y + tooltip_h > SCREEN_HEIGHT) tooltip_y = my - tooltip_h - 15;
+
+                    a_DrawFilledRect((aRectf_t){tooltip_x, tooltip_y, tooltip_w, tooltip_h},
+                                    (aColor_t){COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, 250});
+                    a_DrawRect((aRectf_t){tooltip_x, tooltip_y, tooltip_w, tooltip_h},
+                               (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, 255});
+
+                    aTextStyle_t config = {
+                        .type = FONT_ENTER_COMMAND,
+                        .fg = {COLOR_LOCKED_TEXT.r, COLOR_LOCKED_TEXT.g, COLOR_LOCKED_TEXT.b, 255},
+                        .align = TEXT_ALIGN_LEFT,
+                        .wrap_width = text_w,
+                        .scale = 1.0f
+                    };
+                    a_DrawText(processed, tooltip_x + tooltip_padding, tooltip_y + tooltip_padding, config);
+                }
+                d_StringDestroy(tooltip);
+            } else {
+                // Unlocked: show color-coded consequence lines
+                TooltipLine_t lines[MAX_TOOLTIP_LINES];
+                int line_count = GenerateChoiceTooltipLines(hovered, lines, MAX_TOOLTIP_LINES);
+
+                if (line_count > 0) {
+                    // Calculate total height (each line height + spacing)
+                    int total_h = 0;
+                    int line_heights[MAX_TOOLTIP_LINES];
+                    for (int i = 0; i < line_count; i++) {
+                        line_heights[i] = a_GetWrappedTextHeight(lines[i].text, FONT_ENTER_COMMAND, text_w);
+                        total_h += line_heights[i];
+                        if (i < line_count - 1) total_h += line_spacing;
+                    }
+
+                    int tooltip_w = text_w + (tooltip_padding * 2);
+                    int tooltip_h = total_h + (tooltip_padding * 2);
+                    if (tooltip_h < 40) tooltip_h = 40;
+
+                    int mx = app.mouse.x;
+                    int my = app.mouse.y;
+                    int tooltip_x = mx + 15;
+                    int tooltip_y = my + 15;
+
+                    if (tooltip_x + tooltip_w > SCREEN_WIDTH) tooltip_x = mx - tooltip_w - 15;
+                    if (tooltip_y + tooltip_h > SCREEN_HEIGHT) tooltip_y = my - tooltip_h - 15;
+
+                    // Draw background
+                    a_DrawFilledRect((aRectf_t){tooltip_x, tooltip_y, tooltip_w, tooltip_h},
+                                    (aColor_t){COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, 250});
+                    a_DrawRect((aRectf_t){tooltip_x, tooltip_y, tooltip_w, tooltip_h},
+                               (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, 255});
+
+                    // Draw each line with its sentiment color
+                    int current_y = tooltip_y + tooltip_padding;
+                    for (int i = 0; i < line_count; i++) {
+                        SDL_Color line_color;
+                        switch (lines[i].sentiment) {
+                            case TOOLTIP_LINE_POSITIVE:
+                                line_color = COLOR_TOOLTIP_POSITIVE;
+                                break;
+                            case TOOLTIP_LINE_NEGATIVE:
+                                line_color = COLOR_TOOLTIP_NEGATIVE;
+                                break;
+                            default:
+                                line_color = COLOR_TOOLTIP_NEUTRAL;
+                                break;
+                        }
+
+                        aTextStyle_t config = {
+                            .type = FONT_ENTER_COMMAND,
+                            .fg = {line_color.r, line_color.g, line_color.b, 255},
+                            .align = TEXT_ALIGN_LEFT,
+                            .wrap_width = text_w,
+                            .scale = 1.0f
+                        };
+                        a_DrawText(lines[i].text, tooltip_x + tooltip_padding, current_y, config);
+
+                        current_y += line_heights[i] + line_spacing;
+                    }
+                }
+            }
+        }
+    } else if (modal->phase == EVENT_PHASE_RESULT || modal->phase == EVENT_PHASE_COMPLETE) {
+        // PHASE 2: Draw result text + reward summary
+        RenderEventResult(modal, modal_x, modal_y, fade_alpha);
     }
 }
 

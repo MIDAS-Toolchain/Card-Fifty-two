@@ -151,18 +151,16 @@ void RenderSidebarButton(const SidebarButton_t* button, const char* count_text) 
     }
 
     // Draw filled rectangle
-    a_DrawFilledRect(button->x, button->y, button->w, button->h,
-                     bg_color.r, bg_color.g, bg_color.b, bg_color.a);
+    a_DrawFilledRect((aRectf_t){button->x, button->y, button->w, button->h}, bg_color);
 
     // Draw selection overlay if arrow-key selected (~25% opacity)
     if (button->is_selected && button->enabled) {
-        a_DrawFilledRect(button->x, button->y, button->w, button->h,
-                         COLOR_INDICATOR.r, COLOR_INDICATOR.g, COLOR_INDICATOR.b, 64);
+        a_DrawFilledRect((aRectf_t){button->x, button->y, button->w, button->h},
+                         (aColor_t){COLOR_INDICATOR.r, COLOR_INDICATOR.g, COLOR_INDICATOR.b, 64});
     }
 
     // Draw border
-    a_DrawRect(button->x, button->y, button->w, button->h,
-               COLOR_BORDER.r, COLOR_BORDER.g, COLOR_BORDER.b, COLOR_BORDER.a);
+    a_DrawRect((aRectf_t){button->x, button->y, button->w, button->h}, COLOR_BORDER);
 
     // Calculate center positions
     int center_x = button->x + button->w / 2;
@@ -171,14 +169,12 @@ void RenderSidebarButton(const SidebarButton_t* button, const char* count_text) 
 
     // Draw main label (centered)
     a_DrawText((char*)button->label, center_x, label_y,
-               COLOR_TEXT.r, COLOR_TEXT.g, COLOR_TEXT.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_TEXT.r,COLOR_TEXT.g,COLOR_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Draw count text if provided (centered, smaller/lighter color)
     if (count_text && count_text[0] != '\0') {
         a_DrawText((char*)count_text, center_x, count_y,
-                   COLOR_COUNT_TEXT.r, COLOR_COUNT_TEXT.g, COLOR_COUNT_TEXT.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_COUNT_TEXT.r,COLOR_COUNT_TEXT.g,COLOR_COUNT_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
     // Draw hotkey in bottom-right corner if present (moved up 12px for visibility)
@@ -186,7 +182,6 @@ void RenderSidebarButton(const SidebarButton_t* button, const char* count_text) 
         int hotkey_x = button->x + button->w - SIDEBAR_BUTTON_HOTKEY_PADDING;
         int hotkey_y = button->y + button->h - SIDEBAR_BUTTON_HOTKEY_PADDING - 12;
         a_DrawText((char*)button->hotkey_hint, hotkey_x, hotkey_y,
-                   COLOR_HOTKEY_TEXT.r, COLOR_HOTKEY_TEXT.g, COLOR_HOTKEY_TEXT.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_RIGHT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_HOTKEY_TEXT.r,COLOR_HOTKEY_TEXT.g,COLOR_HOTKEY_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_RIGHT, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 }

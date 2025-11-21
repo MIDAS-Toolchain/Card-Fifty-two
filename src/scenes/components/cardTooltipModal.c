@@ -140,12 +140,12 @@ void RenderCardTooltipModal(const CardTooltipModal_t* modal) {
     }
 
     // Draw background (dark with transparency)
-    a_DrawFilledRect(x, y, CARD_TOOLTIP_WIDTH, modal_height,
-                    20, 20, 30, 230);
+    a_DrawFilledRect((aRectf_t){x, y, CARD_TOOLTIP_WIDTH, modal_height},
+                    (aColor_t){20, 20, 30, 230});
 
     // Draw border
-    a_DrawRect(x, y, CARD_TOOLTIP_WIDTH, modal_height,
-              255, 255, 255, 255);
+    a_DrawRect((aRectf_t){x, y, CARD_TOOLTIP_WIDTH, modal_height},
+              (aColor_t){255, 255, 255, 255});
 
     // Now draw content on top
     int content_x = x + padding;
@@ -153,19 +153,19 @@ void RenderCardTooltipModal(const CardTooltipModal_t* modal) {
     current_y = content_y;
 
     // Title (card name) - gold, centered
-    aFontConfig_t title_config = {
+    aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = {232, 193, 112, 255},  // Gold
+        .fg = {232, 193, 112, 255},  // Gold
         .align = TEXT_ALIGN_CENTER,
         .wrap_width = content_width,
         .scale = 1.0f
     };
-    a_DrawTextStyled((char*)name, content_x + content_width / 2, current_y, &title_config);
+    a_DrawText((char*)name, content_x + content_width / 2, current_y, title_config);
     current_y += title_height + 10;  // Actual measured height + margin
 
     // Divider
-    a_DrawFilledRect(content_x, current_y, content_width, 1,
-                    100, 100, 100, 200);
+    a_DrawFilledRect((aRectf_t){content_x, current_y, content_width, 1},
+                    (aColor_t){100, 100, 100, 200});
     current_y += 12;  // Spacing around divider
 
     // Tags
@@ -182,40 +182,40 @@ void RenderCardTooltipModal(const CardTooltipModal_t* modal) {
             // Tag name with colored background (full width)
             int tag_badge_w = content_width;
             int tag_badge_h = 30;
-            a_DrawFilledRect(content_x, current_y, tag_badge_w, tag_badge_h, r, g, b, 255);
-            a_DrawRect(content_x, current_y, tag_badge_w, tag_badge_h, 0, 0, 0, 255);
+            a_DrawFilledRect((aRectf_t){content_x, current_y, tag_badge_w, tag_badge_h}, (aColor_t){r, g, b, 255});
+            a_DrawRect((aRectf_t){content_x, current_y, tag_badge_w, tag_badge_h}, (aColor_t){0, 0, 0, 255});
 
-            aFontConfig_t tag_name_config = {
+            aTextStyle_t tag_name_config = {
                 .type = FONT_ENTER_COMMAND,
-                .color = {0, 0, 0, 255},  // Black text
+                .fg = {0, 0, 0, 255},  // Black text
                 .align = TEXT_ALIGN_CENTER,
                 .scale = 1.1f
             };
-            a_DrawTextStyled(tag_name, content_x + tag_badge_w / 2, current_y - 8, &tag_name_config);
+            a_DrawText(tag_name, content_x + tag_badge_w / 2, current_y - 8, tag_name_config);
             current_y += tag_badge_h + 12;
 
             // Tag description (word-wrapped, gray text)
             int desc_height = a_GetWrappedTextHeight((char*)tag_desc, FONT_GAME, content_width);
 
-            aFontConfig_t desc_config = {
+            aTextStyle_t desc_config = {
                 .type = FONT_GAME,
-                .color = {180, 180, 180, 255},
+                .fg = {180, 180, 180, 255},
                 .align = TEXT_ALIGN_LEFT,
                 .wrap_width = content_width,
                 .scale = 1.0f
             };
-            a_DrawTextStyled((char*)tag_desc, content_x, current_y, &desc_config);
+            a_DrawText((char*)tag_desc, content_x, current_y, desc_config);
             current_y += desc_height + 12;  // Gap between tags
         }
     } else {
         // No tags message
-        aFontConfig_t no_tags_config = {
+        aTextStyle_t no_tags_config = {
             .type = FONT_GAME,
-            .color = {150, 150, 150, 255},
+            .fg = {150, 150, 150, 255},
             .align = TEXT_ALIGN_CENTER,
             .scale = 0.9f
         };
-        a_DrawTextStyled("No tags", content_x + content_width / 2, current_y, &no_tags_config);
+        a_DrawText("No tags", content_x + content_width / 2, current_y, no_tags_config);
     }
 
     d_StringDestroy(card_name);

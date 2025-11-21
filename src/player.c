@@ -347,8 +347,8 @@ bool LoadPlayerPortrait(Player_t* player, const char* filename) {
         return false;
     }
 
-    // Load image as surface using Archimedes
-    SDL_Surface* surface = a_Image(filename);
+    // Load image as surface using SDL_image
+    SDL_Surface* surface = IMG_Load(filename);
     if (!surface) {
         d_LogError("LoadPlayerPortrait: Failed to load image");
         return false;
@@ -359,38 +359,19 @@ bool LoadPlayerPortrait(Player_t* player, const char* filename) {
         SDL_FreeSurface(player->portrait_surface);
     }
 
-    // Free existing texture if any
-    if (player->portrait_texture) {
-        SDL_DestroyTexture(player->portrait_texture);
-        player->portrait_texture = NULL;
-    }
-
-    // Store surface and mark as dirty
+    // Store surface (no texture needed - we use surfaces directly now)
     player->portrait_surface = surface;
-    player->portrait_dirty = true;
+    player->portrait_dirty = false;  // Mark as clean since we just loaded it
 
     d_LogInfoF("Loaded portrait for %s: %s", d_StringPeek(player->name), filename);
     return true;
 }
 
 void RefreshPlayerPortraitTexture(Player_t* player) {
-    if (!player || !player->portrait_surface) return;
-
-    // Free existing texture
-    if (player->portrait_texture) {
-        SDL_DestroyTexture(player->portrait_texture);
-        player->portrait_texture = NULL;
+    // No-op: We use surfaces directly now, no texture conversion needed
+    if (player) {
+        player->portrait_dirty = false;
     }
-
-    // Convert surface to texture using Archimedes (destroy=0, we own the surface)
-    player->portrait_texture = a_ToTexture(player->portrait_surface, 0);
-    if (!player->portrait_texture) {
-        d_LogError("RefreshPlayerPortraitTexture: Failed to create texture");
-        return;
-    }
-
-    // Clear dirty flag
-    player->portrait_dirty = false;
 
     d_LogInfo("Player portrait texture refreshed");
 }

@@ -42,7 +42,7 @@ ActionPanel_t* CreateActionPanel(const char* instruction, Button_t** buttons, in
     // - Parent FlexBox (main_layout) calculates Y position each frame
     // - RenderActionPanel() receives Y and calls a_FlexSetBounds() to reposition
     // - Child FlexBox (button_row) then calculates button positions
-    panel->button_row = a_CreateFlexBox(0, 0, SCREEN_WIDTH, BUTTON_ROW_HEIGHT);
+    panel->button_row = a_FlexBoxCreate(0, 0, SCREEN_WIDTH, BUTTON_ROW_HEIGHT);
     a_FlexConfigure(panel->button_row, FLEX_DIR_ROW, FLEX_JUSTIFY_START, BUTTON_GAP);
 
     // Add buttons to FlexBox (determine size based on first button)
@@ -66,7 +66,7 @@ void DestroyActionPanel(ActionPanel_t** panel) {
 
     // Destroy FlexBox (but NOT buttons - caller owns them)
     if ((*panel)->button_row) {
-        a_DestroyFlexBox(&(*panel)->button_row);
+        a_FlexBoxDestroy(&(*panel)->button_row);
     }
 
     free(*panel);
@@ -143,14 +143,14 @@ void RenderActionPanel(ActionPanel_t* panel, int y) {
     int text_y = y + ACTION_PANEL_Y_OFFSET - 40;
 
     // Draw instruction text (bright white)
-    aFontConfig_t instruction_config = {
+    aTextStyle_t instruction_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = {255, 255, 255, 255},  // Bright white
+        .fg = {255, 255, 255, 255},  // Bright white
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = 0,
         .scale = 1.0f
     };
-    a_DrawTextStyled(panel->instruction_text, text_x, text_y, &instruction_config);
+    a_DrawText(panel->instruction_text, text_x, text_y, instruction_config);
 
     // Only render buttons if panel has them
     if (!panel->button_row || panel->button_count == 0) return;

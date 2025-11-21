@@ -191,7 +191,7 @@ void State_Transition(GameContext_t* game, GameState_t new_state) {
 
         case STATE_COMBAT_VICTORY:
             // Play victory sound
-            a_PlaySoundEffect(&g_victory_sound);
+            a_AudioPlayEffect(&g_victory_sound);
             d_LogInfo("Victory sound played!");
             break;
 

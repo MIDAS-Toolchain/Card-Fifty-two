@@ -172,11 +172,11 @@ void RenderMenuItem(const MenuItem_t* item) {
 
         // Arrow-key selected: yellow background (~25% opacity)
         if (item->is_selected) {
-            a_DrawFilledRect(left, top, width, height, 232, 193, 112, 64);  // #e8c170
+            a_DrawFilledRect((aRectf_t){left, top, width, height}, (aColor_t){232, 193, 112, 64});  // #e8c170
         }
         // Mouse hover (but not selected): white background (~10% opacity)
         else if (item->is_hovered) {
-            a_DrawFilledRect(left, top, width, height, 255, 255, 255, 25);
+            a_DrawFilledRect((aRectf_t){left, top, width, height}, (aColor_t){255, 255, 255, 25});
         }
     }
 
@@ -201,20 +201,17 @@ void RenderMenuItem(const MenuItem_t* item) {
         int indicator_x = item->x - (text_w / 2) - indicator_gap;
 
         a_DrawText(">", indicator_x, item->y,
-                   COLOR_INDICATOR.r, COLOR_INDICATOR.g, COLOR_INDICATOR.b,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_RIGHT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_INDICATOR.r,COLOR_INDICATOR.g,COLOR_INDICATOR.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_RIGHT, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
     // Draw label (centered at item position)
     a_DrawText((char*)item->label, item->x, item->y,
-               text_color.r, text_color.g, text_color.b,
-               FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={text_color.r,text_color.g,text_color.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Draw hotkey hint if present
     if (item->hotkey[0] != '\0' && item->enabled) {
         int hotkey_x = item->x + 150;  // To the right of label
         a_DrawText((char*)item->hotkey, hotkey_x, item->y,
-                   150, 150, 150,
-                   FONT_ENTER_COMMAND, TEXT_ALIGN_LEFT, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={150,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 }

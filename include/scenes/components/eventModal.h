@@ -10,12 +10,24 @@
 // ============================================================================
 
 // Layout constants (matching rewardModal design pattern)
-#define EVENT_MODAL_WIDTH          900
+#define EVENT_MODAL_WIDTH          996
 #define EVENT_MODAL_HEIGHT         700
 #define EVENT_MODAL_HEADER_HEIGHT  50
 #define EVENT_MODAL_PADDING        30
 #define EVENT_CHOICE_HEIGHT        90
 #define EVENT_CHOICE_SPACING       10
+
+/**
+ * EventModalPhase_t - Animation/interaction phases for event modal
+ *
+ * Flow: CHOOSING → FADE_OUT → RESULT → COMPLETE
+ */
+typedef enum {
+    EVENT_PHASE_CHOOSING,    // Phase 1: Showing choices, waiting for selection
+    EVENT_PHASE_FADE_OUT,    // Transition: Fading out choices
+    EVENT_PHASE_RESULT,      // Phase 2: Showing result text + reward summary
+    EVENT_PHASE_COMPLETE     // Ready to exit modal
+} EventModalPhase_t;
 
 /**
  * EventModal_t - Modal for displaying event encounters (overlays on blackjack scene)
@@ -45,8 +57,14 @@ typedef struct EventModal {
     int hovered_choice;                 // -1 = none, 0-N = hovered choice index
     int selected_choice;                // -1 = none, 0-N = confirmed selection
 
+    // Phase system (multi-phase modal like RewardModal)
+    EventModalPhase_t phase;            // Current phase
+    int confirmed_choice;               // Which choice was confirmed (-1 = none)
+
     // Animation state
     float fade_in_alpha;                // 0.0 → 1.0 on show
+    float choices_alpha;                // 1.0 → 0.0 fade out choices
+    float result_alpha;                 // 0.0 → 1.0 fade in result
 } EventModal_t;
 
 // ============================================================================

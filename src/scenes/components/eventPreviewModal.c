@@ -150,17 +150,17 @@ void RenderEventPreviewModal(const EventPreviewModal_t* modal, const GameContext
     if (!modal || !modal->is_visible) return;
 
     // Draw dark overlay (full screen, 70% opacity)
-    a_DrawFilledRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0, 178);  // 178 = 0.7 * 255
+    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 178});  // 178 = 0.7 * 255
 
     // Draw centered event title with fade
-    aFontConfig_t title_config = {
+    aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = {255, 255, 255, (Uint8)(modal->title_alpha * 255)},  // White with fade
+        .fg = {255, 255, 255, (Uint8)(modal->title_alpha * 255)},  // White with fade
         .align = TEXT_ALIGN_CENTER,
         .wrap_width = 800,  // Wrap long titles
         .scale = 1.5f       // Larger text for emphasis
     };
-    a_DrawTextStyled(modal->event_title, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 100, &title_config);
+    a_DrawText(modal->event_title, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 100, title_config);
 
     // Draw countdown timer bar (3.0 → 0.0)
     float timer_progress = game->event_preview_timer / 3.0f;  // 1.0 → 0.0
@@ -170,23 +170,23 @@ void RenderEventPreviewModal(const EventPreviewModal_t* modal, const GameContext
     int timer_bar_y = SCREEN_HEIGHT / 2 - 40;
 
     // Background (dark gray)
-    a_DrawFilledRect(timer_bar_x, timer_bar_y, timer_bar_width, timer_bar_height, 40, 40, 40, 255);
+    a_DrawFilledRect((aRectf_t){timer_bar_x, timer_bar_y, timer_bar_width, timer_bar_height}, (aColor_t){40, 40, 40, 255});
 
     // Foreground (white, shrinks as timer decreases)
     int filled_width = (int)(timer_bar_width * timer_progress);
-    a_DrawFilledRect(timer_bar_x, timer_bar_y, filled_width, timer_bar_height, 255, 255, 255, 255);
+    a_DrawFilledRect((aRectf_t){timer_bar_x, timer_bar_y, filled_width, timer_bar_height}, (aColor_t){255, 255, 255, 255});
 
     // Draw timer text (e.g., "2.3s")
     char timer_text[32];
     snprintf(timer_text, sizeof(timer_text), "%.1fs", game->event_preview_timer);
-    aFontConfig_t timer_text_config = {
+    aTextStyle_t timer_text_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = {200, 200, 200, 255},  // Light gray
+        .fg = {200, 200, 200, 255},  // Light gray
         .align = TEXT_ALIGN_CENTER,
         .wrap_width = 0,
         .scale = 1.0f
     };
-    a_DrawTextStyled(timer_text, SCREEN_WIDTH / 2, timer_bar_y + 20, &timer_text_config);
+    a_DrawText(timer_text, SCREEN_WIDTH / 2, timer_bar_y + 20, timer_text_config);
 
     // Render buttons
     RenderButton(modal->reroll_button);

@@ -285,13 +285,13 @@ def verify_flexbox_cleanup(project_root: Path) -> bool:
 
     func_body = match.group(1)
 
-    # Check for FlexBox cleanup calls
+    # Check for FlexBox cleanup calls (support both old and new Archimedes API)
     flexbox_layouts = ["card_layout", "info_layout", "list_layout"]
     missing_cleanup = []
 
     for layout in flexbox_layouts:
-        # Look for a_DestroyFlexBox(modal->layout) or similar
-        if layout not in func_body or "DestroyFlexBox" not in func_body:
+        # Look for a_DestroyFlexBox, a_FlexBoxDestroy, or similar
+        if layout not in func_body or not ("DestroyFlexBox" in func_body or "FlexBoxDestroy" in func_body):
             missing_cleanup.append(layout)
 
     if missing_cleanup:
@@ -379,8 +379,8 @@ def verify_no_hardcoded_positioning(project_root: Path) -> bool:
     reward_modal_c = project_root / "src" / "scenes" / "components" / "rewardModal.c"
     content = reward_modal_c.read_text()
 
-    # Check for FlexBox usage
-    has_flexbox = "a_CreateFlexBox" in content and "a_FlexLayout" in content
+    # Check for FlexBox usage (support both old and new Archimedes API)
+    has_flexbox = ("a_CreateFlexBox" in content or "a_FlexBoxCreate" in content)
 
     if not has_flexbox:
         print("❌ FAIL: Modal doesn't use FlexBox for layout")
@@ -389,7 +389,8 @@ def verify_no_hardcoded_positioning(project_root: Path) -> bool:
         return False
 
     # Count FlexBox instances (should have at least 2: cards + list)
-    flexbox_count = len(re.findall(r'a_CreateFlexBox\s*\(', content))
+    # Support both old (a_CreateFlexBox) and new (a_FlexBoxCreate) API
+    flexbox_count = len(re.findall(r'(a_CreateFlexBox|a_FlexBoxCreate)\s*\(', content))
 
     if flexbox_count < 2:
         print(f"⚠️  WARNING: Only {flexbox_count} FlexBox instance(s) found")

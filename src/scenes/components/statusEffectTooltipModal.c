@@ -163,13 +163,13 @@ void RenderStatusEffectTooltipModal(const StatusEffectTooltipModal_t* modal) {
     }
 
     // Draw background (dark with transparency)
-    a_DrawFilledRect(x, y, STATUS_TOOLTIP_WIDTH, modal_height,
-                    20, 20, 30, 230);
+    a_DrawFilledRect((aRectf_t){x, y, STATUS_TOOLTIP_WIDTH, modal_height},
+                    (aColor_t){20, 20, 30, 230});
 
     // Draw border (color-coded by effect type)
     aColor_t border_color = GetStatusEffectColor(modal->effect->type);
-    a_DrawRect(x, y, STATUS_TOOLTIP_WIDTH, modal_height,
-              border_color.r, border_color.g, border_color.b, 255);
+    a_DrawRect((aRectf_t){x, y, STATUS_TOOLTIP_WIDTH, modal_height},
+              (aColor_t){border_color.r, border_color.g, border_color.b, 255});
 
     // Now draw content on top
     int content_x = x + padding;
@@ -177,52 +177,52 @@ void RenderStatusEffectTooltipModal(const StatusEffectTooltipModal_t* modal) {
     current_y = content_y;
 
     // Title (effect name) - color-coded
-    aFontConfig_t title_config = {
+    aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = GetStatusEffectColor(modal->effect->type),
+        .fg = GetStatusEffectColor(modal->effect->type),
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
-    a_DrawTextStyled((char*)name, content_x, current_y, &title_config);
+    a_DrawText((char*)name, content_x, current_y, title_config);
     current_y += title_height + 10;  // Actual measured height + margin
 
     // Description (flavor text)
-    aFontConfig_t desc_config = {
+    aTextStyle_t desc_config = {
         .type = FONT_GAME,
-        .color = {180, 180, 180, 255},
+        .fg = {180, 180, 180, 255},
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
-    a_DrawTextStyled((char*)desc, content_x, current_y, &desc_config);
+    a_DrawText((char*)desc, content_x, current_y, desc_config);
     current_y += desc_height + 8;  // Actual measured height + spacing
 
     // Divider
-    a_DrawFilledRect(content_x, current_y, content_width, 1,
-                    100, 100, 100, 200);
+    a_DrawFilledRect((aRectf_t){content_x, current_y, content_width, 1},
+                    (aColor_t){100, 100, 100, 200});
     current_y += 12;  // Spacing around divider
 
     // Effect description
-    aFontConfig_t effect_config = {
+    aTextStyle_t effect_config = {
         .type = FONT_GAME,
-        .color = {207, 87, 60, 255},  // Red-orange (matches ability tooltip)
+        .fg = {207, 87, 60, 255},  // Red-orange (matches ability tooltip)
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f
     };
-    a_DrawTextStyled((char*)d_StringPeek(effect_text), content_x, current_y, &effect_config);
+    a_DrawText((char*)d_StringPeek(effect_text), content_x, current_y, effect_config);
     current_y += effect_height + 6;  // Actual measured height + spacing
 
     // Duration remaining
-    aFontConfig_t duration_config = {
+    aTextStyle_t duration_config = {
         .type = FONT_GAME,
-        .color = {255, 255, 0, 255},  // Yellow
+        .fg = {255, 255, 0, 255},  // Yellow
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f
     };
-    a_DrawTextStyled((char*)d_StringPeek(duration_text), content_x, current_y, &duration_config);
+    a_DrawText((char*)d_StringPeek(duration_text), content_x, current_y, duration_config);
 
     // Cleanup dStrings
     d_StringDestroy(effect_text);

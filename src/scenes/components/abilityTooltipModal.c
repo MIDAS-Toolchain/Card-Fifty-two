@@ -186,12 +186,12 @@ void RenderAbilityTooltipModal(const AbilityTooltipModal_t* modal) {
     }
 
     // Draw background (dark with transparency)
-    a_DrawFilledRect(x, y, ABILITY_TOOLTIP_WIDTH, modal_height,
-                    20, 20, 30, 230);
+    a_DrawFilledRect((aRectf_t){x, y, ABILITY_TOOLTIP_WIDTH, modal_height},
+                    (aColor_t){20, 20, 30, 230});
 
     // Draw border
-    a_DrawRect(x, y, ABILITY_TOOLTIP_WIDTH, modal_height,
-              255, 255, 255, 255);
+    a_DrawRect((aRectf_t){x, y, ABILITY_TOOLTIP_WIDTH, modal_height},
+              (aColor_t){255, 255, 255, 255});
 
     // Now draw content on top
     int content_x = x + padding;
@@ -199,41 +199,41 @@ void RenderAbilityTooltipModal(const AbilityTooltipModal_t* modal) {
     current_y = content_y;
 
     // Title (ability name)
-    aFontConfig_t title_config = {
+    aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .color = {232, 193, 112, 255},  // Gold
+        .fg = {232, 193, 112, 255},  // Gold
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
-    a_DrawTextStyled((char*)name, content_x, current_y, &title_config);
+    a_DrawText((char*)name, content_x, current_y, title_config);
     current_y += title_height + 10;  // Actual measured height + margin
 
     // Description (flavor text, italicized feel via smaller font)
-    aFontConfig_t desc_config = {
+    aTextStyle_t desc_config = {
         .type = FONT_GAME,
-        .color = {180, 180, 180, 255},
+        .fg = {180, 180, 180, 255},
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.0f
     };
-    a_DrawTextStyled((char*)desc, content_x, current_y, &desc_config);
+    a_DrawText((char*)desc, content_x, current_y, desc_config);
     current_y += desc_height + 8;  // Actual measured height + spacing
 
     // Divider
-    a_DrawFilledRect(content_x, current_y, content_width, 1,
-                    100, 100, 100, 200);
+    a_DrawFilledRect((aRectf_t){content_x, current_y, content_width, 1},
+                    (aColor_t){100, 100, 100, 200});
     current_y += 12;  // Spacing around divider
 
     // Trigger condition
-    aFontConfig_t trigger_config = {
+    aTextStyle_t trigger_config = {
         .type = FONT_GAME,
-        .color = {168, 202, 88, 255},  // Yellow-green
+        .fg = {168, 202, 88, 255},  // Yellow-green
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f
     };
-    a_DrawTextStyled((char*)trigger, content_x, current_y, &trigger_config);
+    a_DrawText((char*)trigger, content_x, current_y, trigger_config);
     current_y += trigger_height + 4;  // Actual measured height + spacing
 
     // Current state (for counters or used abilities)
@@ -248,51 +248,51 @@ void RenderAbilityTooltipModal(const AbilityTooltipModal_t* modal) {
 
         int state_height = a_GetWrappedTextHeight((char*)d_StringPeek(state_text), FONT_GAME, content_width);
 
-        aFontConfig_t state_config = {
+        aTextStyle_t state_config = {
             .type = FONT_GAME,
-            .color = {222, 158, 65, 255},  // Palette yellow-orange (matches badge)
+            .fg = {222, 158, 65, 255},  // Palette yellow-orange (matches badge)
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width,
             .scale = 1.1f
         };
-        a_DrawTextStyled((char*)d_StringPeek(state_text), content_x, current_y, &state_config);
+        a_DrawText((char*)d_StringPeek(state_text), content_x, current_y, state_config);
         d_StringDestroy(state_text);
         current_y += state_height + 4;
     } else if (modal->ability->has_triggered && modal->ability->trigger == TRIGGER_HP_THRESHOLD) {
         int state_height = a_GetWrappedTextHeight("Status: Already used", FONT_GAME, content_width);
 
-        aFontConfig_t state_config = {
+        aTextStyle_t state_config = {
             .type = FONT_GAME,
-            .color = {165, 48, 48, 255},  // Palette red (matches badge)
+            .fg = {165, 48, 48, 255},  // Palette red (matches badge)
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width,
             .scale = 1.1f
         };
-        a_DrawTextStyled("Status: Already used", content_x, current_y, &state_config);
+        a_DrawText("Status: Already used", content_x, current_y, state_config);
         current_y += state_height + 4;
     } else if (modal->ability->trigger == TRIGGER_ON_EVENT) {
         int state_height = a_GetWrappedTextHeight("Status: Ready", FONT_GAME, content_width);
 
-        aFontConfig_t state_config = {
+        aTextStyle_t state_config = {
             .type = FONT_GAME,
-            .color = {222, 158, 65, 255},  // Palette yellow-orange (matches badge)
+            .fg = {222, 158, 65, 255},  // Palette yellow-orange (matches badge)
             .align = TEXT_ALIGN_LEFT,
             .wrap_width = content_width,
             .scale = 1.1f
         };
-        a_DrawTextStyled("Status: Ready", content_x, current_y, &state_config);
+        a_DrawText("Status: Ready", content_x, current_y, state_config);
         current_y += state_height + 4;
     }
 
     current_y += 8;  // Spacing before effect
 
     // Effect description (multi-line, wraps)
-    aFontConfig_t effect_config = {
+    aTextStyle_t effect_config = {
         .type = FONT_GAME,
-        .color = {207, 87, 60, 255},  // Red-orange
+        .fg = {207, 87, 60, 255},  // Red-orange
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
         .scale = 1.1f
     };
-    a_DrawTextStyled((char*)effect, content_x, current_y, &effect_config);
+    a_DrawText((char*)effect, content_x, current_y, effect_config);
 }

@@ -80,22 +80,22 @@ static void SettingsDraw(float dt) {
 
         // Title
         a_DrawText("STATISTICS", SCREEN_WIDTH / 2, 100,
-                   255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         // Cards drawn
         dString_t* text = d_StringInit();
         d_StringFormat(text, "Cards Drawn: %llu", stats->cards_drawn);
         a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, 200,
-                   200, 255, 200, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_GAME, .fg={200,255,200,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         // Total damage
         d_StringFormat(text, "Total Damage: %llu", stats->damage_dealt_total);
         a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, 260,
-                   255, 200, 100, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_GAME, .fg={255,200,100,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         // Damage breakdown header
         a_DrawText("Damage by Source:", SCREEN_WIDTH / 2, 320,
-                   180, 180, 180, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_GAME, .fg={180,180,180,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         // Damage by source breakdown
         int y_offset = 370;
@@ -117,7 +117,7 @@ static void SettingsDraw(float dt) {
             int b = 150;
 
             a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y_offset,
-                       r, g, b, FONT_GAME, TEXT_ALIGN_CENTER, 0);
+                       (aTextStyle_t){.type=FONT_GAME, .fg={r,g,b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
             y_offset += 45;
         }
 
@@ -126,7 +126,7 @@ static void SettingsDraw(float dt) {
         // Instructions
         a_DrawText("[ESC] to return to settings",
                    SCREEN_WIDTH / 2, SCREEN_HEIGHT - 50,
-                   150, 150, 150, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={150,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     } else {
         // ========================================================================
@@ -135,25 +135,25 @@ static void SettingsDraw(float dt) {
 
         // Title
         a_DrawText("SETTINGS", SCREEN_WIDTH / 2, 150,
-                   255, 255, 255, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         // Stats option (now functional!)
         a_DrawText("[S] View Statistics", SCREEN_WIDTH / 2, 300,
-                   100, 255, 100, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={100,255,100,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         // Placeholder settings
         a_DrawText("Coming Soon:", SCREEN_WIDTH / 2, 380,
-                   200, 200, 200, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={200,200,200,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         a_DrawText("- Sound Volume", SCREEN_WIDTH / 2, 430,
-                   180, 180, 180, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={180,180,180,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         a_DrawText("- Music Volume", SCREEN_WIDTH / 2, 480,
-                   180, 180, 180, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={180,180,180,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         // Instructions
         a_DrawText("[ESC] to return to menu",
                    SCREEN_WIDTH / 2, SCREEN_HEIGHT - 50,
-                   150, 150, 150, FONT_ENTER_COMMAND, TEXT_ALIGN_CENTER, 0);
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={150,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 }
