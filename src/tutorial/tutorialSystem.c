@@ -435,7 +435,7 @@ static void DrawTutorialButton(int x, int y, int w, int h,
     }
 
     // Calculate text dimensions and center properly (like Button component)
-    int text_w, text_h;
+    float text_w, text_h;
     a_CalcTextDimensions((char*)text, FONT_ENTER_COMMAND, &text_w, &text_h);
 
     int text_x = x + w / 2;
@@ -487,7 +487,7 @@ static void RenderDialogue(const TutorialStep_t* step) {
             line_buffer[char_index] = '\0';
 
             // Calculate line height for this line
-            int line_w, line_h;
+            float line_w, line_h;
             a_CalcTextDimensions(line_buffer, FONT_ENTER_COMMAND, &line_w, &line_h);
 
             // Render line
@@ -495,7 +495,7 @@ static void RenderDialogue(const TutorialStep_t* step) {
                    (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={DIALOGUE_TEXT.r,DIALOGUE_TEXT.g,DIALOGUE_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
 
             // Move Y position down by line height
-            text_y += line_h;
+            text_y += (int)line_h;
 
             // Reset for next line
             char_index = 0;

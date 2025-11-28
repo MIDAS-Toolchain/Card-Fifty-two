@@ -17,7 +17,7 @@ aAudioClip_t g_push_chips_sound;
 aAudioClip_t g_victory_sound;
 
 // Function stubs
-void SetStatusEffectDrainAmount(int amount) { (void)amount; }
+void SetStatusEffectDrainAmount(int amount, StatusEffect_t effect_type) { (void)amount; (void)effect_type; }
 TweenManager_t* GetTweenManager(void) { return &g_tween_manager; }
 void* GetCardTransitionManager(void) { return NULL; }
 void StartCardDealAnimation(void* mgr, void* tween, void* hand, size_t idx, int sx, int sy, int tx, int ty) {

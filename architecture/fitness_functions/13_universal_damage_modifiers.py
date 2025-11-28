@@ -135,8 +135,15 @@ def verify_take_damage_uses_modifiers(project_root: Path) -> bool:
             # Get surrounding lines (10 before, 2 after)
             context = get_surrounding_lines(content, line_num, before=10, after=2)
 
+            # EXCEPTION: Enemy self-damage (no player modifiers apply)
+            # Recognized by: "EXCEPTION" comment + "TARGET_SELF" pattern
+            is_enemy_self_damage = (
+                'EXCEPTION' in context and
+                ('TARGET_SELF' in context or 'Enemy self-damage' in context)
+            )
+
             # Check if ApplyPlayerDamageModifiers appears in context
-            if 'ApplyPlayerDamageModifiers' not in context:
+            if 'ApplyPlayerDamageModifiers' not in context and not is_enemy_self_damage:
                 violations.append({
                     'file': file_path,
                     'line': line_num,

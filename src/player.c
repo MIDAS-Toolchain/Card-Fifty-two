@@ -67,8 +67,8 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
     memset(&player.class_trinket, 0, sizeof(Trinket_t));  // Zero-initialize embedded value
 
     // Initialize trinket slots (Constitutional: dArray_t* of Trinket_t VALUES, 6 slots)
-    // d_InitArray(capacity, element_size) - capacity FIRST!
-    player.trinket_slots = d_InitArray(6, sizeof(Trinket_t));  // Array of VALUES (not pointers!)
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
+    player.trinket_slots = d_ArrayInit(6, sizeof(Trinket_t));  // Array of VALUES (not pointers!)
     if (!player.trinket_slots) {
         d_LogError("CreatePlayer: Failed to create trinket slots");
         d_StringDestroy(player.name);
@@ -80,7 +80,7 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
     // Pre-populate with 6 empty trinket values (creates count=6, all slots zeroed)
     Trinket_t empty_trinket = {0};
     for (int i = 0; i < 6; i++) {
-        d_AppendDataToArray(player.trinket_slots, &empty_trinket);
+        d_ArrayAppend(player.trinket_slots, &empty_trinket);
     }
 
     d_LogInfoF("Initialized %d trinket slots for player", (int)player.trinket_slots->count);
@@ -93,7 +93,7 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
     player.combat_stats_dirty = true;  // Will be calculated on first update
 
     // Register in global players table (store by value)
-    d_SetDataInTable(g_players, &player.player_id, &player);
+    d_TableSet(g_players, &player.player_id, &player);
 
     d_LogInfoF("Created player: %s (ID: %d, Dealer: %s, Chips: %d)",
                d_StringPeek(player.name), id,
@@ -111,7 +111,7 @@ void DestroyPlayer(int player_id) {
         return;
     }
 
-    Player_t* player = (Player_t*)d_GetDataFromTable(g_players, &player_id);
+    Player_t* player = (Player_t*)d_TableGet(g_players, &player_id);
     if (!player) {
         d_LogErrorF("DestroyPlayer: Player ID %d not found in table", player_id);
         return;
@@ -159,7 +159,7 @@ void DestroyPlayer(int player_id) {
     if (player->trinket_slots) {
         // Iterate through all slots and cleanup internal dStrings
         for (size_t i = 0; i < player->trinket_slots->count; i++) {
-            Trinket_t* trinket = (Trinket_t*)d_IndexDataFromArray(player->trinket_slots, i);
+            Trinket_t* trinket = (Trinket_t*)d_ArrayGet(player->trinket_slots, i);
             if (trinket && trinket->trinket_id != 0) {  // Non-empty slot (ID 0 is valid, but empty slots are all-zero)
                 // Check if trinket has allocated dStrings (name != NULL means it's a real trinket)
                 if (trinket->name) {
@@ -169,13 +169,13 @@ void DestroyPlayer(int player_id) {
         }
 
         // Now destroy the array itself (Daedalus frees the Trinket_t values)
-        d_DestroyArray(player->trinket_slots);
+        d_ArrayDestroy(player->trinket_slots);
         player->trinket_slots = NULL;
     }
 
     // Remove from global players table (Daedalus frees the Player_t value)
     d_LogDebug("DestroyPlayer: Removing from g_players table");
-    d_RemoveDataFromTable(g_players, &player_id);
+    d_TableRemove(g_players, &player_id);
 
     d_LogInfoF("Player ID %d destroyed successfully", player_id);
 }
@@ -347,8 +347,8 @@ bool LoadPlayerPortrait(Player_t* player, const char* filename) {
         return false;
     }
 
-    // Load image as surface using SDL_image
-    SDL_Surface* surface = IMG_Load(filename);
+    // Load image as surface using Archimedes
+    SDL_Surface* surface = a_ImageLoad(filename);
     if (!surface) {
         d_LogError("LoadPlayerPortrait: Failed to load image");
         return false;
@@ -463,12 +463,12 @@ void CalculatePlayerCombatStats(Player_t* player) {
 
     // Scan player ID 0 (dealer) and player ID 1 (human player)
     for (int player_id = 0; player_id <= 1; player_id++) {
-        Player_t* p = (Player_t*)d_GetDataFromTable(g_players, &player_id);
+        Player_t* p = (Player_t*)d_TableGet(g_players, &player_id);
         if (!p || !p->hand.cards) continue;
 
         // Scan all FACE-UP cards in this player's hand (hidden cards don't count!)
         for (size_t i = 0; i < p->hand.cards->count; i++) {
-            const Card_t* card = (const Card_t*)d_IndexDataFromArray(p->hand.cards, i);
+            const Card_t* card = (const Card_t*)d_ArrayGet(p->hand.cards, i);
             if (!card || !card->face_up) continue;  // Skip face-down cards!
 
             // Check for LUCKY tag (+10% crit per card)

@@ -80,7 +80,7 @@ Passive aggregation uses dirty flag:
 ```c
 // In hand.c when card added/removed
 void AddCardToHand(Hand_t* hand, Card_t card) {
-    d_AppendDataToArray(hand->cards, &card);
+    d_ArrayAppend(hand->cards, &card);
     g_game.combat_bonuses_dirty = true;  // Invalidate cache
 }
 

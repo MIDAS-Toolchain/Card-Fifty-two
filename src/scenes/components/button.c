@@ -168,7 +168,7 @@ void RenderButton(const Button_t* button) {
     }
 
     // Draw label (properly centered, off-white text)
-    int text_w, text_h;
+    float text_w, text_h;
     a_CalcTextDimensions((char*)button->label, FONT_ENTER_COMMAND, &text_w, &text_h);
 
     int text_x = button->x + button->w / 2;

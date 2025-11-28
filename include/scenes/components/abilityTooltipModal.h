@@ -17,7 +17,8 @@
 typedef struct AbilityTooltipModal {
     bool visible;
     int x, y;
-    const AbilityData_t* ability;  // Reference to ability (NOT owned)
+    const Ability_t* ability;  // Reference to ability (NOT owned)
+    const Enemy_t* enemy;      // Reference to enemy (NOT owned) - for HP calculations
 } AbilityTooltipModal_t;
 
 /**
@@ -39,13 +40,15 @@ void DestroyAbilityTooltipModal(AbilityTooltipModal_t** modal);
  *
  * @param modal - Modal component
  * @param ability - Ability to display info for (NOT owned)
+ * @param enemy - Enemy that owns the ability (NOT owned) - for HP calculations
  * @param card_x - X position of ability card
  * @param card_y - Y position of ability card
  *
  * Modal will appear to the right of card (or left if near screen edge)
  */
 void ShowAbilityTooltipModal(AbilityTooltipModal_t* modal,
-                             const AbilityData_t* ability,
+                             const Ability_t* ability,
+                             const Enemy_t* enemy,
                              int card_x, int card_y);
 
 /**

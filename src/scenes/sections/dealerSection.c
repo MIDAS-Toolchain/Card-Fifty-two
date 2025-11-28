@@ -180,7 +180,7 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
     }
 
     // Render enemy abilities if in combat mode (VERTICAL column right of sidebar)
-    if (enemy && section->ability_display && enemy->active_abilities && enemy->active_abilities->count > 0) {
+    if (enemy && section->ability_display && enemy->abilities && enemy->abilities->count > 0) {
         // Position: Right of sidebar (280px), starting near top bar
         int abilities_x = 290;  // SIDEBAR_WIDTH (280) + 10px margin
         int abilities_y = 70;   // Below top bar (45px) + 25px margin
@@ -190,11 +190,11 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
         RenderAbilityDisplay(section->ability_display);
 
         // Show tooltip modal if hovering over an ability
-        const AbilityData_t* hovered_ability = GetHoveredAbilityData(section->ability_display);
+        const Ability_t* hovered_ability = GetHoveredAbilityData(section->ability_display);
         if (hovered_ability && section->ability_tooltip) {
             int card_x, card_y;
             if (GetHoveredAbilityPosition(section->ability_display, &card_x, &card_y)) {
-                ShowAbilityTooltipModal(section->ability_tooltip, hovered_ability, card_x, card_y);
+                ShowAbilityTooltipModal(section->ability_tooltip, hovered_ability, enemy, card_x, card_y);
             }
         } else if (section->ability_tooltip) {
             HideAbilityTooltipModal(section->ability_tooltip);
@@ -335,7 +335,7 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
                 const int badge_h = 25;
 
                 for (size_t t = 0; t < tags->count; t++) {
-                    CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, t);
+                    CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, t);
                     if (!tag) continue;
 
                     // Position from top-right, offset by 12px right and 24px down
@@ -454,7 +454,7 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
                     const int badge_h = (int)(25 * scale);
 
                     for (size_t t = 0; t < tags->count; t++) {
-                        CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, t);
+                        CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, t);
                         if (!tag) continue;
 
                         // Position from top-right, offset by 12px right and 24px down (scaled)
@@ -512,12 +512,12 @@ void RenderDealerSectionTooltip(DealerSection_t* section) {
 // ============================================================================
 
 bool UpdateDealerAbilityHoverTracking(DealerSection_t* section, Enemy_t* enemy, float dt) {
-    if (!section || !enemy || !enemy->active_abilities) return false;
+    if (!section || !enemy || !enemy->abilities) return false;
 
     // If tutorial event already triggered, don't trigger again
     if (section->ability_tutorial_completed) return false;
 
-    size_t ability_count = enemy->active_abilities->count;
+    size_t ability_count = enemy->abilities->count;
     if (ability_count == 0) return false;
 
     // Check if hovering over the middle ability (index 1)

@@ -75,9 +75,10 @@ TEST(doubled_tag_score_calculation) {
     printf("      Hand [5♥×2, 5♠×2]    = 20  (10 + 10)  ← both 5s doubled\n");
     printf("\n");
     printf("    Edge cases:\n");
-    printf("      - Ace with value 11 cannot be doubled (rank 1, but value 11)\n");
-    printf("      - Face cards (J, Q, K) cannot be doubled (rank > 5)\n");
-    printf("      - Can only double cards with rank ≤ 5 (values 2-5)\n");
+    printf("      - Ace can be doubled: 1×2 = 2 (or 11→10 when Ace=11)\n");
+    printf("      - Ranks 6-9 cap at 10: 6→10, 7→10, 8→10, 9→10\n");
+    printf("      - Face cards (10, J, Q, K) cannot be doubled (rank ≥ 10)\n");
+    printf("      - Can double cards with rank ≤ 9 (Ace through 9)\n");
     printf("\n");
     printf("    ✓ Score calculation test cases documented\n");
 }

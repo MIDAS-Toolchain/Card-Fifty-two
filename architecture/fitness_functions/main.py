@@ -57,7 +57,7 @@ spec5 = importlib.util.spec_from_file_location(
 event_choices_value_types = importlib.util.module_from_spec(spec5)
 spec5.loader.exec_module(event_choices_value_types)
 
-# FF-006: d_InitArray Parameter Order Verification
+# FF-006: d_ArrayInit Parameter Order Verification
 spec6 = importlib.util.spec_from_file_location(
     "daedalus_parameter_order",
     Path(__file__).parent / "06_daedalus_parameter_order.py"
@@ -145,6 +145,14 @@ spec16 = importlib.util.spec_from_file_location(
 trinket_value_semantics = importlib.util.module_from_spec(spec16)
 spec16.loader.exec_module(trinket_value_semantics)
 
+# FF-017: Terminal Architecture
+spec17 = importlib.util.spec_from_file_location(
+    "terminal_architecture",
+    Path(__file__).parent / "17_terminal_architecture.py"
+)
+terminal_architecture = importlib.util.module_from_spec(spec17)
+spec17.loader.exec_module(terminal_architecture)
+
 def run_fitness_functions() -> List[Tuple[str, bool]]:
     """Run all fitness functions and collect results"""
     results = []
@@ -207,13 +215,13 @@ def run_fitness_functions() -> List[Tuple[str, bool]]:
 
     print()
 
-    # FF-006: d_InitArray Parameter Order Verification
+    # FF-006: d_ArrayInit Parameter Order Verification
     try:
         success = daedalus_parameter_order.verify_daedalus_parameter_order(project_root)
-        results.append(("FF-006: d_InitArray Parameter Order Verification", success))
+        results.append(("FF-006: d_ArrayInit Parameter Order Verification", success))
     except Exception as e:
         print(f"❌ FF-006 crashed: {e}")
-        results.append(("FF-006: d_InitArray Parameter Order Verification", False))
+        results.append(("FF-006: d_ArrayInit Parameter Order Verification", False))
 
     print()
 
@@ -314,6 +322,16 @@ def run_fitness_functions() -> List[Tuple[str, bool]]:
     except Exception as e:
         print(f"❌ FF-016 crashed: {e}")
         results.append(("FF-016: Trinket Value Semantics", False))
+
+    print()
+
+    # FF-017: Terminal Architecture
+    try:
+        success = terminal_architecture.verify_terminal_architecture(project_root)
+        results.append(("FF-017: Terminal Architecture", success))
+    except Exception as e:
+        print(f"❌ FF-017 crashed: {e}")
+        results.append(("FF-017: Terminal Architecture", False))
 
     print()
 

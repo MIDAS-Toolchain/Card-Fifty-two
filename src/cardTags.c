@@ -36,7 +36,7 @@ static CardMetadata_t* GetOrCreateMetadata(int card_id) {
     }
 
     // Try to get existing metadata
-    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_GetDataFromTable(g_card_metadata, &card_id);
+    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_TableGet(g_card_metadata, &card_id);
     if (meta_ptr) {
         return *meta_ptr;
     }
@@ -49,13 +49,13 @@ static CardMetadata_t* GetOrCreateMetadata(int card_id) {
     }
 
     meta->card_id = card_id;
-    // d_InitArray(capacity, element_size) - capacity FIRST!
-    meta->tags = d_InitArray(4, sizeof(CardTag_t));  // Start with 4 tags capacity
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
+    meta->tags = d_ArrayInit(4, sizeof(CardTag_t));  // Start with 4 tags capacity
     meta->rarity = CARD_RARITY_COMMON;
     meta->flavor_text = d_StringInit();
 
     // Store in table
-    d_SetDataInTable(g_card_metadata, &card_id, &meta);
+    d_TableSet(g_card_metadata, &card_id, &meta);
 
     return meta;
 }
@@ -71,7 +71,7 @@ void InitCardMetadata(void) {
     }
 
     // Create metadata table (key: int card_id, value: CardMetadata_t*)
-    g_card_metadata = d_InitTable(sizeof(int), sizeof(CardMetadata_t*),
+    g_card_metadata = d_TableInit(sizeof(int), sizeof(CardMetadata_t*),
                                    d_HashInt, d_CompareInt, 52);
     if (!g_card_metadata) {
         d_LogFatal("InitCardMetadata: Failed to create g_card_metadata table");
@@ -89,7 +89,7 @@ void CleanupCardMetadata(void) {
 
     // Manually free all card metadata (0-51)
     for (int card_id = 0; card_id < 52; card_id++) {
-        CardMetadata_t** meta_ptr = (CardMetadata_t**)d_GetDataFromTable(g_card_metadata, &card_id);
+        CardMetadata_t** meta_ptr = (CardMetadata_t**)d_TableGet(g_card_metadata, &card_id);
         if (!meta_ptr || !*meta_ptr) {
             continue;
         }
@@ -98,7 +98,7 @@ void CleanupCardMetadata(void) {
 
         // Free internal resources
         if (meta->tags) {
-            d_DestroyArray(meta->tags);
+            d_ArrayDestroy(meta->tags);
             meta->tags = NULL;
         }
         if (meta->flavor_text) {
@@ -111,7 +111,7 @@ void CleanupCardMetadata(void) {
     }
 
     // Destroy table
-    d_DestroyTable(&g_card_metadata);
+    d_TableDestroy(&g_card_metadata);
 
     d_LogInfo("Card metadata system cleaned up");
 }
@@ -126,14 +126,14 @@ void AddCardTag(int card_id, CardTag_t tag) {
 
     // Check if tag already exists
     for (size_t i = 0; i < meta->tags->count; i++) {
-        CardTag_t* existing = (CardTag_t*)d_IndexDataFromArray(meta->tags, i);
+        CardTag_t* existing = (CardTag_t*)d_ArrayGet(meta->tags, i);
         if (*existing == tag) {
             return;  // Already has this tag
         }
     }
 
     // Add new tag
-    d_AppendDataToArray(meta->tags, &tag);
+    d_ArrayAppend(meta->tags, &tag);
     d_LogInfoF("Card %d: Added tag %s", card_id, GetCardTagName(tag));
 }
 
@@ -143,7 +143,7 @@ void RemoveCardTag(int card_id, CardTag_t tag) {
         return;
     }
 
-    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_GetDataFromTable(g_card_metadata, &card_id);
+    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_TableGet(g_card_metadata, &card_id);
     if (!meta_ptr || !*meta_ptr) {
         return;  // No metadata for this card
     }
@@ -152,9 +152,9 @@ void RemoveCardTag(int card_id, CardTag_t tag) {
 
     // Find and remove tag
     for (size_t i = 0; i < meta->tags->count; i++) {
-        CardTag_t* existing = (CardTag_t*)d_IndexDataFromArray(meta->tags, i);
+        CardTag_t* existing = (CardTag_t*)d_ArrayGet(meta->tags, i);
         if (*existing == tag) {
-            d_RemoveDataFromArray(meta->tags, i);
+            d_ArrayRemove(meta->tags, i);
             d_LogInfoF("Card %d: Removed tag %s", card_id, GetCardTagName(tag));
             return;
         }
@@ -167,7 +167,7 @@ bool HasCardTag(int card_id, CardTag_t tag) {
         return false;
     }
 
-    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_GetDataFromTable(g_card_metadata, &card_id);
+    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_TableGet(g_card_metadata, &card_id);
     if (!meta_ptr || !*meta_ptr) {
         return false;  // No metadata for this card
     }
@@ -176,7 +176,7 @@ bool HasCardTag(int card_id, CardTag_t tag) {
 
     // Search for tag
     for (size_t i = 0; i < meta->tags->count; i++) {
-        CardTag_t* existing = (CardTag_t*)d_IndexDataFromArray(meta->tags, i);
+        CardTag_t* existing = (CardTag_t*)d_ArrayGet(meta->tags, i);
         if (*existing == tag) {
             return true;
         }
@@ -186,7 +186,7 @@ bool HasCardTag(int card_id, CardTag_t tag) {
 }
 
 const dArray_t* GetCardTags(int card_id) {
-    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_GetDataFromTable(g_card_metadata, &card_id);
+    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_TableGet(g_card_metadata, &card_id);
     if (!meta_ptr || !*meta_ptr) {
         return NULL;
     }
@@ -195,13 +195,13 @@ const dArray_t* GetCardTags(int card_id) {
 }
 
 void ClearCardTags(int card_id) {
-    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_GetDataFromTable(g_card_metadata, &card_id);
+    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_TableGet(g_card_metadata, &card_id);
     if (!meta_ptr || !*meta_ptr) {
         return;
     }
 
     CardMetadata_t* meta = *meta_ptr;
-    d_ClearArray(meta->tags);
+    d_ArrayClear(meta->tags);
     d_LogInfoF("Card %d: Cleared all tags", card_id);
 }
 
@@ -218,7 +218,7 @@ void SetCardRarity(int card_id, CardRarity_t rarity) {
 }
 
 CardRarity_t GetCardRarity(int card_id) {
-    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_GetDataFromTable(g_card_metadata, &card_id);
+    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_TableGet(g_card_metadata, &card_id);
     if (!meta_ptr || !*meta_ptr) {
         return CARD_RARITY_COMMON;  // Default rarity
     }
@@ -238,7 +238,7 @@ void SetCardFlavorText(int card_id, const char* text) {
 }
 
 const char* GetCardFlavorText(int card_id) {
-    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_GetDataFromTable(g_card_metadata, &card_id);
+    CardMetadata_t** meta_ptr = (CardMetadata_t**)d_TableGet(g_card_metadata, &card_id);
     if (!meta_ptr || !*meta_ptr) {
         return "";  // Empty string if no metadata
     }
@@ -377,7 +377,7 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
             VFX_SpawnDamageNumber(vfx, damage,
                                  SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
                                  ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                                 false, is_crit);  // Pass crit flag
+                                 false, is_crit, false);  // Pass crit flag, not rake
         }
 
         // Fire tag-specific event
@@ -422,7 +422,7 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
             VFX_SpawnDamageNumber(vfx, damage,
                                  SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
                                  ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                                 false, is_crit);  // Pass crit flag
+                                 false, is_crit, false);  // Pass crit flag, not rake
 
             // Spawn chip gain number (green, near chips display on left sidebar)
             // Left sidebar: x=0, width=280, center=140
@@ -430,7 +430,7 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
             VFX_SpawnDamageNumber(vfx, chip_gain,
                                  140,   // Center of left sidebar
                                  110,   // Near "Betting Power" / chips display
-                                 true, false); // healing/positive (green), no crit
+                                 true, false, false); // healing/positive (green), no crit, not rake
         }
 
         // Fire tag-specific event

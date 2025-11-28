@@ -45,7 +45,7 @@ def scan_for_trinket_malloc(file_path: Path) -> List[Dict[str, Any]]:
                 'file': file_path,
                 'line': line_num,
                 'code': line.strip(),
-                'pattern': 'malloc(sizeof(Trinket_t)) - use stack allocation + d_SetDataInTable()'
+                'pattern': 'malloc(sizeof(Trinket_t)) - use stack allocation + d_TableSet()'
             })
 
         # Check for calloc of Trinket_t
@@ -54,7 +54,7 @@ def scan_for_trinket_malloc(file_path: Path) -> List[Dict[str, Any]]:
                 'file': file_path,
                 'line': line_num,
                 'code': line.strip(),
-                'pattern': 'calloc(..., sizeof(Trinket_t)) - use stack allocation + d_SetDataInTable()'
+                'pattern': 'calloc(..., sizeof(Trinket_t)) - use stack allocation + d_TableSet()'
             })
 
     return violations
@@ -64,7 +64,7 @@ def scan_for_double_pointer_access(file_path: Path) -> List[Dict[str, Any]]:
     """
     Check for incorrect double-pointer access to trinket templates.
 
-    Pattern: Trinket_t** ... = (Trinket_t**)d_GetDataFromTable(g_trinket_templates, ...)
+    Pattern: Trinket_t** ... = (Trinket_t**)d_TableGet(g_trinket_templates, ...)
     This is WRONG because table stores by VALUE, not pointer.
     """
     violations = []
@@ -82,7 +82,7 @@ def scan_for_double_pointer_access(file_path: Path) -> List[Dict[str, Any]]:
             continue
 
         # Check for double-pointer dereference from template table
-        if re.search(r'Trinket_t\s*\*\*.*d_GetDataFromTable\s*\(\s*g_trinket_templates', line):
+        if re.search(r'Trinket_t\s*\*\*.*d_TableGet\s*\(\s*g_trinket_templates', line):
             violations.append({
                 'file': file_path,
                 'line': line_num,
@@ -144,8 +144,8 @@ def scan_for_array_pointer_storage(file_path: Path) -> List[Dict[str, Any]]:
     """
     Check that trinket_slots array stores Trinket_t values, not pointers.
 
-    Pattern (BAD): d_InitArray(6, sizeof(Trinket_t*))
-    Pattern (GOOD): d_InitArray(6, sizeof(Trinket_t))
+    Pattern (BAD): d_ArrayInit(6, sizeof(Trinket_t*))
+    Pattern (GOOD): d_ArrayInit(6, sizeof(Trinket_t))
     """
     violations = []
 
@@ -162,7 +162,7 @@ def scan_for_array_pointer_storage(file_path: Path) -> List[Dict[str, Any]]:
             continue
 
         # Check for trinket_slots initialized with pointer size
-        if 'trinket_slots' in line and 'd_InitArray' in line:
+        if 'trinket_slots' in line and 'd_ArrayInit' in line:
             if re.search(r'sizeof\s*\(\s*Trinket_t\s*\*\s*\)', line):
                 violations.append({
                     'file': file_path,
@@ -292,7 +292,7 @@ def verify_trinket_value_semantics(project_root: Path) -> bool:
             print(f"   Issue: {v['pattern']}")
             print()
 
-        print("💡 Fix: Use value semantics - stack allocation, d_SetDataInTable(), deep-copy dStrings")
+        print("💡 Fix: Use value semantics - stack allocation, d_TableSet(), deep-copy dStrings")
         print("💡 See: ADR-016 (Trinket Template & Instance Pattern)")
         print()
         return False

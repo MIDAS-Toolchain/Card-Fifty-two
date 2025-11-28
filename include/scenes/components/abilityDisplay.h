@@ -72,12 +72,12 @@ void SetAbilityDisplayEnemy(AbilityDisplay_t* display, Enemy_t* enemy);
 void RenderAbilityDisplay(AbilityDisplay_t* display);
 
 /**
- * GetHoveredAbilityData - Get ability data for currently hovered ability
+ * GetHoveredAbilityData - Get ability for currently hovered ability
  *
  * @param display - Ability display component
- * @return AbilityData_t* - Hovered ability data, or NULL if none hovered
+ * @return Ability_t* - Hovered ability, or NULL if none hovered
  */
-const AbilityData_t* GetHoveredAbilityData(const AbilityDisplay_t* display);
+const Ability_t* GetHoveredAbilityData(const AbilityDisplay_t* display);
 
 /**
  * GetHoveredAbilityPosition - Get screen position of hovered ability card

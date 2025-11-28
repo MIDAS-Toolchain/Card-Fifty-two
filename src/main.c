@@ -35,6 +35,9 @@ aAudioClip_t g_victory_sound;
 // Ability icon textures (defined in common.h, declared here)
 dTable_t* g_ability_icons = NULL;
 
+// Enemy database (defined in common.h, declared here)
+dDUFValue_t* g_enemies_db = NULL;
+
 // Test deck (for demonstration)
 // Constitutional pattern: Deck_t is value type, not pointer
 Deck_t g_test_deck;
@@ -118,16 +121,16 @@ void Initialize(void) {
     }
 
     // Initialize global tables (Constitutional: Store Player_t by value, not pointer)
-    g_players = d_InitTable(sizeof(int), sizeof(Player_t),
+    g_players = d_TableInit(sizeof(int), sizeof(Player_t),
                             d_HashInt, d_CompareInt, 16);
 
-    g_card_textures = d_InitTable(sizeof(int), sizeof(SDL_Surface*),
+    g_card_textures = d_TableInit(sizeof(int), sizeof(SDL_Surface*),
                                    d_HashInt, d_CompareInt, 64);
 
-    g_portraits = d_InitTable(sizeof(int), sizeof(SDL_Surface*),
+    g_portraits = d_TableInit(sizeof(int), sizeof(SDL_Surface*),
                               d_HashInt, d_CompareInt, 16);
 
-    g_ability_icons = d_InitTable(sizeof(int), sizeof(SDL_Surface*),
+    g_ability_icons = d_TableInit(sizeof(int), sizeof(SDL_Surface*),
                                    d_HashInt, d_CompareInt, 8);
 
     if (!g_players || !g_card_textures || !g_portraits || !g_ability_icons) {
@@ -159,7 +162,7 @@ void Initialize(void) {
         d_StringDestroy(path);
 
         if (surf) {
-            d_SetDataInTable(g_card_textures, &card_id, &surf);
+            d_TableSet(g_card_textures, &card_id, &surf);
         } else {
             d_LogErrorF("Failed to load surface for card_id %d", card_id);
         }
@@ -176,6 +179,17 @@ void Initialize(void) {
     // Initialize global stats system
     Stats_Init();
 
+    // Load enemy database from DUF
+    dDUFError_t* err = d_DUFParseFile("data/enemies/tutorial_enemies.duf", &g_enemies_db);
+    if (err != NULL) {
+        d_LogErrorF("Failed to parse enemy database at %d:%d - %s",
+                   err->line, err->column, d_StringPeek(err->message));
+        d_DUFErrorFree(err);
+        a_Quit();
+        exit(1);
+    }
+    d_LogInfo("Enemy database loaded successfully");
+
     d_LogInfo("Global tables initialized");
     d_LogInfoF("Screen size: %dx%d", SCREEN_WIDTH, SCREEN_HEIGHT);
 }
@@ -189,8 +203,15 @@ void Cleanup(void) {
 
     // Destroy global tables
     if (g_players) {
-        d_DestroyTable(&g_players);
+        d_TableDestroy(&g_players);
         d_LogInfo("Player registry destroyed");
+    }
+
+    // Free enemy database
+    if (g_enemies_db) {
+        d_DUFFree(g_enemies_db);
+        g_enemies_db = NULL;
+        d_LogInfo("Enemy database destroyed");
     }
 
     // Destroy card back surface
@@ -201,58 +222,58 @@ void Cleanup(void) {
 
     // Free all card surfaces before destroying table
     if (g_card_textures) {
-        dArray_t* card_ids = d_GetAllKeysFromTable(g_card_textures);
+        dArray_t* card_ids = d_TableGetAllKeys(g_card_textures);
         if (card_ids) {
             for (size_t i = 0; i < card_ids->count; i++) {
-                int* card_id = (int*)d_IndexDataFromArray(card_ids, i);
+                int* card_id = (int*)d_ArrayGet(card_ids, i);
                 if (card_id) {
-                    SDL_Surface** surf_ptr = (SDL_Surface**)d_GetDataFromTable(g_card_textures, card_id);
+                    SDL_Surface** surf_ptr = (SDL_Surface**)d_TableGet(g_card_textures, card_id);
                     if (surf_ptr && *surf_ptr) {
                         SDL_FreeSurface(*surf_ptr);
                     }
                 }
             }
-            d_DestroyArray(card_ids);
+            d_ArrayDestroy(card_ids);
         }
-        d_DestroyTable(&g_card_textures);
+        d_TableDestroy(&g_card_textures);
         d_LogInfo("Surface cache destroyed");
     }
 
     // Free all portrait surfaces before destroying table
     if (g_portraits) {
-        dArray_t* player_ids = d_GetAllKeysFromTable(g_portraits);
+        dArray_t* player_ids = d_TableGetAllKeys(g_portraits);
         if (player_ids) {
             for (size_t i = 0; i < player_ids->count; i++) {
-                int* player_id = (int*)d_IndexDataFromArray(player_ids, i);
+                int* player_id = (int*)d_ArrayGet(player_ids, i);
                 if (player_id) {
-                    SDL_Surface** surf_ptr = (SDL_Surface**)d_GetDataFromTable(g_portraits, player_id);
+                    SDL_Surface** surf_ptr = (SDL_Surface**)d_TableGet(g_portraits, player_id);
                     if (surf_ptr && *surf_ptr) {
                         SDL_FreeSurface(*surf_ptr);
                     }
                 }
             }
-            d_DestroyArray(player_ids);
+            d_ArrayDestroy(player_ids);
         }
-        d_DestroyTable(&g_portraits);
+        d_TableDestroy(&g_portraits);
         d_LogInfo("Portrait cache destroyed");
     }
 
     // Free all ability icon surfaces before destroying table
     if (g_ability_icons) {
-        dArray_t* keys = d_GetAllKeysFromTable(g_ability_icons);
+        dArray_t* keys = d_TableGetAllKeys(g_ability_icons);
         if (keys) {
             for (size_t i = 0; i < keys->count; i++) {
-                int* ability_id = (int*)d_IndexDataFromArray(keys, i);
+                int* ability_id = (int*)d_ArrayGet(keys, i);
                 if (ability_id) {
-                    SDL_Surface** surf_ptr = (SDL_Surface**)d_GetDataFromTable(g_ability_icons, ability_id);
+                    SDL_Surface** surf_ptr = (SDL_Surface**)d_TableGet(g_ability_icons, ability_id);
                     if (surf_ptr && *surf_ptr) {
                         SDL_FreeSurface(*surf_ptr);
                     }
                 }
             }
-            d_DestroyArray(keys);
+            d_ArrayDestroy(keys);
         }
-        d_DestroyTable(&g_ability_icons);
+        d_TableDestroy(&g_ability_icons);
         d_LogInfo("Ability icon cache destroyed");
     }
 

@@ -6,7 +6,7 @@ Ensures SDL textures stored in global tables are properly freed before destroyin
 Prevents memory leaks from texture pointer ownership.
 
 Constitutional Pattern: Global tables manage pointer ownership.
-When storing SDL_Texture* in dTable_t, must call SDL_DestroyTexture() before d_DestroyTable().
+When storing SDL_Texture* in dTable_t, must call SDL_DestroyTexture() before d_TableDestroy().
 
 Based on: CLAUDE.md - Constitutional Pattern #4 (Global Tables for Shared Resources)
 """
@@ -25,10 +25,10 @@ def find_texture_tables(src_dir: Path) -> Set[str]:
         with open(c_file, 'r') as f:
             content = f.read()
 
-        # Match: dTable_t* g_XXX = d_InitTable(..., sizeof(SDL_Texture*), ...);
-        # or: dTable_t* g_XXX = d_InitTable(..., sizeof(SDL_Surface*), ...);
-        texture_pattern = r'(g_\w+)\s*=\s*d_InitTable\([^,]+,\s*sizeof\s*\(\s*SDL_Texture\s*\*\s*\)'
-        surface_pattern = r'(g_\w+)\s*=\s*d_InitTable\([^,]+,\s*sizeof\s*\(\s*SDL_Surface\s*\*\s*\)'
+        # Match: dTable_t* g_XXX = d_TableInit(..., sizeof(SDL_Texture*), ...);
+        # or: dTable_t* g_XXX = d_TableInit(..., sizeof(SDL_Surface*), ...);
+        texture_pattern = r'(g_\w+)\s*=\s*d_TableInit\([^,]+,\s*sizeof\s*\(\s*SDL_Texture\s*\*\s*\)'
+        surface_pattern = r'(g_\w+)\s*=\s*d_TableInit\([^,]+,\s*sizeof\s*\(\s*SDL_Surface\s*\*\s*\)'
 
         for pattern in [texture_pattern, surface_pattern]:
             matches = re.finditer(pattern, content, re.MULTILINE)
@@ -57,16 +57,16 @@ def find_texture_cleanup(cleanup_func: str, table_name: str) -> Tuple[bool, str]
     """
 
     # Find the section where this table is destroyed
-    destroy_pattern = rf'd_DestroyTable\s*\(\s*&{table_name}\s*\)'
+    destroy_pattern = rf'd_TableDestroy\s*\(\s*&{table_name}\s*\)'
     destroy_match = re.search(destroy_pattern, cleanup_func)
 
     if not destroy_match:
-        return (False, "d_DestroyTable() not found")
+        return (False, "d_TableDestroy() not found")
 
     destroy_pos = destroy_match.start()
 
     # Look for the if block containing this table
-    # Pattern: if (table_name) { ... d_DestroyTable(&table_name); }
+    # Pattern: if (table_name) { ... d_TableDestroy(&table_name); }
 
     # Find start of if block for this table
     if_pattern = rf'if\s*\(\s*{table_name}\s*\)\s*\{{'
@@ -80,10 +80,10 @@ def find_texture_cleanup(cleanup_func: str, table_name: str) -> Tuple[bool, str]
     block_text = cleanup_func[block_start:destroy_pos]
 
     # Check for the proper cleanup pattern in this block:
-    # 1. d_GetAllKeysFromTable(table_name)
-    keys_pattern = rf'd_GetAllKeysFromTable\s*\(\s*{table_name}\s*\)'
+    # 1. d_TableGetAllKeys(table_name)
+    keys_pattern = rf'd_TableGetAllKeys\s*\(\s*{table_name}\s*\)'
     if not re.search(keys_pattern, block_text):
-        return (False, "d_GetAllKeysFromTable() not found in cleanup block")
+        return (False, "d_TableGetAllKeys() not found in cleanup block")
 
     # 2. SDL_DestroyTexture or SDL_FreeSurface call (Archimedes uses both)
     texture_destroy_pattern = r'SDL_DestroyTexture\s*\('
@@ -91,10 +91,10 @@ def find_texture_cleanup(cleanup_func: str, table_name: str) -> Tuple[bool, str]
     if not (re.search(texture_destroy_pattern, block_text) or re.search(surface_destroy_pattern, block_text)):
         return (False, "Neither SDL_DestroyTexture() nor SDL_FreeSurface() found in cleanup block")
 
-    # 3. d_DestroyArray for keys (any variable name)
-    destroy_array_pattern = r'd_DestroyArray\s*\(\s*\w+\s*\)'
+    # 3. d_ArrayDestroy for keys (any variable name)
+    destroy_array_pattern = r'd_ArrayDestroy\s*\(\s*\w+\s*\)'
     if not re.search(destroy_array_pattern, block_text):
-        return (False, "d_DestroyArray() not found in cleanup block")
+        return (False, "d_ArrayDestroy() not found in cleanup block")
 
     return (True, "All cleanup steps present")
 
@@ -159,11 +159,11 @@ def verify_texture_cleanup(project_root: Path) -> bool:
 
     # Check each texture table for proper cleanup
     print("🔍 Verifying texture cleanup pattern:")
-    print("   ✓ d_GetAllKeysFromTable(table)")
+    print("   ✓ d_TableGetAllKeys(table)")
     print("   ✓ Loop through keys")
     print("   ✓ SDL_DestroyTexture() on each texture")
-    print("   ✓ d_DestroyArray(keys)")
-    print("   ✓ d_DestroyTable(&table)")
+    print("   ✓ d_ArrayDestroy(keys)")
+    print("   ✓ d_TableDestroy(&table)")
     print()
 
     all_valid = True
@@ -203,20 +203,20 @@ def verify_texture_cleanup(project_root: Path) -> bool:
         print()
         print("Constitutional Pattern Verified:")
         print("  - Global tables manage pointer ownership")
-        print("  - SDL_DestroyTexture()/SDL_FreeSurface() called before d_DestroyTable()")
+        print("  - SDL_DestroyTexture()/SDL_FreeSurface() called before d_TableDestroy()")
         print("  - No memory leaks from texture/surface storage")
         return True
     else:
         print(f"❌ FAILURE: {len(missing_cleanup)} texture(s) missing cleanup")
         print()
-        print("Fix: In Cleanup() function, before d_DestroyTable():")
-        print("  1. dArray_t* keys = d_GetAllKeysFromTable(table);")
+        print("Fix: In Cleanup() function, before d_TableDestroy():")
+        print("  1. dArray_t* keys = d_TableGetAllKeys(table);")
         print("  2. for (size_t i = 0; i < keys->count; i++) {")
-        print("  3.     SDL_Texture** tex = d_GetDataFromTable(table, key);")
+        print("  3.     SDL_Texture** tex = d_TableGet(table, key);")
         print("  4.     SDL_DestroyTexture(*tex);")
         print("  5. }")
-        print("  6. d_DestroyArray(keys);")
-        print("  7. d_DestroyTable(&table);")
+        print("  6. d_ArrayDestroy(keys);")
+        print("  7. d_TableDestroy(&table);")
         return False
 
 if __name__ == '__main__':

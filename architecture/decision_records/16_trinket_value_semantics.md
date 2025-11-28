@@ -12,7 +12,7 @@ dTable_t* g_trinkets;  // trinket_id → Trinket_t* (POINTER!)
 
 Trinket_t* CreateTrinket(...) {
     Trinket_t* trinket = malloc(sizeof(Trinket_t));  // ❌ Raw malloc!
-    d_SetDataInTable(g_trinkets, &id, &trinket);     // Store POINTER
+    d_TableSet(g_trinkets, &id, &trinket);     // Store POINTER
     return trinket;
 }
 
@@ -59,7 +59,7 @@ typedef struct Player {
 1. **Global template registry** (`g_trinket_templates`) stores `Trinket_t` BY VALUE
 2. **Players store COPIES** - deep-copy template → player's slot on equip
 3. **Each player has own instance** with independent stats
-4. **No malloc()** - stack allocation + `d_SetDataInTable()` stores by value
+4. **No malloc()** - stack allocation + `d_TableSet()` stores by value
 5. **Class trinket** embedded directly in `Player_t` struct (stable address)
 6. **Regular trinkets** stored in `dArray_t` of `Trinket_t` values
 
@@ -77,10 +77,10 @@ Trinket_t* CreateTrinketTemplate(int trinket_id, const char* name, ...) {
     // ... initialize all fields ...
 
     // Store BY VALUE in table (memcpy inside)
-    d_SetDataInTable(g_trinket_templates, &template.trinket_id, &template);
+    d_TableSet(g_trinket_templates, &template.trinket_id, &template);
 
     // Return pointer to VALUE in table
-    return (Trinket_t*)d_GetDataFromTable(g_trinket_templates, &trinket_id);
+    return (Trinket_t*)d_TableGet(g_trinket_templates, &trinket_id);
 }
 ```
 
@@ -96,7 +96,7 @@ typedef struct Player {
 // Initialization
 player.has_class_trinket = false;
 memset(&player.class_trinket, 0, sizeof(Trinket_t));
-player.trinket_slots = d_InitArray(6, sizeof(Trinket_t));  // VALUES!
+player.trinket_slots = d_ArrayInit(6, sizeof(Trinket_t));  // VALUES!
 ```
 
 **Equipping (DEEP COPY):**
@@ -132,7 +132,7 @@ Trinket_t* GetClassTrinket(const Player_t* player) {
 }
 
 Trinket_t* GetEquippedTrinket(const Player_t* player, int slot) {
-    Trinket_t* trinket = (Trinket_t*)d_IndexDataFromArray(player->trinket_slots, slot);
+    Trinket_t* trinket = (Trinket_t*)d_ArrayGet(player->trinket_slots, slot);
     if (!trinket || !trinket->name) return NULL;  // Empty slot check
     return trinket;  // Pointer to value in array
 }
@@ -180,7 +180,7 @@ void CleanupTrinketValue(Trinket_t* trinket) {
 - Safe to use `TweenFloat()` directly
 
 **Regular Trinkets (Array):**
-- Address is `&((Trinket_t*)d_IndexDataFromArray(slots, i))->shake_offset_x`
+- Address is `&((Trinket_t*)d_ArrayGet(slots, i))->shake_offset_x`
 - Address stable as long as array doesn't reallocate
 - Prefer `TweenFloatInArray()` with slot_index for extra safety
 
@@ -210,8 +210,8 @@ typedef struct Player {
 Trinket_t* CreateTrinketTemplate(int trinket_id, const char* name, ...) {
     Trinket_t template = {0};  // Stack allocation, NO malloc!
     // ... initialize fields ...
-    d_SetDataInTable(g_trinket_templates, &template.trinket_id, &template);
-    return (Trinket_t*)d_GetDataFromTable(g_trinket_templates, &trinket_id);
+    d_TableSet(g_trinket_templates, &template.trinket_id, &template);
+    return (Trinket_t*)d_TableGet(g_trinket_templates, &trinket_id);
 }
 ```
 

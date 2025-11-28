@@ -111,7 +111,7 @@ bool IsMenuItemHovered(const MenuItem_t* item) {
     int my = app.mouse.y;
 
     // Calculate text dimensions for accurate bounds
-    int text_w, text_h;
+    float text_w, text_h;
     a_CalcTextDimensions((char*)item->label, FONT_ENTER_COMMAND, &text_w, &text_h);
 
     // Calculate bounds: x centered, y aligned with text rendering
@@ -160,7 +160,7 @@ void RenderMenuItem(const MenuItem_t* item) {
     mutable_item->is_hovered = IsMenuItemHovered(item);
 
     // Calculate text dimensions for accurate bounds
-    int text_w, text_h;
+    float text_w, text_h;
     a_CalcTextDimensions((char*)item->label, FONT_ENTER_COMMAND, &text_w, &text_h);
 
     // Draw background highlight

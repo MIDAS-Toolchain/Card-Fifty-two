@@ -22,6 +22,116 @@ extern EventEncounter_t* CreateSystemMaintenanceEvent(void);
 extern EventEncounter_t* CreateHouseOddsEvent(void);
 
 // ============================================================================
+// ARGUMENT AUTOCOMPLETE FUNCTIONS
+// ============================================================================
+
+dArray_t* SuggestEventNames(Terminal_t* terminal, const char* partial_arg) {
+    (void)terminal;  // Unused
+
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
+    dArray_t* suggestions = d_ArrayInit(8, sizeof(char*));
+    if (!suggestions) return NULL;
+
+    // Get event registry (single source of truth)
+    int event_count = 0;
+    const EventRegistryEntry_t* registry = GetEventRegistry(&event_count);
+
+    // Filter by partial argument (case-insensitive prefix match)
+    // Skip exact matches to prevent autocomplete spam when cycling
+    size_t partial_len = partial_arg ? strlen(partial_arg) : 0;
+
+    for (int i = 0; i < event_count; i++) {
+        size_t candidate_len = strlen(registry[i].command_name);
+
+        // Prefix match AND candidate must be longer than partial (skip exact matches)
+        bool is_prefix_match = (partial_len == 0 || strncasecmp(registry[i].command_name, partial_arg, partial_len) == 0);
+        bool is_longer = (candidate_len > partial_len);
+
+        if (is_prefix_match && (partial_len == 0 || is_longer)) {
+            // Add matching command name (pointer to static string in registry)
+            const char* name = registry[i].command_name;
+            d_ArrayAppend(suggestions, &name);
+        }
+    }
+
+    return suggestions;
+}
+
+dArray_t* SuggestEnemyNames(Terminal_t* terminal, const char* partial_arg) {
+    (void)terminal;  // Unused
+
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
+    dArray_t* suggestions = d_ArrayInit(8, sizeof(char*));
+    if (!suggestions) return NULL;
+
+    // List of known enemy names (static strings - don't free these!)
+    const char* enemy_names[] = {
+        "TheDidact",
+        "TheDaemon",
+        "ShadowDealer",
+        "ChipCollector",
+        "HouseEnforcer",
+    };
+    int enemy_count = sizeof(enemy_names) / sizeof(enemy_names[0]);
+
+    // Filter by partial argument (case-insensitive prefix match)
+    // Skip exact matches to prevent autocomplete spam when cycling
+    size_t partial_len = partial_arg ? strlen(partial_arg) : 0;
+
+    for (int i = 0; i < enemy_count; i++) {
+        size_t candidate_len = strlen(enemy_names[i]);
+
+        // Prefix match AND candidate must be longer than partial (skip exact matches)
+        bool is_prefix_match = (partial_len == 0 || strncasecmp(enemy_names[i], partial_arg, partial_len) == 0);
+        bool is_longer = (candidate_len > partial_len);
+
+        if (is_prefix_match && (partial_len == 0 || is_longer)) {
+            // Add matching enemy name (pointer to static string)
+            const char* name = enemy_names[i];
+            d_ArrayAppend(suggestions, &name);
+        }
+    }
+
+    return suggestions;
+}
+
+dArray_t* SuggestStatusEffects(Terminal_t* terminal, const char* partial_arg) {
+    (void)terminal;  // Unused
+
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
+    dArray_t* suggestions = d_ArrayInit(8, sizeof(char*));
+    if (!suggestions) return NULL;
+
+    // List of status effect names (static strings - don't free these!)
+    // ADR-002: Only outcome modifiers (no betting modifiers)
+    const char* status_names[] = {
+        "CHIP_DRAIN",
+        "TILT",
+        "GREED",
+        "RAKE",
+    };
+    int status_count = sizeof(status_names) / sizeof(status_names[0]);
+
+    // Filter by partial argument (case-insensitive prefix match)
+    size_t partial_len = partial_arg ? strlen(partial_arg) : 0;
+
+    for (int i = 0; i < status_count; i++) {
+        size_t candidate_len = strlen(status_names[i]);
+
+        // Prefix match AND candidate must be longer than partial (skip exact matches)
+        bool is_prefix_match = (partial_len == 0 || strncasecmp(status_names[i], partial_arg, partial_len) == 0);
+        bool is_longer = (candidate_len > partial_len);
+
+        if (is_prefix_match && (partial_len == 0 || is_longer)) {
+            const char* name = status_names[i];
+            d_ArrayAppend(suggestions, &name);
+        }
+    }
+
+    return suggestions;
+}
+
+// ============================================================================
 // COMMAND IMPLEMENTATIONS
 // ============================================================================
 
@@ -38,6 +148,7 @@ void CMD_Help(Terminal_t* terminal, const char* args) {
     TerminalPrint(terminal, "  set_hp <amt>      - Set enemy HP (combat only)");
     TerminalPrint(terminal, "  spawn_enemy <name> <hp> <atk> - Spawn combat enemy");
     TerminalPrint(terminal, "  add_tag <id|all> <tag> - Add tag to card (0-51 or 'all')");
+    TerminalPrint(terminal, "  apply_status <effect> <val> <dur> - Apply status (RAKE, TILT, etc)");
     TerminalPrint(terminal, "  trigger_event <name> - Trigger event (maintenance, house_odds)");
     TerminalPrint(terminal, "");
 }
@@ -156,12 +267,11 @@ void CMD_SpawnEnemy(Terminal_t* terminal, const char* args) {
         return;
     }
 
-    // Parse: name hp attack
+    // Parse: name hp
     char name[128] = {0};
     int hp = 0;
-    int chip_threat = 0;
 
-    // Simple parsing (expect: name hp chip_threat)
+    // Simple parsing (expect: name hp)
     const char* ptr = args;
 
     // Skip leading spaces
@@ -188,18 +298,11 @@ void CMD_SpawnEnemy(Terminal_t* terminal, const char* args) {
     while (*ptr && isspace(*ptr)) ptr++;
     if (*ptr) {
         hp = atoi(ptr);
-        while (*ptr && !isspace(*ptr)) ptr++;
     }
 
-    // Parse chip_threat
-    while (*ptr && isspace(*ptr)) ptr++;
-    if (*ptr) {
-        chip_threat = atoi(ptr);
-    }
-
-    if (strlen(name) == 0 || hp <= 0 || chip_threat <= 0) {
+    if (strlen(name) == 0 || hp <= 0) {
         TerminalPrint(terminal, "[Error] Invalid parameters");
-        TerminalPrint(terminal, "[Error] Usage: spawn_enemy <name> <hp> <chip_threat>");
+        TerminalPrint(terminal, "[Error] Usage: spawn_enemy <name> <hp>");
         return;
     }
 
@@ -209,7 +312,7 @@ void CMD_SpawnEnemy(Terminal_t* terminal, const char* args) {
     }
 
     // Create new enemy
-    Enemy_t* enemy = CreateEnemy(name, hp, chip_threat);
+    Enemy_t* enemy = CreateEnemy(name, hp);
     if (!enemy) {
         TerminalPrint(terminal, "[Error] Failed to create enemy");
         return;
@@ -218,7 +321,7 @@ void CMD_SpawnEnemy(Terminal_t* terminal, const char* args) {
     g_game.current_enemy = enemy;
     g_game.is_combat_mode = true;
 
-    TerminalPrint(terminal, "[Terminal] Spawned: %s (HP: %d, Threat: %d)", name, hp, chip_threat);
+    TerminalPrint(terminal, "[Terminal] Spawned: %s (HP: %d)", name, hp);
 }
 
 void CMD_AddTag(Terminal_t* terminal, const char* args) {
@@ -281,10 +384,67 @@ void CMD_AddTag(Terminal_t* terminal, const char* args) {
     }
 }
 
+void CMD_ApplyStatus(Terminal_t* terminal, const char* args) {
+    if (!args || strlen(args) == 0) {
+        TerminalPrint(terminal, "[Error] Usage: apply_status <effect> <value> <duration>");
+        TerminalPrint(terminal, "[Error] Example: apply_status RAKE 5 3");
+        TerminalPrint(terminal, "[Error] Effects: CHIP_DRAIN, TILT, GREED, RAKE");
+        return;
+    }
+
+    // Parse: status_name value duration
+    char status_name[64] = {0};
+    int value = 0;
+    int duration = 0;
+
+    int parsed = sscanf(args, "%63s %d %d", status_name, &value, &duration);
+    if (parsed < 3) {
+        TerminalPrint(terminal, "[Error] Invalid arguments (need 3 parameters)");
+        TerminalPrint(terminal, "[Error] Usage: apply_status <effect> <value> <duration>");
+        return;
+    }
+
+    // Check player exists
+    if (!g_human_player || !g_human_player->status_effects) {
+        TerminalPrint(terminal, "[Error] Player not initialized");
+        return;
+    }
+
+    // Convert string to StatusEffect_t enum
+    StatusEffect_t effect = StatusEffectFromString(status_name);
+    if (effect == STATUS_NONE) {
+        TerminalPrint(terminal, "[Error] Unknown status effect: %s", status_name);
+        TerminalPrint(terminal, "[Error] Valid effects: CHIP_DRAIN, TILT, GREED, RAKE");
+        return;
+    }
+
+    // Validate parameters
+    if (duration <= 0) {
+        TerminalPrint(terminal, "[Error] Duration must be > 0");
+        return;
+    }
+
+    // Apply status effect
+    ApplyStatusEffect(g_human_player->status_effects, effect, value, duration);
+
+    TerminalPrint(terminal, "[Terminal] Applied %s (value: %d, duration: %d)",
+                  GetStatusEffectName(effect), value, duration);
+}
+
 void CMD_TriggerEvent(Terminal_t* terminal, const char* args) {
     if (!args || strlen(args) == 0) {
         TerminalPrint(terminal, "[Error] Usage: trigger_event <event_name>");
-        TerminalPrint(terminal, "[Error] Available events: maintenance, house_odds");
+
+        // Show available events from registry
+        int event_count = 0;
+        const EventRegistryEntry_t* registry = GetEventRegistry(&event_count);
+
+        if (event_count > 0) {
+            TerminalPrint(terminal, "[Error] Available events:");
+            for (int i = 0; i < event_count; i++) {
+                TerminalPrint(terminal, "  - %s", registry[i].command_name);
+            }
+        }
         return;
     }
 
@@ -294,28 +454,35 @@ void CMD_TriggerEvent(Terminal_t* terminal, const char* args) {
         g_current_event = NULL;
     }
 
-    // Create event based on name
-    if (strcasecmp(args, "maintenance") == 0) {
-        g_current_event = CreateSystemMaintenanceEvent();
-        if (g_current_event) {
-            State_Transition(&g_game, STATE_EVENT);
-            ShowEventModal(g_event_modal, g_current_event);  // Manually show modal
-            TerminalPrint(terminal, "[Terminal] Triggered event: System Maintenance");
-        } else {
-            TerminalPrint(terminal, "[Error] Failed to create event");
+    // Look up event in registry (single source of truth)
+    int event_count = 0;
+    const EventRegistryEntry_t* registry = GetEventRegistry(&event_count);
+
+    bool found = false;
+    for (int i = 0; i < event_count; i++) {
+        if (strcasecmp(args, registry[i].command_name) == 0) {
+            // Found matching event - call factory function
+            g_current_event = registry[i].factory();
+
+            if (g_current_event) {
+                State_Transition(&g_game, STATE_EVENT);
+                ShowEventModal(g_event_modal, g_current_event);  // Manually show modal
+                TerminalPrint(terminal, "[Terminal] Triggered event: %s", registry[i].display_name);
+            } else {
+                TerminalPrint(terminal, "[Error] Failed to create event");
+            }
+
+            found = true;
+            break;
         }
-    } else if (strcasecmp(args, "house_odds") == 0) {
-        g_current_event = CreateHouseOddsEvent();
-        if (g_current_event) {
-            State_Transition(&g_game, STATE_EVENT);
-            ShowEventModal(g_event_modal, g_current_event);  // Manually show modal
-            TerminalPrint(terminal, "[Terminal] Triggered event: House Odds");
-        } else {
-            TerminalPrint(terminal, "[Error] Failed to create event");
-        }
-    } else {
+    }
+
+    if (!found) {
         TerminalPrint(terminal, "[Error] Unknown event: %s", args);
-        TerminalPrint(terminal, "[Error] Available events: maintenance, house_odds");
+        TerminalPrint(terminal, "[Error] Available events:");
+        for (int i = 0; i < event_count; i++) {
+            TerminalPrint(terminal, "  - %s", registry[i].command_name);
+        }
     }
 }
 
@@ -324,13 +491,14 @@ void CMD_TriggerEvent(Terminal_t* terminal, const char* args) {
 // ============================================================================
 
 void RegisterBuiltinCommands(Terminal_t* terminal) {
-    RegisterCommand(terminal, "help", CMD_Help, "Show available commands");
-    RegisterCommand(terminal, "clear", CMD_Clear, "Clear terminal output");
-    RegisterCommand(terminal, "echo", CMD_Echo, "Print text to terminal");
-    RegisterCommand(terminal, "give_chips", CMD_GiveChips, "Add chips to player");
-    RegisterCommand(terminal, "set_sanity", CMD_SetSanity, "Set player sanity (0-100)");
-    RegisterCommand(terminal, "set_hp", CMD_SetHP, "Set enemy HP (combat only)");
-    RegisterCommand(terminal, "spawn_enemy", CMD_SpawnEnemy, "Spawn combat enemy");
-    RegisterCommand(terminal, "add_tag", CMD_AddTag, "Add tag to card(s) by ID or 'all'");
-    RegisterCommand(terminal, "trigger_event", CMD_TriggerEvent, "Trigger specific event by name");
+    RegisterCommand(terminal, "help", CMD_Help, "Show available commands", NULL);
+    RegisterCommand(terminal, "clear", CMD_Clear, "Clear terminal output", NULL);
+    RegisterCommand(terminal, "echo", CMD_Echo, "Print text to terminal", NULL);
+    RegisterCommand(terminal, "give_chips", CMD_GiveChips, "Add chips to player", NULL);
+    RegisterCommand(terminal, "set_sanity", CMD_SetSanity, "Set player sanity (0-100)", NULL);
+    RegisterCommand(terminal, "set_hp", CMD_SetHP, "Set enemy HP (combat only)", NULL);
+    RegisterCommand(terminal, "spawn_enemy", CMD_SpawnEnemy, "Spawn combat enemy", SuggestEnemyNames);
+    RegisterCommand(terminal, "add_tag", CMD_AddTag, "Add tag to card(s) by ID or 'all'", NULL);
+    RegisterCommand(terminal, "apply_status", CMD_ApplyStatus, "Apply status effect to player", SuggestStatusEffects);
+    RegisterCommand(terminal, "trigger_event", CMD_TriggerEvent, "Trigger specific event by name", SuggestEventNames);
 }

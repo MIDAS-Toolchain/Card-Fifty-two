@@ -19,15 +19,15 @@ EventPool_t* CreateEventPool(void) {
         return NULL;
     }
 
-    // d_InitArray(capacity, element_size) - capacity FIRST!
-    pool->factories = d_InitArray(8, sizeof(EventFactory));
-    pool->weights = d_InitArray(8, sizeof(int));
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
+    pool->factories = d_ArrayInit(8, sizeof(EventFactory));
+    pool->weights = d_ArrayInit(8, sizeof(int));
     pool->total_weight = 0;
 
     if (!pool->factories || !pool->weights) {
         d_LogFatal("Failed to initialize EventPool arrays");
-        if (pool->factories) d_DestroyArray(pool->factories);
-        if (pool->weights) d_DestroyArray(pool->weights);
+        if (pool->factories) d_ArrayDestroy(pool->factories);
+        if (pool->weights) d_ArrayDestroy(pool->weights);
         free(pool);
         return NULL;
     }
@@ -40,10 +40,10 @@ void DestroyEventPool(EventPool_t** pool) {
     if (!pool || !*pool) return;
 
     if ((*pool)->factories) {
-        d_DestroyArray((*pool)->factories);
+        d_ArrayDestroy((*pool)->factories);
     }
     if ((*pool)->weights) {
-        d_DestroyArray((*pool)->weights);
+        d_ArrayDestroy((*pool)->weights);
     }
 
     free(*pool);
@@ -72,8 +72,8 @@ void AddEventToPool(EventPool_t* pool, EventFactory factory, int weight) {
     }
 
     // Append factory and weight (parallel arrays)
-    d_AppendDataToArray(pool->factories, &factory);
-    d_AppendDataToArray(pool->weights, &weight);
+    d_ArrayAppend(pool->factories, &factory);
+    d_ArrayAppend(pool->weights, &weight);
     pool->total_weight += weight;
 
     d_LogInfoF("Added event factory to pool (weight: %d, total: %d)", weight, pool->total_weight);
@@ -100,14 +100,14 @@ EventEncounter_t* GetRandomEventFromPool(EventPool_t* pool) {
     int accumulated_weight = 0;
 
     for (size_t i = 0; i < pool->factories->count; i++) {
-        int* weight = (int*)d_IndexDataFromArray(pool->weights, i);
+        int* weight = (int*)d_ArrayGet(pool->weights, i);
         if (!weight) continue;
 
         accumulated_weight += *weight;
 
         if (random_value < accumulated_weight) {
             // Found the selected factory!
-            EventFactory* factory = (EventFactory*)d_IndexDataFromArray(pool->factories, i);
+            EventFactory* factory = (EventFactory*)d_ArrayGet(pool->factories, i);
             if (!factory || !*factory) {
                 d_LogErrorF("GetRandomEventFromPool: NULL factory at index %zu", i);
                 return NULL;
@@ -122,7 +122,7 @@ EventEncounter_t* GetRandomEventFromPool(EventPool_t* pool) {
 
     // Fallback: should never reach here, but return first event if we do
     d_LogWarning("GetRandomEventFromPool: Fell through selection loop (using fallback)");
-    EventFactory* fallback = (EventFactory*)d_IndexDataFromArray(pool->factories, 0);
+    EventFactory* fallback = (EventFactory*)d_ArrayGet(pool->factories, 0);
     if (fallback && *fallback) {
         return (*fallback)();
     }

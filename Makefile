@@ -21,7 +21,9 @@ LIBS = -lArchimedes -lDaedalus -lSDL2 -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lcjs
 INCLUDES = -I/usr/include -I/usr/local/include -I$(INC_DIR)
 
 # Source files
-SOURCES = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/scenes/*.c) $(wildcard $(SRC_DIR)/scenes/components/*.c) $(wildcard $(SRC_DIR)/scenes/sections/*.c) $(wildcard $(SRC_DIR)/tutorial/*.c) $(wildcard $(SRC_DIR)/terminal/*.c) $(wildcard $(SRC_DIR)/tween/*.c) $(wildcard $(SRC_DIR)/trinkets/*.c)
+SOURCES = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/scenes/*.c) $(wildcard $(SRC_DIR)/scenes/components/*.c) $(wildcard $(SRC_DIR)/scenes/sections/*.c) $(wildcard $(SRC_DIR)/tutorial/*.c) $(wildcard $(SRC_DIR)/terminal/*.c) $(wildcard $(SRC_DIR)/tween/*.c) $(wildcard $(SRC_DIR)/trinkets/*.c) $(wildcard $(SRC_DIR)/loaders/*.c)
+# Exclude stub files now that real implementations are updated
+SOURCES := $(filter-out $(SRC_DIR)/scenes/components/abilityDisplay_stub.c $(SRC_DIR)/scenes/components/abilityTooltipModal_stub.c, $(SOURCES))
 OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
 
 # Target executable

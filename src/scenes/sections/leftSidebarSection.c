@@ -400,19 +400,16 @@ void RenderLeftSidebarSection(LeftSidebarSection_t* section, Player_t* player, i
     bool portrait_hovering = (mouse_x >= portrait_x && mouse_x < portrait_x + PORTRAIT_SIZE &&
                               mouse_y >= portrait_y && mouse_y < portrait_y + PORTRAIT_SIZE);
 
-    // Get portrait texture (auto-refreshes if dirty)
-    SDL_Texture* portrait_texture = GetPlayerPortraitTexture(player);
-    if (portrait_texture) {
-        // Scale up by 10% on hover, fade from 75% to 90% opacity
+    // Get portrait surface directly
+    SDL_Surface* portrait_surface = player->portrait_surface;
+    if (portrait_surface) {
+        // Scale up by 10% on hover
         int render_size = portrait_hovering ? (int)(PORTRAIT_SIZE * 1.1f) : PORTRAIT_SIZE;
         int render_x = center_x - render_size / 2;
         int render_y = portrait_y - (render_size - PORTRAIT_SIZE) / 2;  // Keep centered vertically
-        int alpha = portrait_hovering ? 230 : 191;  // 90% on hover, 75% normally (255 * 0.75 = 191)
 
-        SDL_Rect dst = {render_x, render_y, render_size, render_size};
-        SDL_SetTextureAlphaMod(portrait_texture, alpha);
-        SDL_RenderCopy(app.renderer, portrait_texture, NULL, &dst);
-        SDL_SetTextureAlphaMod(portrait_texture, 255);  // Reset to full opacity
+        // Render using Archimedes surface blitting
+        a_BlitSurfaceRect(portrait_surface, (aRectf_t){render_x, render_y, render_size, render_size}, 1);
     } else {
         // Fallback: Draw placeholder rect
         a_DrawFilledRect((aRectf_t){portrait_x, portrait_y, PORTRAIT_SIZE, PORTRAIT_SIZE}, (aColor_t){100, 100, 100, 255});
@@ -484,7 +481,7 @@ void RenderLeftSidebarModalOverlay(LeftSidebarSection_t* section, Player_t* play
         // Iterate through active effects and check hover
         for (size_t i = 0; i < player->status_effects->active_effects->count; i++) {
             const StatusEffectInstance_t* effect = (const StatusEffectInstance_t*)
-                d_IndexDataFromArray(player->status_effects->active_effects, i);
+                d_ArrayGet(player->status_effects->active_effects, i);
 
             if (!effect || effect->duration <= 0) continue;
 

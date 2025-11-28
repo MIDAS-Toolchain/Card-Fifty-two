@@ -91,7 +91,11 @@ void RenderDamageNumbers(VisualEffects_t* vfx) {
         aColor_t color;
         float scale;
 
-        if (dmg->is_crit) {
+        if (dmg->is_rake) {
+            // RAKE: Gold, larger scale
+            color = (aColor_t){255, 215, 0, (int)(dmg->alpha * 255)};  // Gold
+            scale = 1.5f;
+        } else if (dmg->is_crit) {
             // CRIT: Gold, larger scale
             color = (aColor_t){255, 204, 0, (int)(dmg->alpha * 255)};  // Gold (#ffcc00)
             scale = 1.5f;
@@ -107,7 +111,9 @@ void RenderDamageNumbers(VisualEffects_t* vfx) {
 
         // Format damage text
         dString_t* dmg_text = d_StringInit();
-        if (dmg->is_crit) {
+        if (dmg->is_rake) {
+            d_StringFormat(dmg_text, "RAKE -%d", dmg->damage);
+        } else if (dmg->is_crit) {
             d_StringFormat(dmg_text, "CRIT! -%d", dmg->damage);
         } else if (dmg->is_healing) {
             d_StringFormat(dmg_text, "+%d", dmg->damage);
@@ -177,7 +183,7 @@ static void OnDamageNumberComplete(void* user_data) {
 // PUBLIC EFFECTS API
 // ============================================================================
 
-void VFX_SpawnDamageNumber(VisualEffects_t* vfx, int damage, float world_x, float world_y, bool is_healing, bool is_crit) {
+void VFX_SpawnDamageNumber(VisualEffects_t* vfx, int damage, float world_x, float world_y, bool is_healing, bool is_crit, bool is_rake) {
     if (!vfx) return;
 
     // Count how many active damage numbers are near this spawn position
@@ -219,6 +225,7 @@ void VFX_SpawnDamageNumber(VisualEffects_t* vfx, int damage, float world_x, floa
             dmg->damage = damage;
             dmg->is_healing = is_healing;
             dmg->is_crit = is_crit;
+            dmg->is_rake = is_rake;
 
             // Setup callback data with current generation
             vfx->callback_data[i].dmg = dmg;

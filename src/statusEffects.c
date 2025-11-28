@@ -4,7 +4,8 @@
  */
 
 #include "../include/statusEffects.h"
-#include "../include/scenes/sceneBlackjack.h"
+#include "../include/scenes/sceneBlackjack.h"         // For GetVisualEffects()
+#include "../include/scenes/components/visualEffects.h"  // For VFX_SpawnDamageNumber()
 #include "../include/tween/tween.h"
 #include "../include/random.h"
 #include <stdlib.h>
@@ -21,9 +22,9 @@ StatusEffectManager_t* CreateStatusEffectManager(void) {
     }
 
     // Initialize effects array (Constitutional: dArray_t, not raw array)
-    // d_InitArray(capacity, element_size) - capacity FIRST!
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
     // Capacity: 32 (prevents realloc during combat - avoids dangling pointer bugs in TweenFloat)
-    manager->active_effects = d_InitArray(32, sizeof(StatusEffectInstance_t));
+    manager->active_effects = d_ArrayInit(32, sizeof(StatusEffectInstance_t));
     if (!manager->active_effects) {
         d_LogError("CreateStatusEffectManager: Failed to allocate effects array");
         free(manager);
@@ -41,7 +42,7 @@ void DestroyStatusEffectManager(StatusEffectManager_t** manager) {
 
     // Destroy effects array
     if (mgr->active_effects) {
-        d_DestroyArray(mgr->active_effects);
+        d_ArrayDestroy(mgr->active_effects);
         mgr->active_effects = NULL;
     }
 
@@ -70,7 +71,7 @@ void ApplyStatusEffect(StatusEffectManager_t* manager,
     // Check if effect already exists (refresh duration)
     for (size_t i = 0; i < manager->active_effects->count; i++) {
         StatusEffectInstance_t* effect = (StatusEffectInstance_t*)
-            d_IndexDataFromArray(manager->active_effects, i);
+            d_ArrayGet(manager->active_effects, i);
 
         if (effect && effect->type == type) {
             // Refresh existing effect
@@ -107,22 +108,37 @@ void ApplyStatusEffect(StatusEffectManager_t* manager,
         }
     }
 
+    // Determine duration type based on effect type
+    DurationType_t duration_type = DURATION_ROUNDS;  // Default
+    switch (type) {
+        case STATUS_RAKE:
+            duration_type = DURATION_STACKS;  // Stack-based (consumed per trigger)
+            break;
+        case STATUS_CHIP_DRAIN:
+        case STATUS_TILT:
+        case STATUS_GREED:
+        default:
+            duration_type = DURATION_ROUNDS;  // Round-based (consumed per round end)
+            break;
+    }
+
     // Add new effect
     StatusEffectInstance_t new_effect = {
         .type = type,
         .value = value,
         .duration = duration,
+        .duration_type = duration_type,
         .intensity = 1.0f,
         .shake_offset_x = 0.0f,
         .shake_offset_y = 0.0f,
         .flash_alpha = 0.0f
     };
 
-    d_AppendDataToArray(manager->active_effects, &new_effect);
+    d_ArrayAppend(manager->active_effects, &new_effect);
 
     // Verify append succeeded before using count-1 as index
     if (manager->active_effects->count == 0) {
-        d_LogError("ApplyStatusEffect: d_AppendDataToArray failed (count still 0)");
+        d_LogError("ApplyStatusEffect: d_ArrayAppend failed (count still 0)");
         return;
     }
 
@@ -144,7 +160,7 @@ void ApplyStatusEffect(StatusEffectManager_t* manager,
 
         // Red flash: 255 → 0 (fade out)
         StatusEffectInstance_t* added_effect = (StatusEffectInstance_t*)
-            d_IndexDataFromArray(manager->active_effects, new_effect_index);
+            d_ArrayGet(manager->active_effects, new_effect_index);
         if (added_effect) {
             added_effect->flash_alpha = 255.0f;
         }
@@ -164,13 +180,13 @@ void RemoveStatusEffect(StatusEffectManager_t* manager, StatusEffect_t type) {
 
     for (size_t i = 0; i < manager->active_effects->count; i++) {
         StatusEffectInstance_t* effect = (StatusEffectInstance_t*)
-            d_IndexDataFromArray(manager->active_effects, i);
+            d_ArrayGet(manager->active_effects, i);
 
         if (effect && effect->type == type) {
             // Remove by swapping with last and decrementing count
             if (i < manager->active_effects->count - 1) {
                 StatusEffectInstance_t* last = (StatusEffectInstance_t*)
-                    d_IndexDataFromArray(manager->active_effects,
+                    d_ArrayGet(manager->active_effects,
                                         manager->active_effects->count - 1);
                 if (last) {
                     *effect = *last;
@@ -189,7 +205,7 @@ bool HasStatusEffect(const StatusEffectManager_t* manager, StatusEffect_t type) 
 
     for (size_t i = 0; i < manager->active_effects->count; i++) {
         const StatusEffectInstance_t* effect = (const StatusEffectInstance_t*)
-            d_IndexDataFromArray(manager->active_effects, i);
+            d_ArrayGet(manager->active_effects, i);
 
         if (effect && effect->type == type && effect->duration > 0) {
             return true;
@@ -204,7 +220,7 @@ StatusEffectInstance_t* GetStatusEffect(StatusEffectManager_t* manager, StatusEf
 
     for (size_t i = 0; i < manager->active_effects->count; i++) {
         StatusEffectInstance_t* effect = (StatusEffectInstance_t*)
-            d_IndexDataFromArray(manager->active_effects, i);
+            d_ArrayGet(manager->active_effects, i);
 
         if (effect && effect->type == type && effect->duration > 0) {
             return effect;
@@ -219,7 +235,7 @@ ssize_t GetStatusEffectIndex(StatusEffectManager_t* manager, StatusEffect_t type
 
     for (size_t i = 0; i < manager->active_effects->count; i++) {
         StatusEffectInstance_t* effect = (StatusEffectInstance_t*)
-            d_IndexDataFromArray(manager->active_effects, i);
+            d_ArrayGet(manager->active_effects, i);
 
         if (effect && effect->type == type && effect->duration > 0) {
             return (ssize_t)i;
@@ -241,7 +257,7 @@ void ProcessStatusEffectsRoundStart(StatusEffectManager_t* manager, Player_t* pl
     ssize_t drain_idx = GetStatusEffectIndex(manager, STATUS_CHIP_DRAIN);
     if (drain_idx >= 0) {
         StatusEffectInstance_t* drain = (StatusEffectInstance_t*)
-            d_IndexDataFromArray(manager->active_effects, drain_idx);
+            d_ArrayGet(manager->active_effects, drain_idx);
 
         if (!drain) return;  // Safety check
 
@@ -256,7 +272,7 @@ void ProcessStatusEffectsRoundStart(StatusEffectManager_t* manager, Player_t* pl
                   drain_amount, player->chips);
 
         // Track drain amount for result screen animation
-        SetStatusEffectDrainAmount(drain_amount);
+        SetStatusEffectDrainAmount(drain_amount, STATUS_CHIP_DRAIN);
 
         // Trigger flash animation (icon flashes red in sidebar!)
         // SAFE: Use TweenFloatInArray to avoid dangling pointer from array reallocation
@@ -296,10 +312,18 @@ void TickStatusEffectDurations(StatusEffectManager_t* manager) {
     // Iterate backwards so we can remove expired effects safely
     for (int i = (int)manager->active_effects->count - 1; i >= 0; i--) {
         StatusEffectInstance_t* effect = (StatusEffectInstance_t*)
-            d_IndexDataFromArray(manager->active_effects, (size_t)i);
+            d_ArrayGet(manager->active_effects, (size_t)i);
 
         if (!effect) continue;
 
+        // Skip stack-based effects (they self-manage duration)
+        if (effect->duration_type == DURATION_STACKS) {
+            d_LogDebugF("Skipping %s (stack-based, %d stacks remaining)",
+                       GetStatusEffectName(effect->type), effect->duration);
+            continue;
+        }
+
+        // Only tick round-based effects
         d_LogDebugF("Ticking %s: duration %d -> %d",
                    GetStatusEffectName(effect->type), effect->duration, effect->duration - 1);
 
@@ -320,7 +344,7 @@ void TickStatusEffectDurations(StatusEffectManager_t* manager) {
             // Swap with last and decrement count
             if (i < (int)manager->active_effects->count - 1) {
                 StatusEffectInstance_t* last = (StatusEffectInstance_t*)
-                    d_IndexDataFromArray(manager->active_effects,
+                    d_ArrayGet(manager->active_effects,
                                         manager->active_effects->count - 1);
                 if (last) {
                     *effect = *last;
@@ -332,63 +356,54 @@ void TickStatusEffectDurations(StatusEffectManager_t* manager) {
 }
 
 // ============================================================================
-// BETTING MODIFIERS
+// OUTCOME MODIFIERS (ADR-002: Status effects modify outcomes only)
 // ============================================================================
+//
+// IMPORTANT: Betting modifiers REMOVED from status effect system!
+// Status effects do NOT control betting behavior or restrictions.
+// Betting mechanics are controlled by the sanity system, not status effects.
+// Status effects ONLY modify chip outcomes after rounds resolve.
+//
 
-int GetMinimumBetWithEffects(const StatusEffectManager_t* manager, int base_min) {
-    if (!manager) return base_min;
+int ApplyRakeEffect(StatusEffectManager_t* manager, Player_t* player, int damage_dealt) {
+    if (!manager || !player || damage_dealt <= 0) return 0;
 
-    int modified_min = base_min;
+    // Find RAKE status
+    StatusEffectInstance_t* rake = GetStatusEffect(manager, STATUS_RAKE);
+    if (!rake || rake->duration <= 0) return 0;
 
-    // Check MINIMUM_BET effect
-    StatusEffectInstance_t* min_bet = GetStatusEffect((StatusEffectManager_t*)manager,
-                                                       STATUS_MINIMUM_BET);
-    if (min_bet && min_bet->value > modified_min) {
-        modified_min = min_bet->value;
+    // Calculate penalty: value% of damage dealt (default 5%)
+    int chip_penalty = (damage_dealt * rake->value) / 100;
+    if (chip_penalty < 1) chip_penalty = 1;  // Minimum 1 chip
+
+    d_LogInfoF("🎰 RAKE TRIGGERED: %d damage dealt × %d%% = %d chip penalty",
+               damage_dealt, rake->value, chip_penalty);
+
+    // Apply penalty
+    int old_chips = player->chips;
+    player->chips -= chip_penalty;
+    if (player->chips < 0) player->chips = 0;
+
+    d_LogInfoF("💰 RAKE DEDUCTED: %d → %d chips (-%d)",
+               old_chips, player->chips, chip_penalty);
+
+    // Track RAKE penalty for result screen (shows as yellow "RAKE -X" text)
+    SetStatusEffectDrainAmount(chip_penalty, STATUS_RAKE);
+
+    d_LogInfoF("RAKE: Lost %d chips (%d damage × %d%%), %d stacks remaining",
+               chip_penalty, damage_dealt, rake->value, rake->duration - 1);
+
+    // Consume 1 stack (duration used as stack counter)
+    rake->duration--;
+
+    // Remove if no stacks remaining
+    if (rake->duration <= 0) {
+        RemoveStatusEffect(manager, STATUS_RAKE);
+        d_LogInfo("RAKE: All stacks consumed, effect removed");
     }
 
-    return modified_min;
+    return chip_penalty;
 }
-
-bool CanAdjustBet(const StatusEffectManager_t* manager) {
-    if (!manager) return true;
-
-    // Can't adjust if any of these effects are active
-    if (HasStatusEffect(manager, STATUS_NO_ADJUST)) return false;
-    if (HasStatusEffect(manager, STATUS_FORCED_ALL_IN)) return false;
-    if (HasStatusEffect(manager, STATUS_MADNESS)) return false;
-
-    return true;
-}
-
-int ModifyBetWithEffects(StatusEffectManager_t* manager, int bet, Player_t* player) {
-    if (!manager || !player) return bet;
-
-    // FORCED_ALL_IN - must bet all chips
-    if (HasStatusEffect(manager, STATUS_FORCED_ALL_IN)) {
-        d_LogInfo("FORCED_ALL_IN: Betting all chips!");
-        return player->chips;
-    }
-
-    // MADNESS - random bet amount (high-quality RNG)
-    if (HasStatusEffect(manager, STATUS_MADNESS)) {
-        int random_bet = GetRandomInt(10, 100);
-        if (random_bet > player->chips) {
-            random_bet = player->chips;
-        }
-        d_LogInfoF("MADNESS: Random bet %d chips!", random_bet);
-        return random_bet;
-    }
-
-    // TODO: ESCALATION - must be higher than last bet
-    // Would need to store last bet amount in manager or player
-
-    return bet;
-}
-
-// ============================================================================
-// OUTCOME MODIFIERS
-// ============================================================================
 
 int ModifyWinnings(const StatusEffectManager_t* manager, int base_winnings, int bet_amount) {
     if (!manager) return base_winnings;
@@ -428,25 +443,17 @@ const char* GetStatusEffectName(StatusEffect_t type) {
         case STATUS_CHIP_DRAIN:    return "Chip Drain";
         case STATUS_TILT:          return "Tilt";
         case STATUS_GREED:         return "Greed";
-        case STATUS_MADNESS:       return "Madness";
-        case STATUS_FORCED_ALL_IN: return "All-In";
-        case STATUS_ESCALATION:    return "Escalation";
-        case STATUS_NO_ADJUST:     return "No Adjust";
-        case STATUS_MINIMUM_BET:   return "Min Bet";
+        case STATUS_RAKE:          return "Rake";
         default:                   return "Unknown";
     }
 }
 
 const char* GetStatusEffectAbbreviation(StatusEffect_t type) {
     switch (type) {
-        case STATUS_CHIP_DRAIN:    return "Cd";  // Chip drain
+        case STATUS_CHIP_DRAIN:    return "Cd";
         case STATUS_TILT:          return "Ti";
         case STATUS_GREED:         return "Gr";
-        case STATUS_MADNESS:       return "Ma";
-        case STATUS_FORCED_ALL_IN: return "Al";
-        case STATUS_ESCALATION:    return "Es";
-        case STATUS_NO_ADJUST:     return "Na";
-        case STATUS_MINIMUM_BET:   return "Mb";
+        case STATUS_RAKE:          return "Rk";
         default:                   return "??";
     }
 }
@@ -456,11 +463,7 @@ const char* GetStatusEffectDescription(StatusEffect_t type) {
         case STATUS_CHIP_DRAIN:    return "Lose chips each round";
         case STATUS_TILT:          return "Lose 2x chips on loss";
         case STATUS_GREED:         return "Win only 50% chips";
-        case STATUS_MADNESS:       return "Random bet amounts";
-        case STATUS_FORCED_ALL_IN: return "Must bet all chips";
-        case STATUS_ESCALATION:    return "Must increase bet";
-        case STATUS_NO_ADJUST:     return "Can't change bet";
-        case STATUS_MINIMUM_BET:   return "Increased minimum bet";
+        case STATUS_RAKE:          return "Lose chips on win (per stack)";
         default:                   return "Unknown effect";
     }
 }
@@ -470,11 +473,7 @@ aColor_t GetStatusEffectColor(StatusEffect_t type) {
         case STATUS_CHIP_DRAIN:    return (aColor_t){200, 50, 50, 255};   // Red
         case STATUS_TILT:          return (aColor_t){255, 50, 50, 255};   // Bright red
         case STATUS_GREED:         return (aColor_t){200, 200, 50, 255};  // Yellow
-        case STATUS_MADNESS:       return (aColor_t){200, 50, 200, 255};  // Purple
-        case STATUS_FORCED_ALL_IN: return (aColor_t){255, 100, 0, 255};   // Orange
-        case STATUS_ESCALATION:    return (aColor_t){255, 150, 0, 255};   // Light orange
-        case STATUS_NO_ADJUST:     return (aColor_t){100, 100, 100, 255}; // Gray
-        case STATUS_MINIMUM_BET:   return (aColor_t){150, 150, 50, 255};  // Dark yellow
+        case STATUS_RAKE:          return (aColor_t){255, 215, 0, 255};   // Gold
         default:                   return (aColor_t){100, 100, 100, 255}; // Gray
     }
 }
@@ -492,7 +491,7 @@ void RenderStatusEffects(const StatusEffectManager_t* manager, int x, int y) {
 
     for (size_t i = 0; i < manager->active_effects->count; i++) {
         const StatusEffectInstance_t* effect = (const StatusEffectInstance_t*)
-            d_IndexDataFromArray(manager->active_effects, i);
+            d_ArrayGet(manager->active_effects, i);
 
         if (!effect || effect->duration <= 0) continue;
 

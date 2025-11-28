@@ -348,12 +348,12 @@ void RenderCardGridModal(CardGridModal_t* modal) {
 
             // Get actual card index (shuffled or ordered)
             int card_idx = modal->should_shuffle_display ? modal->shuffled_indices[i] : i;
-            Card_t* card = (Card_t*)d_IndexDataFromArray(modal->cards, card_idx);
+            Card_t* card = (Card_t*)d_ArrayGet(modal->cards, card_idx);
             if (!card) continue;
 
             // Ensure texture is loaded (lazy loading)
             if (!card->texture) {
-                SDL_Surface** tex_ptr = (SDL_Surface**)d_GetDataFromTable(g_card_textures, &card->card_id);
+                SDL_Surface** tex_ptr = (SDL_Surface**)d_TableGet(g_card_textures, &card->card_id);
                 if (tex_ptr && *tex_ptr) {
                     card->texture = *tex_ptr;
                 }
@@ -381,7 +381,7 @@ void RenderCardGridModal(CardGridModal_t* modal) {
             // Draw tag badge on top-right of card
             const dArray_t* tags = GetCardTags(card->card_id);
             if (tags && tags->count > 0) {
-                CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, 0);
+                CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, 0);
                 const char* tag_text = GetCardTagName(*tag);
 
                 int r, g, b;
@@ -420,7 +420,7 @@ void RenderCardGridModal(CardGridModal_t* modal) {
         if (modal->hovered_card_index >= 0 && modal->hovered_card_index < card_count) {
             int i = modal->hovered_card_index;
             int card_idx = modal->should_shuffle_display ? modal->shuffled_indices[i] : i;
-            Card_t* card = (Card_t*)d_IndexDataFromArray(modal->cards, card_idx);
+            Card_t* card = (Card_t*)d_ArrayGet(modal->cards, card_idx);
 
             if (card && card->texture) {
                 // Calculate base position in grid
@@ -443,7 +443,7 @@ void RenderCardGridModal(CardGridModal_t* modal) {
                 // Draw tag badge on enlarged card
                 const dArray_t* tags = GetCardTags(card->card_id);
                 if (tags && tags->count > 0) {
-                    CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, 0);
+                    CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, 0);
                     const char* tag_text = GetCardTagName(*tag);
 
                     int r, g, b;
@@ -478,7 +478,7 @@ void RenderCardGridModal(CardGridModal_t* modal) {
         if (modal->hovered_card_index >= 0 && modal->hovered_card_index < card_count && modal->tooltip) {
             int i = modal->hovered_card_index;
             int card_idx = modal->should_shuffle_display ? modal->shuffled_indices[i] : i;
-            Card_t* card = (Card_t*)d_IndexDataFromArray(modal->cards, card_idx);
+            Card_t* card = (Card_t*)d_ArrayGet(modal->cards, card_idx);
 
             if (card) {
                 // Calculate card position in grid

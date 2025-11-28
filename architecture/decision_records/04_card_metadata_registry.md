@@ -101,13 +101,13 @@ SetCardRarity(card->card_id, CARD_RARITY_RARE);
 **Lazy allocation** (cardTags.c:23-46):
 ```c
 static CardMetadata_t* GetOrCreateMetadata(int card_id) {
-    CardMetadata_t** meta_ptr = d_GetDataFromTable(g_card_metadata, &card_id);
+    CardMetadata_t** meta_ptr = d_TableGet(g_card_metadata, &card_id);
     if (meta_ptr) return *meta_ptr;  // Already exists
     
     // Create on first use
     CardMetadata_t* meta = malloc(sizeof(CardMetadata_t));
     // ... initialize ...
-    d_SetDataInTable(g_card_metadata, &card_id, &meta);  // Store pointer
+    d_TableSet(g_card_metadata, &card_id, &meta);  // Store pointer
     return meta;
 }
 ```
@@ -117,15 +117,15 @@ static CardMetadata_t* GetOrCreateMetadata(int card_id) {
 void CleanupCardMetadata(void) {
     // Must iterate all 52 cards because table stores pointers
     for (int card_id = 0; card_id < 52; card_id++) {
-        CardMetadata_t** meta_ptr = d_GetDataFromTable(g_card_metadata, &card_id);
+        CardMetadata_t** meta_ptr = d_TableGet(g_card_metadata, &card_id);
         if (meta_ptr && *meta_ptr) {
             // Free nested resources
-            d_DestroyArray((*meta_ptr)->tags);
+            d_ArrayDestroy((*meta_ptr)->tags);
             d_StringDestroy((*meta_ptr)->flavor_text);
             free(*meta_ptr);  // Manual free because heap-allocated
         }
     }
-    d_DestroyTable(&g_card_metadata);
+    d_TableDestroy(&g_card_metadata);
 }
 ```
 

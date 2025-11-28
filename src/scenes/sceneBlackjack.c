@@ -11,6 +11,7 @@
 #include "../../include/player.h"
 #include "../../include/game.h"
 #include "../../include/state.h"
+#include "../../include/loaders/enemyLoader.h"
 #include "../../include/scenes/sceneBlackjack.h"
 #include "../../include/scenes/sceneMenu.h"
 #include "../../include/scenes/components/button.h"
@@ -615,14 +616,15 @@ static void StartNextEncounter(void) {
         }
 
         // Spawn new enemy
-        if (!encounter->enemy_factory) {
-            d_LogError("Combat encounter has no enemy factory!");
+        if (encounter->enemy_key[0] == '\0') {
+            d_LogError("Combat encounter has no enemy key!");
             return;
         }
 
-        Enemy_t* enemy = encounter->enemy_factory();
+        // Load enemy from DUF database using stored key
+        Enemy_t* enemy = LoadEnemyFromDUF(g_enemies_db, encounter->enemy_key);
         if (!enemy) {
-            d_LogError("Failed to create enemy from factory!");
+            d_LogErrorF("Failed to load enemy '%s' from DUF!", encounter->enemy_key);
             return;
         }
 
@@ -939,7 +941,8 @@ static void BlackjackLogic(float dt) {
             // Therefore: bet_outcome = total_delta + status_drain
             int chip_delta = total_delta + g_result_screen->status_drain;  // Bet outcome only (win/loss)
 
-            ShowResultScreen(g_result_screen, result_old_chips, chip_delta, g_result_screen->status_drain);
+            bool is_victory = (g_game.current_state == STATE_COMBAT_VICTORY);
+            ShowResultScreen(g_result_screen, result_old_chips, chip_delta, g_result_screen->status_drain, is_victory);
         }
     }
 
@@ -1225,7 +1228,7 @@ static void BlackjackLogic(float dt) {
         && previous_state != STATE_INTRO_NARRATIVE) {
         // Get current encounter
         Encounter_t* encounter = GetCurrentEncounter(g_game.current_act);
-        if (!encounter || !encounter->enemy_factory) {
+        if (!encounter || encounter->enemy_key[0] == '\0') {
             d_LogError("Invalid combat encounter for preview");
             StartNextEncounter();  // Fallback: spawn directly
             return;
@@ -1236,7 +1239,7 @@ static void BlackjackLogic(float dt) {
                                       (encounter->type == ENCOUNTER_BOSS) ? "Boss Fight" : "Combat";
 
         // Create temporary enemy to get name (will be destroyed and recreated on continue)
-        Enemy_t* temp_enemy = encounter->enemy_factory();
+        Enemy_t* temp_enemy = LoadEnemyFromDUF(g_enemies_db, encounter->enemy_key);
         const char* enemy_name = temp_enemy ? GetEnemyName(temp_enemy) : "Unknown";
 
         // Initialize preview state
@@ -1370,9 +1373,9 @@ bool IsCardValidTarget(const Card_t* card, int trinket_slot) {
 
     if (!trinket) return false;
 
-    // For Degenerate's Gambit: card rank 2-5 only (no Aces!)
+    // For Degenerate's Gambit: card rank 2-9 (excluding Aces and 10+ face cards)
     if (trinket->trinket_id == 0) {
-        return card->rank >= RANK_TWO && card->rank <= RANK_FIVE;
+        return card->rank >= RANK_TWO && card->rank <= RANK_NINE;
     }
 
     // Unknown trinket or no targeting
@@ -1446,7 +1449,7 @@ static void HandleTargetingInput(void) {
                 d_LogWarning("Invalid target card for this trinket");
 
                 // Show popup notification
-                snprintf(g_popup_message, sizeof(g_popup_message), "This ability targets 5 or less");
+                snprintf(g_popup_message, sizeof(g_popup_message), "This ability targets rank 2-9 only");
                 g_popup_alpha = 1.0f;
                 g_popup_y = SCREEN_HEIGHT / 2;
                 g_popup_active = true;
@@ -1481,7 +1484,7 @@ static void HandleTargetingInput(void) {
                 d_LogWarning("Invalid target card for this trinket");
 
                 // Show popup notification
-                snprintf(g_popup_message, sizeof(g_popup_message), "This ability targets 5 or less");
+                snprintf(g_popup_message, sizeof(g_popup_message), "This ability targets rank 2-9 only");
                 g_popup_alpha = 1.0f;
                 g_popup_y = SCREEN_HEIGHT / 2;
                 g_popup_active = true;
@@ -1964,70 +1967,90 @@ static void BlackjackDraw(float dt) {
 
     // Draw enemy portrait as background (if in combat)
     if (g_game.is_combat_mode && g_game.current_enemy) {
-        // Get enemy portrait surface
-        SDL_Surface* portrait_surf = g_game.current_enemy->portrait_surface;
-        if (portrait_surf) {
-            // Get portrait surface size
-            int portrait_w = portrait_surf->w;
-            int portrait_h = portrait_surf->h;
+        // Get enemy portrait texture
+        SDL_Texture* enemy_portrait = GetEnemyPortraitTexture(g_game.current_enemy);
+        if (enemy_portrait) {
+            // Get texture dimensions
+            int portrait_w, portrait_h;
+            SDL_QueryTexture(enemy_portrait, NULL, NULL, &portrait_w, &portrait_h);
 
-            // Calculate actual rendered size after scaling
-            int scaled_width = (int)(portrait_w * ENEMY_PORTRAIT_SCALE);
-            int scaled_height = (int)(portrait_h * ENEMY_PORTRAIT_SCALE);
+            // Scale down to 0.8x for rendering
+            int scaled_width = (int)(portrait_w * 0.8f);
+            int scaled_height = (int)(portrait_h * 0.8f);
 
             // Center the portrait in game area, then apply offset
             int centered_x = GAME_AREA_X + (GAME_AREA_WIDTH - scaled_width) / 2;
-            int portrait_x = centered_x + ENEMY_PORTRAIT_X_OFFSET;
+            int portrait_x = centered_x + ENEMY_PORTRAIT_X_OFFSET + 40;  // 40px right (30 + 10)
+
+            // Center portrait vertically in screen, then apply Y offset
+            int centered_y = (SCREEN_HEIGHT - scaled_height) / 2;
+            int portrait_y = centered_y + ENEMY_PORTRAIT_Y_OFFSET - 15;  // 15px up (10 + 5)
 
             // Get shake offset for damage feedback
             float shake_x, shake_y;
             GetEnemyShakeOffset(g_game.current_enemy, &shake_x, &shake_y);
 
-            // Get red flash alpha for damage feedback (unused in surface version)
+            // Get red flash and defeat animation states
             float red_alpha = GetEnemyRedFlashAlpha(g_game.current_enemy);
-            (void)red_alpha;  // Suppress unused warning
-
-            // Get defeat animation state (fade + zoom out)
             float defeat_alpha = GetEnemyDefeatAlpha(g_game.current_enemy);
             float defeat_scale = GetEnemyDefeatScale(g_game.current_enemy);
-            (void)defeat_alpha;  // Suppress unused warning
 
             // Apply defeat scale to dimensions
             int final_width = (int)(scaled_width * defeat_scale);
             int final_height = (int)(scaled_height * defeat_scale);
 
-            // Center the scaled portrait (so zoom-out is centered, not top-left)
-            int scale_offset_x = (scaled_width - final_width) / 2;
-            int scale_offset_y = (scaled_height - final_height) / 2;
+            // Center the scaled portrait vertically only (no horizontal drift)
+            int scale_offset_x = 0;  // No horizontal offset - prevent leftward drift
+            int scale_offset_y = (final_height - scaled_height) / 2;
 
-            // Use a_BlitSurfaceRect for rendering (simplified - no color/alpha effects for now)
-            // TODO: Re-implement red flash and defeat effects with surface manipulation
+            // Apply red tint via texture color modulation
+            if (red_alpha > 0.0f) {
+                Uint8 g_channel = (Uint8)(255 * (1.0f - red_alpha));
+                Uint8 b_channel = (Uint8)(255 * (1.0f - red_alpha));
+                SDL_SetTextureColorMod(enemy_portrait, 255, g_channel, b_channel);
+            }
+
+            // Apply defeat fade alpha
+            if (defeat_alpha < 1.0f) {
+                SDL_SetTextureAlphaMod(enemy_portrait, (Uint8)(defeat_alpha * 255));
+            }
+
+            // Render portrait using texture with position and scale
             aRectf_t dest = {
                 portrait_x + shake_x + scale_offset_x,
-                ENEMY_PORTRAIT_Y_OFFSET + shake_y + scale_offset_y,
+                portrait_y + shake_y + scale_offset_y,
                 final_width,
                 final_height
             };
-            a_BlitSurfaceRect(portrait_surf, dest, 1);
+            a_BlitTextureRect(enemy_portrait, dest, 1);
+
+            // Reset texture mods after rendering
+            if (red_alpha > 0.0f) {
+                SDL_SetTextureColorMod(enemy_portrait, 255, 255, 255);
+            }
+            if (defeat_alpha < 1.0f) {
+                SDL_SetTextureAlphaMod(enemy_portrait, 255);
+            }
         }
     }
 
     // Draw blackjack table sprite at bottom (on top of portrait)
     if (g_table_texture) {
-        int table_y = SCREEN_HEIGHT - 256;  // Bottom 256px of screen
+        // Use reasonable dimensions for the table
+        int table_width = 1024;
+        int table_height = 256;
 
-        // Center in game area (right of sidebar)
-        // Game area is 232px wide (512 - 280 sidebar), scale image to fit
-        float scale = (float)GAME_AREA_WIDTH / 512.0f;  // Scale to fit game area width
+        // Center horizontally in game area, position at bottom
+        int table_x = GAME_AREA_X + (GAME_AREA_WIDTH - table_width) / 2;
+        int table_y = SCREEN_HEIGHT - table_height;
 
-        // Use a_BlitSurfaceRect with destination rectangle
         aRectf_t dest = {
-            GAME_AREA_X - 32,  // X position
-            table_y,           // Y position
-            (int)(g_table_texture->w * scale),  // Scaled width
-            (int)(g_table_texture->h * scale)   // Scaled height
+            table_x,
+            table_y,
+            table_width,
+            table_height
         };
-        a_BlitSurfaceRect(g_table_texture, dest, 1);  // scale=1 since we pre-calculated dimensions
+        a_BlitSurfaceRect(g_table_texture, dest, 1);
     }
 
     // Skip all game UI rendering during intro narrative (only show modal + overlay)
@@ -2070,6 +2093,7 @@ static void BlackjackDraw(float dt) {
                 break;
 
             case STATE_ROUND_END:
+            case STATE_COMBAT_VICTORY:
                 if (g_result_screen && g_human_player) {
                     RenderResultScreen(g_result_screen, g_human_player, g_game.current_state);
                 }
@@ -2138,21 +2162,7 @@ static void BlackjackDraw(float dt) {
         a_DrawText((char*)d_StringPeek(victory_msg), center_x, center_y + 50, off_white);
         d_StringDestroy(victory_msg);
 
-        // Show bet winnings (green "+X chips" text)
-        if (g_result_screen && g_result_screen->chip_delta > 0) {
-            dString_t* winnings_text = d_StringInit();
-            d_StringFormat(winnings_text, "+%d chips won!", g_result_screen->chip_delta);
-
-            aTextStyle_t green_winnings = {
-                .type = FONT_GAME,
-                .fg = {117, 255, 67, 255},  // Bright green
-                .align = TEXT_ALIGN_CENTER,
-                .wrap_width = 0,
-                .scale = 1.5f
-            };
-            a_DrawText((char*)d_StringPeek(winnings_text), center_x, center_y + 110, green_winnings);
-            d_StringDestroy(winnings_text);
-        }
+        // FlexBox result screen shows winnings + "Cleansed!" message
     }
 
     // Render reward modal (if visible) - BEFORE pause menu

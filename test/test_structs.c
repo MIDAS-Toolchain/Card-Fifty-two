@@ -115,7 +115,7 @@ TEST(card_is_value_type) {
 TEST(hand_contains_dArray) {
     // Constitutional: Hand_t uses dArray_t*, not raw pointer
     Hand_t hand;
-    hand.cards = d_InitArray(sizeof(Card_t), 10);
+    hand.cards = d_ArrayInit(sizeof(Card_t), 10);
     ASSERT_NOT_NULL(hand.cards);
 
     // Verify it's a dArray_t
@@ -123,7 +123,7 @@ TEST(hand_contains_dArray) {
     // Note: Daedalus rounds capacity up to power of 2 (10 → 32)
     ASSERT_TRUE(hand.cards->capacity >= 10);
 
-    d_DestroyArray(hand.cards);
+    d_ArrayDestroy(hand.cards);
     hand.cards = NULL;  // Manually NULL it for test
     ASSERT_NULL(hand.cards);
 }
@@ -131,13 +131,13 @@ TEST(hand_contains_dArray) {
 TEST(player_trinkets_are_dArray) {
     // Constitutional: Player trinket_slots uses dArray_t*, not raw array
     Player_t player;
-    player.trinket_slots = d_InitArray(sizeof(Trinket_t*), 6);
+    player.trinket_slots = d_ArrayInit(sizeof(Trinket_t*), 6);
     ASSERT_NOT_NULL(player.trinket_slots);
 
     // Verify it's a valid dArray_t (just check it initialized)
     ASSERT_TRUE(player.trinket_slots->capacity >= 6);
 
-    d_DestroyArray(player.trinket_slots);
+    d_ArrayDestroy(player.trinket_slots);
     player.trinket_slots = NULL;
 }
 

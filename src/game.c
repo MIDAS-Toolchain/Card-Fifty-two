@@ -211,27 +211,9 @@ bool Game_ProcessBettingInput(GameContext_t* game, Player_t* player, int bet_amo
         return false;
     }
 
-    // ✅ NEW: Apply status effect modifiers to bet
-    if (player->status_effects) {
-        // Check minimum bet restrictions (base minimum is 1 chip)
-        int base_min = 1;
-        int modified_min = GetMinimumBetWithEffects(player->status_effects, base_min);
-        if (bet_amount < modified_min) {
-            // Only mention status effects if they're actually raising the minimum
-            if (modified_min > base_min) {
-                d_LogWarningF("ProcessBettingInput: Bet %d below minimum %d (status effects active)",
-                             bet_amount, modified_min);
-            } else {
-                d_LogWarningF("ProcessBettingInput: Bet %d below minimum %d",
-                             bet_amount, modified_min);
-            }
-            return false;
-        }
-
-        // Modify bet amount (forced all-in, madness, etc.)
-        bet_amount = ModifyBetWithEffects(player->status_effects, bet_amount, player);
-        d_LogInfoF("Bet modified by status effects: %d", bet_amount);
-    }
+    // NOTE: Betting modifiers REMOVED from status effects (ADR-002)
+    // Status effects are outcome modifiers only - betting is controlled by sanity system
+    // Bet amount validation happens below (CanAffordBet, minimum 1 chip)
 
     // Validate bet amount
     if (!CanAffordBet(player, bet_amount)) {
@@ -312,7 +294,7 @@ void Game_DealerTurn(GameContext_t* game) {
 
     // Reveal hidden card
     if (dealer->hand.cards->count > 0) {
-        Card_t* hidden = (Card_t*)d_IndexDataFromArray(dealer->hand.cards, 0);
+        Card_t* hidden = (Card_t*)d_ArrayGet(dealer->hand.cards, 0);
         if (hidden) {
             hidden->face_up = true;
 
@@ -373,7 +355,7 @@ const Card_t* Game_GetDealerUpcard(const GameContext_t* game) {
     }
 
     // Second card is the upcard (first is hidden)
-    return (const Card_t*)d_IndexDataFromArray(dealer->hand.cards, 1);
+    return (const Card_t*)d_ArrayGet(dealer->hand.cards, 1);
 }
 
 // ============================================================================
@@ -446,7 +428,7 @@ void Game_DealInitialHands(GameContext_t* game) {
     // Deal 2 cards to each player (with animations)
     for (int round = 0; round < 2; round++) {
         for (size_t i = 0; i < game->active_players->count; i++) {
-            int* id = (int*)d_IndexDataFromArray(game->active_players, i);
+            int* id = (int*)d_ArrayGet(game->active_players, i);
             Player_t* player = Game_GetPlayerByID(*id);
 
             if (!player) continue;
@@ -488,7 +470,7 @@ void Game_DealInitialHands(GameContext_t* game) {
 
     // Check for blackjacks
     for (size_t i = 0; i < game->active_players->count; i++) {
-        int* id = (int*)d_IndexDataFromArray(game->active_players, i);
+        int* id = (int*)d_ArrayGet(game->active_players, i);
         Player_t* player = Game_GetPlayerByID(*id);
 
         if (player && player->hand.is_blackjack) {
@@ -514,7 +496,7 @@ void Game_ResolveRound(GameContext_t* game) {
 
     // Process status effects at round start (chip drain, etc.)
     for (size_t i = 0; i < game->active_players->count; i++) {
-        int* id = (int*)d_IndexDataFromArray(game->active_players, i);
+        int* id = (int*)d_ArrayGet(game->active_players, i);
         Player_t* player = Game_GetPlayerByID(*id);
 
         if (!player || player->is_dealer) continue;
@@ -536,7 +518,7 @@ void Game_ResolveRound(GameContext_t* game) {
     }
 
     for (size_t i = 0; i < game->active_players->count; i++) {
-        int* id = (int*)d_IndexDataFromArray(game->active_players, i);
+        int* id = (int*)d_ArrayGet(game->active_players, i);
         Player_t* player = Game_GetPlayerByID(*id);
 
         if (!player || player->is_dealer) continue;
@@ -733,16 +715,23 @@ void Game_ResolveRound(GameContext_t* game) {
         d_LogInfoF("%s: %s (base_damage=%d)",
                    GetPlayerName(player), outcome, damage_dealt);
 
-        // Apply combat stat modifiers (ADR-010: Universal damage modifier)
-        bool is_crit = false;  // Track crit for visual effects
-        if (damage_dealt > 0 && game->is_combat_mode) {
-            damage_dealt = ApplyPlayerDamageModifiers(player, damage_dealt, &is_crit);
-        }
-
         // Apply combat damage to enemy if in combat mode
         if (game->is_combat_mode && game->current_enemy) {
             if (damage_dealt > 0) {
+                // Apply combat stat modifiers (ADR-013: Universal damage modifier)
+                bool is_crit = false;
+                damage_dealt = ApplyPlayerDamageModifiers(player, damage_dealt, &is_crit);
                 TakeDamage(game->current_enemy, damage_dealt);
+
+                // Apply RAKE status effect outcome modifier AFTER damage (ADR-002 compliant)
+                // RAKE: Lose chips when dealing damage (consumes stacks)
+                if (player->status_effects) {
+                    int rake_penalty = ApplyRakeEffect(player->status_effects, player, damage_dealt);
+                    if (rake_penalty > 0) {
+                        d_LogInfoF("RAKE penalty applied: -%d chips", rake_penalty);
+                    }
+                }
+
                 TweenEnemyHP(game->current_enemy);  // Smooth HP bar drain animation
                 TriggerEnemyDamageEffect(game->current_enemy, &g_tween_manager);  // Shake + red flash
 
@@ -759,7 +748,7 @@ void Game_ResolveRound(GameContext_t* game) {
                     VFX_SpawnDamageNumber(vfx, damage_dealt,
                                           SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
                                           ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                                          false, is_crit);  // Pass crit flag
+                                          false, is_crit, false);  // Pass crit flag, not rake
                 }
 
                 d_LogInfoF("Combat: %s deals %d damage to %s (HP: %d/%d)",
@@ -776,7 +765,7 @@ void Game_ResolveRound(GameContext_t* game) {
 
                 // Clear all status effects on victory (no chip drain on victory screen!)
                 for (size_t j = 0; j < game->active_players->count; j++) {
-                    int* player_id = (int*)d_IndexDataFromArray(game->active_players, j);
+                    int* player_id = (int*)d_ArrayGet(game->active_players, j);
                     Player_t* p = Game_GetPlayerByID(*player_id);
                     if (p && !p->is_dealer && p->status_effects) {
                         ClearAllStatusEffects(p->status_effects);
@@ -791,13 +780,18 @@ void Game_ResolveRound(GameContext_t* game) {
 
     // ✅ NEW: Tick status effect durations (remove expired effects)
     for (size_t i = 0; i < game->active_players->count; i++) {
-        int* id = (int*)d_IndexDataFromArray(game->active_players, i);
+        int* id = (int*)d_ArrayGet(game->active_players, i);
         Player_t* player = Game_GetPlayerByID(*id);
 
         if (!player || player->is_dealer) continue;
 
         if (player->status_effects) {
             TickStatusEffectDurations(player->status_effects);
+        }
+
+        // Tick trinket cooldowns at END of round (after win/loss/push resolved)
+        if (player->trinket_slots) {
+            TickTrinketCooldowns(player);
         }
     }
 
@@ -812,7 +806,7 @@ void Game_StartNewRound(GameContext_t* game) {
 
     // Clear all hands
     for (size_t i = 0; i < game->active_players->count; i++) {
-        int* id = (int*)d_IndexDataFromArray(game->active_players, i);
+        int* id = (int*)d_ArrayGet(game->active_players, i);
         Player_t* player = Game_GetPlayerByID(*id);
 
         if (player) {
@@ -912,7 +906,7 @@ void Game_AddPlayerToGame(GameContext_t* game, int player_id) {
         return;
     }
 
-    d_AppendDataToArray(game->active_players, &player_id);
+    d_ArrayAppend(game->active_players, &player_id);
     d_LogInfoF("Added player %d to game", player_id);
 }
 
@@ -921,7 +915,7 @@ Player_t* Game_GetCurrentPlayer(GameContext_t* game) {
         return NULL;
     }
 
-    int* id = (int*)d_IndexDataFromArray(game->active_players,
+    int* id = (int*)d_ArrayGet(game->active_players,
                                           game->current_player_index);
     if (!id) return NULL;
 
@@ -932,6 +926,6 @@ Player_t* Game_GetPlayerByID(int player_id) {
     if (!g_players) return NULL;
 
     // Constitutional pattern: Table stores Player_t by value, return direct pointer
-    return (Player_t*)d_GetDataFromTable(g_players, &player_id);
+    return (Player_t*)d_TableGet(g_players, &player_id);
 }
 

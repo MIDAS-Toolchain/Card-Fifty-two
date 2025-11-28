@@ -41,7 +41,7 @@ void CleanupTrinketSystem(void);
  *
  * Constitutional pattern: Returns pointer to VALUE stored in table (like g_players)
  * Template is stored BY VALUE in g_trinket_templates, players copy it to their slots
- * NO malloc() - builds on stack, stores by value via d_SetDataInTable()
+ * NO malloc() - builds on stack, stores by value via d_TableSet()
  */
 Trinket_t* CreateTrinketTemplate(int trinket_id, const char* name, const char* description, TrinketRarity_t rarity);
 

@@ -120,7 +120,7 @@ void LoadCardTexture(Card_t* card) {
     }
 
     // Constitutional pattern: Use global g_card_textures table
-    SDL_Texture** tex_ptr = (SDL_Texture**)d_GetDataFromTable(
+    SDL_Texture** tex_ptr = (SDL_Texture**)d_TableGet(
         g_card_textures,
         &card->card_id
     );

@@ -2,6 +2,7 @@
 #define SCENE_BLACKJACK_H
 
 #include "../common.h"
+#include "../statusEffects.h"  // For StatusEffect_t enum
 
 // ============================================================================
 // BLACKJACK SCENE CONSTANTS
@@ -106,9 +107,8 @@ static inline void CalculateCardFanPosition(size_t card_index, size_t hand_size,
 }
 
 // Enemy portrait positioning
-#define ENEMY_PORTRAIT_X_OFFSET -32     // Offset portrait to right from center
-#define ENEMY_PORTRAIT_Y_OFFSET 48     // Portrait starts at screen top
-#define ENEMY_PORTRAIT_SCALE    0.85  // Absolute scale (1.0 = original size, 0.5 = half size)
+#define ENEMY_PORTRAIT_X_OFFSET -100    // Offset portrait from center (negative = left)
+#define ENEMY_PORTRAIT_Y_OFFSET -50     // Offset portrait from vertical center (negative = up)
 
 // Combat UI positioning (enemy HP bar and damage numbers)
 #define ENEMY_HP_BAR_X_OFFSET   -300    // Offset from center (0 = centered, + = right, - = left)
@@ -193,12 +193,13 @@ struct TweenManager* GetTweenManager(void);
 /**
  * SetStatusEffectDrainAmount - Track chip drain from status effects
  *
- * Called by statusEffects.c when CHIP_DRAIN is processed.
- * Used to display "token bleed" animation on result screen.
+ * Called by statusEffects.c when CHIP_DRAIN/RAKE is processed.
+ * Used to display drain effect on result screen with correct label/color.
  *
  * @param drain_amount - Amount of chips lost to status effects
+ * @param effect_type - Status effect that caused drain (STATUS_RAKE or STATUS_CHIP_DRAIN)
  */
-void SetStatusEffectDrainAmount(int drain_amount);
+void SetStatusEffectDrainAmount(int drain_amount, StatusEffect_t effect_type);
 
 /**
  * TriggerSidebarBetAnimation - Show floating damage number when bet is placed

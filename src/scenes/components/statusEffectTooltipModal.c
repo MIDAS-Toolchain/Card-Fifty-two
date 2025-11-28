@@ -91,20 +91,8 @@ static void GetEffectValueText(const StatusEffectInstance_t* effect, dString_t* 
         case STATUS_GREED:
             d_StringFormat(out, "Effect: Win only 50%% chips");
             break;
-        case STATUS_MADNESS:
-            d_StringFormat(out, "Effect: Random bet amounts (10-100)");
-            break;
-        case STATUS_FORCED_ALL_IN:
-            d_StringFormat(out, "Effect: Must bet all chips next round");
-            break;
-        case STATUS_ESCALATION:
-            d_StringFormat(out, "Effect: Must increase bet each round");
-            break;
-        case STATUS_NO_ADJUST:
-            d_StringFormat(out, "Effect: Can't change bet for %d rounds", effect->duration);
-            break;
-        case STATUS_MINIMUM_BET:
-            d_StringFormat(out, "Effect: Minimum bet increased to %d", effect->value);
+        case STATUS_RAKE:
+            d_StringFormat(out, "Effect: Lose %d%% of damage as chips", effect->value);
             break;
         default:
             d_StringFormat(out, "Effect: Unknown");

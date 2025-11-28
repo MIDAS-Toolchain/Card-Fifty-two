@@ -237,7 +237,7 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                 const int badge_h = 25;
 
                 for (size_t t = 0; t < tags->count; t++) {
-                    CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, t);
+                    CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, t);
                     if (!tag) continue;
 
                     // Position from top-right, offset by 12px right and 24px down
@@ -351,7 +351,7 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                     const int badge_h = (int)(25 * scale);
 
                     for (size_t t = 0; t < tags->count; t++) {
-                        CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, t);
+                        CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, t);
                         if (!tag) continue;
 
                         // Position from top-right, offset by 12px right and 24px down (scaled)

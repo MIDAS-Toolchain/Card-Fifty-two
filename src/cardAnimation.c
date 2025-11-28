@@ -202,7 +202,7 @@ void UpdateCardTransitions(CardTransitionManager_t* manager, float dt) {
         if (trans->flip_face_up && trans->flip_progress >= 0.5f) {
             // Get card from hand and flip it
             if (trans->owner_hand && trans->card_index < trans->owner_hand->cards->count) {
-                Card_t* card = (Card_t*)d_IndexDataFromArray(trans->owner_hand->cards, trans->card_index);
+                Card_t* card = (Card_t*)d_ArrayGet(trans->owner_hand->cards, trans->card_index);
                 if (card && !card->face_up) {
                     card->face_up = true;
                     // Note: Card texture should already be loaded

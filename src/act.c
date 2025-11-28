@@ -19,7 +19,7 @@ Act_t* CreateAct(void) {
     }
 
     // Initialize encounter array (capacity FIRST, element_size second - ADR-006)
-    act->encounters = d_InitArray(16, sizeof(Encounter_t));
+    act->encounters = d_ArrayInit(16, sizeof(Encounter_t));
     if (!act->encounters) {
         d_LogError("Failed to initialize encounters array");
         free(act);
@@ -40,7 +40,7 @@ void DestroyAct(Act_t** act) {
 
     // Destroy encounters array
     if (a->encounters) {
-        d_DestroyArray(a->encounters);
+        d_ArrayDestroy(a->encounters);
         a->encounters = NULL;
     }
 
@@ -60,7 +60,7 @@ void DestroyAct(Act_t** act) {
 // ============================================================================
 
 void AddEncounter(Act_t* act, EncounterType_t type,
-                  Enemy_t* (*enemy_factory)(void),
+                  const char* enemy_key,
                   const char* portrait_path) {
     if (!act) {
         d_LogError("AddEncounter: NULL act");
@@ -69,7 +69,14 @@ void AddEncounter(Act_t* act, EncounterType_t type,
 
     Encounter_t encounter = {0};
     encounter.type = type;
-    encounter.enemy_factory = enemy_factory;
+
+    // Copy enemy key (or leave empty for events)
+    if (enemy_key) {
+        strncpy(encounter.enemy_key, enemy_key, sizeof(encounter.enemy_key) - 1);
+        encounter.enemy_key[sizeof(encounter.enemy_key) - 1] = '\0';
+    } else {
+        encounter.enemy_key[0] = '\0';
+    }
 
     // Copy portrait path (or leave empty for events)
     if (portrait_path) {
@@ -79,7 +86,7 @@ void AddEncounter(Act_t* act, EncounterType_t type,
         encounter.portrait_path[0] = '\0';
     }
 
-    d_AppendDataToArray(act->encounters, &encounter);
+    d_ArrayAppend(act->encounters, &encounter);
 
     d_LogInfoF("Added %s encounter to act (total: %zu)",
               GetEncounterTypeName(type), act->encounters->count);
@@ -94,7 +101,7 @@ Encounter_t* GetCurrentEncounter(const Act_t* act) {
         return NULL;  // Act complete
     }
 
-    return (Encounter_t*)d_IndexDataFromArray(act->encounters, act->current_encounter_index);
+    return (Encounter_t*)d_ArrayGet(act->encounters, act->current_encounter_index);
 }
 
 void AdvanceEncounter(Act_t* act) {
@@ -144,13 +151,13 @@ Act_t* CreateTutorialAct(void) {
 
     // Encounter sequence:
     // 1. NORMAL: The Didact
-    AddEncounter(act, ENCOUNTER_NORMAL, CreateTheDidact, "resources/enemies/didact.png");
+    AddEncounter(act, ENCOUNTER_NORMAL, "didact", "resources/enemies/didact.png");
 
     // 2. EVENT: Tutorial event pool
     AddEncounter(act, ENCOUNTER_EVENT, NULL, NULL);
 
     // 3. ELITE: The Daemon
-    AddEncounter(act, ENCOUNTER_ELITE, CreateTheDaemon, "resources/enemies/daemon.png");
+    AddEncounter(act, ENCOUNTER_ELITE, "daemon", "resources/enemies/daemon.png");
 
     // 4. EVENT: Tutorial event pool
     AddEncounter(act, ENCOUNTER_EVENT, NULL, NULL);

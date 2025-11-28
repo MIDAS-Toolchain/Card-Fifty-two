@@ -12,69 +12,16 @@ typedef struct GameContext GameContext_t;
 // This is OK - enemy.h depends on game.h for event system
 #include "game.h"
 
+// Need full ability.h for Ability_t struct (used as pointers in dArray_t)
+#include "ability.h"
+
 // ============================================================================
-// ENEMY ABILITIES
+// ENEMY ABILITIES (Data-Driven System)
 // ============================================================================
 
-/**
- * EnemyAbility_t - Types of dealer abilities
- */
-typedef enum {
-    // Passive Abilities (always active)
-    ABILITY_HOUSE_ALWAYS_WINS,      // Dealer wins all ties
-    ABILITY_CARD_COUNTER,            // Player's hole card revealed
-    ABILITY_LOADED_DECK,             // Dealer's face-down is always 10-value
-    ABILITY_CHIP_DRAIN,              // Player loses 5 chips per round
-    ABILITY_PRESSURE,                // Sanity drains faster during combat
-
-    // Active Abilities (triggered by conditions)
-    // NOTE: None of these should affect betting UI/options - only sanity affects betting
-    ABILITY_DOUBLE_OR_NOTHING,       // At 50% HP: TODO - needs non-betting implementation
-    ABILITY_RESHUFFLE_REALITY,       // Once per fight: Replaces player's hand
-    ABILITY_HOUSE_RULES,             // Phase 2: Changes blackjack rules mid-fight (win conditions, not betting)
-    ABILITY_ALL_IN,                  // At 25% HP: TODO - needs non-betting implementation
-    ABILITY_GLITCH,                  // Random: Dealer's bust becomes 21
-
-    // The Didact Abilities (Tutorial Enemy - Dread-themed names)
-    ABILITY_THE_HOUSE_REMEMBERS,     // On player blackjack: Apply STATUS_GREED (2 rounds) - "The casino is alive"
-    ABILITY_IRREGULARITY_DETECTED,   // Every 5 cards drawn: Apply STATUS_CHIP_DRAIN (5 chips, 3 rounds) - "You've been noticed"
-    ABILITY_SYSTEM_OVERRIDE,         // Below 30% HP (once): Heal 50 HP + Force deck shuffle - "System recalibrates"
-
-    ABILITY_MAX
-} EnemyAbility_t;
-
-/**
- * AbilityTrigger_t - When an active ability triggers
- */
-typedef enum {
-    TRIGGER_NONE,               // Passive ability (no trigger)
-    TRIGGER_HP_THRESHOLD,       // Triggers at specific HP percentage
-    TRIGGER_ONCE_PER_COMBAT,    // Can only trigger once per fight
-    TRIGGER_RANDOM,             // Random chance each round
-    TRIGGER_PLAYER_ACTION,      // Triggers on player action
-    TRIGGER_ON_EVENT,           // Triggers on specific game event
-    TRIGGER_COUNTER             // Triggers after N occurrences of an event
-} AbilityTrigger_t;
-
-/**
- * AbilityData_t - Ability configuration
- */
-typedef struct AbilityData {
-    EnemyAbility_t ability_id;
-    AbilityTrigger_t trigger;
-    float trigger_value;        // HP threshold (0.0-1.0) or random chance
-    bool has_triggered;         // Track one-time abilities
-
-    // Event-based trigger data
-    GameEvent_t trigger_event;  // Event to listen for (TRIGGER_ON_EVENT/TRIGGER_COUNTER)
-    int counter_max;            // Max count for TRIGGER_COUNTER (e.g., 5 for "every 5 cards")
-    int counter_current;        // Current count towards trigger
-
-    // Animation state (for shake/flash on trigger)
-    float shake_offset_x;       // X shake offset (tweened)
-    float shake_offset_y;       // Y shake offset (tweened)
-    float flash_alpha;          // Red flash alpha (tweened)
-} AbilityData_t;
+// NOTE: Old EnemyAbility_t enum removed - abilities are now fully data-driven
+// See: ability.h for Ability_t, AbilityTrigger_t, AbilityEffect_t
+// Abilities are defined in DUF files and loaded dynamically
 
 // ============================================================================
 // ENEMY STRUCTURE
@@ -84,18 +31,18 @@ typedef struct AbilityData {
  * Enemy_t - Combat enemy entity
  *
  * Constitutional pattern:
- * - dString_t for name (not char[])
- * - dArray_t for abilities (not raw array)
- * - Integrates with existing chip/bet system
+ * - dString_t for name/description (not char[])
+ * - dArray_t for abilities storing Ability_t* (pointers, not values - Ability_t has owned strings)
+ * - Data-driven: Loaded from DUF files via LoadEnemyFromDUF()
  */
 typedef struct Enemy {
-    dString_t* name;                // Enemy name (e.g., "The Broken Slot Machine")
+    dString_t* name;                // Enemy name (e.g., "The Didact")
+    dString_t* description;         // Enemy lore/flavor text
     int max_hp;                     // Maximum HP
     int current_hp;                 // Current HP (combat ends at 0)
     float display_hp;               // Displayed HP (tweened for smooth HP bar drain)
-    int chip_threat;                // Chips at risk per round (damage source)
-    dArray_t* passive_abilities;    // Array of AbilityData_t (passive abilities)
-    dArray_t* active_abilities;     // Array of AbilityData_t (active abilities)
+
+    dArray_t* abilities;            // Array of Ability_t* (unified - no passive/active split)
 
     // Portrait system (hybrid for dynamic effects)
     SDL_Surface* portrait_surface;  // Source pixel data (owned, for manipulation)
@@ -123,35 +70,15 @@ typedef struct Enemy {
  *
  * @param name - Enemy name
  * @param max_hp - Maximum HP
- * @param chip_threat - Chips at risk per round (used for damage calculation)
  * @return Enemy_t* - Heap-allocated enemy, or NULL on failure
  *
  * Constitutional pattern: Heap-allocated entity (like Player_t)
  * Caller must call DestroyEnemy() when done
  */
-Enemy_t* CreateEnemy(const char* name, int max_hp, int chip_threat);
+Enemy_t* CreateEnemy(const char* name, int max_hp);
 
-/**
- * CreateTheDidact - Create tutorial enemy "The Didact"
- *
- * @return Enemy_t* - Preconfigured tutorial enemy with 3 teaching abilities
- *
- * Theme: Teacher/instructor who introduces mechanics through abilities:
- * - House Rules: On blackjack → GREED (teaches status effects)
- * - Pop Quiz: Every 5 cards → CHIP_DRAIN (teaches counters + pressure)
- * - Final Exam: Below 30% HP → MIN_BET + NO_ADJUST (teaches restrictions)
- */
-Enemy_t* CreateTheDidact(void);
-
-/**
- * CreateTheDaemon - Create second enemy "The Daemon"
- *
- * @return Enemy_t* - Elite enemy with 5000 HP
- *
- * Currently reuses The Didact's abilities (placeholder).
- * Will be customized with unique abilities later.
- */
-Enemy_t* CreateTheDaemon(void);
+// NOTE: Enemy factory functions removed - enemies are now loaded from DUF files
+// See: data/enemies/tutorial_enemies.duf and LoadEnemyFromDUF() in loaders/enemyLoader.h
 
 /**
  * DestroyEnemy - Free enemy resources
@@ -163,69 +90,12 @@ Enemy_t* CreateTheDaemon(void);
 void DestroyEnemy(Enemy_t** enemy);
 
 // ============================================================================
-// ABILITY MANAGEMENT
+// ABILITY MANAGEMENT (Data-Driven System)
 // ============================================================================
 
-/**
- * AddPassiveAbility - Add a passive ability to enemy
- *
- * @param enemy - Enemy to modify
- * @param ability - Ability ID to add
- *
- * Passive abilities are always active (no trigger condition)
- */
-void AddPassiveAbility(Enemy_t* enemy, EnemyAbility_t ability);
-
-/**
- * AddActiveAbility - Add an active ability with trigger
- *
- * @param enemy - Enemy to modify
- * @param ability - Ability ID to add
- * @param trigger - Trigger type
- * @param trigger_value - HP threshold or random chance (0.0-1.0)
- */
-void AddActiveAbility(Enemy_t* enemy, EnemyAbility_t ability,
-                      AbilityTrigger_t trigger, float trigger_value);
-
-/**
- * AddEventAbility - Add an ability that triggers on a specific game event
- *
- * @param enemy - Enemy to modify
- * @param ability - Ability ID to add
- * @param event - Game event to trigger on
- *
- * Triggers every time the specified event occurs
- */
-void AddEventAbility(Enemy_t* enemy, EnemyAbility_t ability, GameEvent_t event);
-
-/**
- * AddCounterAbility - Add an ability that triggers after N occurrences of an event
- *
- * @param enemy - Enemy to modify
- * @param ability - Ability ID to add
- * @param event - Game event to count
- * @param counter_max - Number of occurrences before trigger (e.g., 5 for "every 5 cards")
- *
- * Counter resets after each trigger
- */
-void AddCounterAbility(Enemy_t* enemy, EnemyAbility_t ability, GameEvent_t event, int counter_max);
-
-/**
- * HasAbility - Check if enemy has a specific ability
- *
- * @param enemy - Enemy to check
- * @param ability - Ability ID to search for
- * @return true if ability exists (passive or active)
- */
-bool HasAbility(const Enemy_t* enemy, EnemyAbility_t ability);
-
-/**
- * GetAbilityName - Convert ability enum to string
- *
- * @param ability - Ability ID
- * @return const char* - Ability name
- */
-const char* GetAbilityName(EnemyAbility_t ability);
+// NOTE: Old ability management functions removed (AddPassiveAbility, AddActiveAbility, etc.)
+// Abilities are now loaded from DUF files via LoadEnemyFromDUF()
+// See: loaders/enemyLoader.h and ability.h for new system
 
 // ============================================================================
 // COMBAT ACTIONS
@@ -260,27 +130,29 @@ void HealEnemy(Enemy_t* enemy, int amount);
 float GetEnemyHPPercent(const Enemy_t* enemy);
 
 // ============================================================================
-// ABILITY TRIGGERS
+// ABILITY TRIGGERS (Updated for Data-Driven System)
 // ============================================================================
 
 /**
- * CheckEnemyAbilityTriggers - Check if any active abilities should trigger on event
+ * CheckEnemyAbilityTriggers - Check if any abilities should trigger on event
  *
  * @param enemy - Enemy to check
  * @param event - Game event that occurred
  * @param game - Game context (for effect execution)
  *
- * Checks if abilities trigger on this event, executes effects if triggered
+ * Iterates through enemy->abilities array, calls CheckAbilityTrigger() on each,
+ * executes abilities that should fire via ExecuteAbility()
  * Called by Game_TriggerEvent() when gameplay events occur
  */
 void CheckEnemyAbilityTriggers(Enemy_t* enemy, GameEvent_t event, GameContext_t* game);
 
 /**
- * ResetAbilityTriggers - Reset one-time ability flags
+ * ResetAbilityTriggers - Reset runtime state for new combat
  *
  * @param enemy - Enemy to reset
  *
- * Called when combat ends or enemy is defeated
+ * Calls ResetAbilityStates() on enemy->abilities
+ * Called when combat starts or enemy is created
  */
 void ResetAbilityTriggers(Enemy_t* enemy);
 

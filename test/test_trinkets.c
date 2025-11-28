@@ -39,10 +39,10 @@ TEST(trinket_description_quality) {
     // A GOOD active description must:
     // 1. Be longer than 20 characters
     // 2. Explain WHAT it does (not just "target a card")
-    // 3. Mention specific mechanics (DOUBLED tag, rank ≤5, cooldown, etc.)
+    // 3. Mention specific mechanics (DOUBLED tag, rank ≤9, max 10, cooldown, etc.)
 
     const char* bad_example = "Target a card";
-    const char* good_example = "Target a card ≤5 to add DOUBLED tag (counts twice for hand value). Permanently increases passive damage by +5. Cooldown: 3 turns.";
+    const char* good_example = "Target a card rank 9 or less, double its value (max 10) for this hand. Cooldown: 3 turns";
 
     printf("    BAD:  '%s' (%zu chars)\n", bad_example, strlen(bad_example));
     printf("    GOOD: '%s' (%zu chars)\n", good_example, strlen(good_example));
@@ -53,8 +53,8 @@ TEST(trinket_description_quality) {
 
     // Verify good example is good
     ASSERT_TRUE(strlen(good_example) > 50);
-    ASSERT_TRUE(strstr(good_example, "DOUBLED") != NULL);
-    ASSERT_TRUE(strstr(good_example, "5") != NULL);
+    ASSERT_TRUE(strstr(good_example, "rank") != NULL);
+    ASSERT_TRUE(strstr(good_example, "9") != NULL);
     ASSERT_TRUE(strstr(good_example, "Cooldown") != NULL);
 }
 
@@ -62,21 +62,21 @@ TEST(card_highlighting_logic) {
     // Based on user feedback: "only dealer card was highlighted, wtf?"
     //
     // Targeting logic should:
-    // 1. Highlight ALL cards that are valid targets (rank ≤5)
+    // 1. Highlight ALL cards that are valid targets (rank ≤9)
     // 2. Highlight BOTH player AND dealer cards
     // 3. Use green for valid, grey for invalid
 
     // Test cards
-    int card_ranks[] = {2, 4, 5, 6, 10, 13};  // 2, 4, 5, 6, 10, King
+    int card_ranks[] = {1, 5, 9, 10, 11, 13};  // Ace, 5, 9, 10, Jack, King
 
     for (int i = 0; i < 6; i++) {
         int rank = card_ranks[i];
-        bool should_be_valid = (rank <= 5);
+        bool should_be_valid = (rank <= 9);
 
         printf("    Card rank %2d: %s\n", rank,
                should_be_valid ? "VALID (green)" : "INVALID (grey)");
 
-        ASSERT_EQ(rank <= 5, should_be_valid);
+        ASSERT_EQ(rank <= 9, should_be_valid);
     }
 }
 

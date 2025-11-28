@@ -246,7 +246,7 @@ void CleanupHand(Hand_t* hand) {
 
     // Destroy internal resources only
     if (hand->cards) {
-        d_DestroyArray(&hand->cards);
+        d_ArrayDestroy(&hand->cards);
     }
 
     // Does NOT free 'hand' itself (parent owns it)

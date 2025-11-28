@@ -9,25 +9,39 @@
 // ============================================================================
 
 /**
+ * DurationType_t - How status effect duration is decremented
+ *
+ * Round-based: Decremented by TickStatusEffectDurations() at round end
+ * Stack-based: Decremented by effect-specific logic (e.g., ApplyRakeEffect)
+ *
+ * This distinction allows flexible status effect behavior:
+ * - Round-based: Traditional debuffs that last N rounds (CHIP_DRAIN, TILT)
+ * - Stack-based: Consumable effects that trigger N times (RAKE, future buffs)
+ */
+typedef enum {
+    DURATION_ROUNDS = 0,  // Decremented at round end (default)
+    DURATION_STACKS       // Decremented when effect triggers
+} DurationType_t;
+
+/**
  * StatusEffect_t - Types of status effects that can be applied to players
  *
- * Status effects create persistent pressure through token manipulation,
- * betting restrictions, and outcome modifiers.
+ * IMPORTANT: Status effects are OUTCOME MODIFIERS ONLY (ADR-002)
+ * - Modify chip gains/losses after rounds resolve
+ * - DO NOT modify betting behavior or restrictions
+ * - Betting mechanics controlled by sanity system, not status effects
+ *
+ * Status effects create persistent pressure through chip manipulation
+ * and outcome modifiers during combat.
  */
 typedef enum {
     STATUS_NONE = 0,
 
-    // Token drain effects (lose chips over time or on outcomes)
-    STATUS_CHIP_DRAIN,      // Lose X chips per round
-    STATUS_TILT,            // Lose 2x chips on loss
-    STATUS_GREED,           // Win 0.5x chips on win
-    STATUS_MADNESS,         // Random bet amounts (10-100)
-
-    // Betting restriction effects
-    STATUS_FORCED_ALL_IN,   // Must bet all chips next round
-    STATUS_ESCALATION,      // Must increase bet each round
-    STATUS_NO_ADJUST,       // Can't change bet for N rounds
-    STATUS_MINIMUM_BET,     // Min bet increased to X
+    // Outcome modifiers (lose chips per round or on wins/losses)
+    STATUS_CHIP_DRAIN,      // Lose X chips per round (at round start) [ROUNDS]
+    STATUS_TILT,            // Lose 2x chips on loss (outcome modifier) [ROUNDS]
+    STATUS_GREED,           // Win 0.5x chips on win (outcome modifier) [ROUNDS]
+    STATUS_RAKE,            // Lose X% of damage dealt as chips (per win) [STACKS]
 
     STATUS_MAX
 } StatusEffect_t;
@@ -44,7 +58,8 @@ typedef enum {
 typedef struct {
     StatusEffect_t type;
     int value;              // Chips per round, multiplier %, min bet, etc.
-    int duration;           // Rounds remaining (0 = expired)
+    int duration;           // Rounds/stacks remaining (0 = expired)
+    DurationType_t duration_type;  // How duration is decremented
     float intensity;        // Visual feedback intensity (0.0-1.0)
     float shake_offset_x;   // Shake animation X offset (tweened)
     float shake_offset_y;   // Shake animation Y offset (tweened)
@@ -187,46 +202,13 @@ void TickStatusEffectDurations(StatusEffectManager_t* manager);
 void ClearAllStatusEffects(StatusEffectManager_t* manager);
 
 // ============================================================================
-// BETTING MODIFIERS
+// OUTCOME MODIFIERS (ADR-002: Status effects modify outcomes only)
 // ============================================================================
-
-/**
- * GetMinimumBetWithEffects - Get modified minimum bet
- *
- * @param manager - Status effect manager
- * @param base_min - Base minimum bet
- * @return int - Modified minimum bet (max of base and effect values)
- *
- * Checks: STATUS_MINIMUM_BET
- */
-int GetMinimumBetWithEffects(const StatusEffectManager_t* manager, int base_min);
-
-/**
- * CanAdjustBet - Check if player can manually adjust bet
- *
- * @param manager - Status effect manager
- * @return bool - false if betting is restricted
- *
- * Checks: STATUS_NO_ADJUST, STATUS_FORCED_ALL_IN, STATUS_MADNESS
- */
-bool CanAdjustBet(const StatusEffectManager_t* manager);
-
-/**
- * ModifyBetWithEffects - Apply effect-based bet modifications
- *
- * @param manager - Status effect manager
- * @param bet - Desired bet amount
- * @param player - Player placing bet
- * @return int - Modified bet amount
- *
- * Handles: FORCED_ALL_IN (bet all chips), MADNESS (random amount),
- *          ESCALATION (must be higher than last bet)
- */
-int ModifyBetWithEffects(StatusEffectManager_t* manager, int bet, Player_t* player);
-
-// ============================================================================
-// OUTCOME MODIFIERS
-// ============================================================================
+//
+// NOTE: Betting modifiers REMOVED - status effects do NOT control betting!
+// Betting behavior is controlled by the sanity system, not status effects.
+// Status effects ONLY modify chip outcomes after rounds resolve.
+//
 
 /**
  * ModifyWinnings - Apply effect-based winning modifiers
@@ -251,6 +233,25 @@ int ModifyWinnings(const StatusEffectManager_t* manager, int base_winnings, int 
  * Returns ADDITIONAL loss on top of base (not total)
  */
 int ModifyLosses(const StatusEffectManager_t* manager, int base_loss);
+
+/**
+ * ApplyRakeEffect - Process RAKE status on round win (ADR-002 compliant)
+ *
+ * Called during round resolution when player deals damage to enemy.
+ * Calculates chip penalty based on damage dealt, consumes 1 stack.
+ *
+ * @param manager - Player's status effect manager
+ * @param player - Player to deduct chips from
+ * @param damage_dealt - Damage dealt this round (for percentage calc)
+ * @return int - Chip penalty amount (for UI feedback)
+ *
+ * RAKE behavior:
+ * - Penalty = (damage_dealt × value) / 100 (minimum 1 chip)
+ * - Consumes 1 stack (duration decrements)
+ * - Removed when duration reaches 0
+ * - Only triggers on winning rounds (damage > 0)
+ */
+int ApplyRakeEffect(StatusEffectManager_t* manager, Player_t* player, int damage_dealt);
 
 // ============================================================================
 // UI/QUERY FUNCTIONS

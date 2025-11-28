@@ -79,7 +79,7 @@ static void StackTracePassive(Player_t* player, GameContext_t* game, Trinket_t* 
         VFX_SpawnDamageNumber(vfx, damage,
                              SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
                              ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                             false, false);  // Not healing, not crit
+                             false, false, false);  // Not healing, not crit, not rake
     }
 
     d_LogInfoF("📊 Stack Trace (Passive): Bust triggered! Dealt %d damage to enemy", damage);

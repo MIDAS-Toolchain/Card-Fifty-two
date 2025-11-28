@@ -117,7 +117,7 @@ void RenderCardTooltipModal(const CardTooltipModal_t* modal) {
     if (tags && tags->count > 0) {
         // Calculate height for all tags
         for (size_t tag_idx = 0; tag_idx < tags->count; tag_idx++) {
-            CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, tag_idx);
+            CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, tag_idx);
             const char* tag_desc = GetCardTagDescription(*tag);
 
             current_y += 30 + 8;  // Tag badge height + spacing
@@ -171,7 +171,7 @@ void RenderCardTooltipModal(const CardTooltipModal_t* modal) {
     // Tags
     if (tags && tags->count > 0) {
         for (size_t tag_idx = 0; tag_idx < tags->count; tag_idx++) {
-            CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray((dArray_t*)tags, tag_idx);
+            CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, tag_idx);
             const char* tag_name = GetCardTagName(*tag);
             const char* tag_desc = GetCardTagDescription(*tag);
 

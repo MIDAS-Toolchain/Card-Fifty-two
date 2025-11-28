@@ -1,11 +1,16 @@
 /*
- * Ability Tooltip Modal Implementation
+ * Ability Tooltip Modal - Updated for data-driven Ability_t system
  */
 
 #include "../../../include/scenes/components/abilityTooltipModal.h"
 #include "../../../include/scenes/components/abilityDisplay.h"
 #include "../../../include/scenes/sceneBlackjack.h"
 #include <stdlib.h>
+
+// Forward declarations
+static void GetTriggerDescription(const Ability_t* ability, const Enemy_t* enemy, char* buffer, size_t buffer_size);
+static dString_t* GetEffectDescription(const Ability_t* ability);
+static void GetStateDescription(const Ability_t* ability, char* buffer, size_t buffer_size);
 
 // ============================================================================
 // LIFECYCLE
@@ -22,6 +27,7 @@ AbilityTooltipModal_t* CreateAbilityTooltipModal(void) {
     modal->x = 0;
     modal->y = 0;
     modal->ability = NULL;
+    modal->enemy = NULL;
 
     d_LogInfo("AbilityTooltipModal created");
     return modal;
@@ -40,25 +46,28 @@ void DestroyAbilityTooltipModal(AbilityTooltipModal_t** modal) {
 // ============================================================================
 
 void ShowAbilityTooltipModal(AbilityTooltipModal_t* modal,
-                             const AbilityData_t* ability,
+                             const Ability_t* ability,
+                             const Enemy_t* enemy,
                              int card_x, int card_y) {
     if (!modal || !ability) return;
 
     modal->visible = true;
     modal->ability = ability;
+    modal->enemy = enemy;
 
-    // Position to right of card (with margin)
+    // Position to right of card
     modal->x = card_x + ABILITY_CARD_WIDTH + 10;
     modal->y = card_y;
 
-    // If too close to screen edge, show on left instead
+    // Flip to left if too close to screen edge
     if (modal->x + ABILITY_TOOLTIP_WIDTH > SCREEN_WIDTH - 10) {
         modal->x = card_x - ABILITY_TOOLTIP_WIDTH - 10;
     }
 
-    // Clamp Y to screen bounds (use MIN_HEIGHT for estimation)
-    if (modal->y + ABILITY_TOOLTIP_MIN_HEIGHT > SCREEN_HEIGHT - 10) {
-        modal->y = SCREEN_HEIGHT - ABILITY_TOOLTIP_MIN_HEIGHT - 10;
+    // Clamp Y to screen bounds (conservative estimate - will be corrected during render)
+    int estimated_height = ABILITY_TOOLTIP_MIN_HEIGHT;
+    if (modal->y + estimated_height > SCREEN_HEIGHT - 10) {
+        modal->y = SCREEN_HEIGHT - estimated_height - 10;
     }
     if (modal->y < TOP_BAR_HEIGHT + 10) {
         modal->y = TOP_BAR_HEIGHT + 10;
@@ -69,6 +78,7 @@ void HideAbilityTooltipModal(AbilityTooltipModal_t* modal) {
     if (!modal) return;
     modal->visible = false;
     modal->ability = NULL;
+    modal->enemy = NULL;
 }
 
 // ============================================================================
@@ -76,62 +86,183 @@ void HideAbilityTooltipModal(AbilityTooltipModal_t* modal) {
 // ============================================================================
 
 /**
- * GetAbilityFullName - Get full ability name
+ * GetTriggerDescription - Describe how ability triggers
  */
-static const char* GetAbilityFullName(EnemyAbility_t ability) {
-    switch (ability) {
-        case ABILITY_THE_HOUSE_REMEMBERS:    return "The House Remembers";
-        case ABILITY_IRREGULARITY_DETECTED:  return "Irregularity Detected";
-        case ABILITY_SYSTEM_OVERRIDE:        return "System Override";
-        default:                             return "Unknown Ability";
+static void GetTriggerDescription(const Ability_t* ability, const Enemy_t* enemy, char* buffer, size_t buffer_size) {
+    if (!ability || !buffer) return;
+
+    switch (ability->trigger.type) {
+        case TRIGGER_PASSIVE:
+            snprintf(buffer, buffer_size, "Passive (always active)");
+            break;
+
+        case TRIGGER_ON_EVENT:
+            snprintf(buffer, buffer_size, "Triggers on: %s", GameEventToString(ability->trigger.event));
+            break;
+
+        case TRIGGER_COUNTER:
+            snprintf(buffer, buffer_size, "Every %d times: %s",
+                    ability->trigger.counter_max, GameEventToString(ability->trigger.event));
+            break;
+
+        case TRIGGER_HP_THRESHOLD:
+            if (enemy && enemy->max_hp > 0) {
+                int threshold_hp = (int)(ability->trigger.threshold * enemy->max_hp);
+                snprintf(buffer, buffer_size, "When enemy HP drops below %d HP (%.0f%%) ",
+                        threshold_hp, ability->trigger.threshold * 100.0f);
+            } else {
+                snprintf(buffer, buffer_size, "When enemy HP drops below %.0f%% ",
+                        ability->trigger.threshold * 100.0f);
+            }
+            break;
+
+        case TRIGGER_RANDOM:
+            snprintf(buffer, buffer_size, "%.0f%% chance on: %s",
+                    ability->trigger.chance * 100.0f, GameEventToString(ability->trigger.event));
+            break;
+
+        case TRIGGER_ON_ACTION:
+            snprintf(buffer, buffer_size, "When player uses: %s",
+                    PlayerActionToString(ability->trigger.action));
+            break;
+
+        case TRIGGER_HP_SEGMENT:
+            snprintf(buffer, buffer_size, "Every %d%% HP lost",
+                    ability->trigger.segment_percent);
+            break;
+
+        default:
+            snprintf(buffer, buffer_size, "Unknown trigger");
+            break;
     }
 }
 
 /**
- * GetAbilityDescription - Get flavor text description
+ * GetEffectDescription - Describe what ability does
+ * Returns dString_t* that caller must destroy
  */
-static const char* GetAbilityDescription(EnemyAbility_t ability) {
-    switch (ability) {
-        case ABILITY_THE_HOUSE_REMEMBERS:
-            return "\"The casino is alive, and it never forgets a winner.\"";
-        case ABILITY_IRREGULARITY_DETECTED:
-            return "\"The casino is watching. You've been noticed.\"";
-        case ABILITY_SYSTEM_OVERRIDE:
-            return "\"The casino is taking control. You no longer have a choice.\"";
-        default:
-            return "";
+static dString_t* GetEffectDescription(const Ability_t* ability) {
+    dString_t* desc = d_StringInit();
+    if (!ability || !ability->effects) return desc;
+
+    for (size_t i = 0; i < ability->effects->count; i++) {
+        AbilityEffect_t* effect = (AbilityEffect_t*)d_ArrayGet(ability->effects, i);
+        if (!effect) continue;
+
+        if (d_StringGetLength(desc) > 0) {
+            d_StringAppend(desc, "\n- ", 3);
+        } else {
+            d_StringAppend(desc, "- ", 2);
+        }
+
+        dString_t* temp = d_StringInit();
+        switch (effect->type) {
+            case EFFECT_APPLY_STATUS: {
+                const char* status_name = GetStatusEffectName(effect->status);
+
+                // Human-readable status descriptions
+                if (effect->status == STATUS_GREED) {
+                    // Greed is flat - doesn't use value field
+                    d_StringFormat(temp, "Applies %s - Win only 50%% chips for %d rounds ",
+                                 status_name, effect->duration);
+                } else if (effect->status == STATUS_CHIP_DRAIN) {
+                    if (effect->value == 0) {
+                        d_StringFormat(temp, "Applies %s for %d rounds ", status_name, effect->duration);
+                    } else {
+                        d_StringFormat(temp, "Applies %s - Lose %d chips per round for %d rounds ",
+                                     status_name, effect->value, effect->duration);
+                    }
+                } else if (effect->status == STATUS_RAKE) {
+                    // RAKE: Stack-based (duration = stacks), value = percentage
+                    d_StringFormat(temp, "Applies %s - Lose %d%% of damage as chips (%d stack%s) ",
+                                 status_name, effect->value, effect->duration,
+                                 effect->duration == 1 ? "" : "s");
+                } else {
+                    // Generic fallback for other status effects
+                    if (effect->value == 0) {
+                        d_StringFormat(temp, "Applies %s for %d rounds ", status_name, effect->duration);
+                    } else {
+                        d_StringFormat(temp, "Applies %s (value: %d) for %d rounds ",
+                                     status_name, effect->value, effect->duration);
+                    }
+                }
+                d_StringAppend(desc, d_StringPeek(temp), d_StringGetLength(temp));
+                break;
+            }
+
+            case EFFECT_REMOVE_STATUS:
+                d_StringFormat(temp, "Removes %s", GetStatusEffectName(effect->status));
+                d_StringAppend(desc, d_StringPeek(temp), d_StringGetLength(temp));
+                break;
+
+            case EFFECT_HEAL:
+                if (effect->target == TARGET_SELF) {
+                    d_StringFormat(temp, "Heals self for %d HP", effect->value);
+                } else {
+                    d_StringFormat(temp, "Heals player for %d chips", effect->value);
+                }
+                d_StringAppend(desc, d_StringPeek(temp), d_StringGetLength(temp));
+                break;
+
+            case EFFECT_DAMAGE:
+                if (effect->target == TARGET_SELF) {
+                    d_StringFormat(temp, "Damages self for %d HP", effect->value);
+                } else {
+                    d_StringFormat(temp, "Player loses %d chips", effect->value);
+                }
+                d_StringAppend(desc, d_StringPeek(temp), d_StringGetLength(temp));
+                break;
+
+            case EFFECT_SHUFFLE_DECK:
+                d_StringAppend(desc, "Forces deck reshuffle", 22);
+                break;
+
+            case EFFECT_DISCARD_HAND:
+                d_StringAppend(desc, "Discards player's hand", 23);
+                break;
+
+            case EFFECT_FORCE_HIT:
+                d_StringAppend(desc, "Forces player to draw", 22);
+                break;
+
+            case EFFECT_REVEAL_HOLE:
+                d_StringAppend(desc, "Reveals dealer's hole card", 27);
+                break;
+
+            case EFFECT_MESSAGE:
+                if (effect->message) {
+                    d_StringAppend(desc, d_StringPeek(effect->message), d_StringGetLength(effect->message));
+                }
+                break;
+
+            default:
+                d_StringAppend(desc, "Unknown effect", 14);
+                break;
+        }
+        d_StringDestroy(temp);
     }
+
+    return desc;
 }
 
 /**
- * GetAbilityTriggerText - Get trigger condition description
+ * GetStateDescription - Describe current state
  */
-static const char* GetAbilityTriggerText(const AbilityData_t* ability) {
-    switch (ability->ability_id) {
-        case ABILITY_THE_HOUSE_REMEMBERS:
-            return "Trigger: When player gets blackjack";
-        case ABILITY_IRREGULARITY_DETECTED:
-            return "Trigger: Every 5 cards drawn";
-        case ABILITY_SYSTEM_OVERRIDE:
-            return "Trigger: Once when HP < 30%";
-        default:
-            return "Trigger: Unknown";
-    }
-}
+static void GetStateDescription(const Ability_t* ability, char* buffer, size_t buffer_size) {
+    if (!ability || !buffer) return;
 
-/**
- * GetAbilityEffectText - Get effect description
- */
-static const char* GetAbilityEffectText(EnemyAbility_t ability) {
-    switch (ability) {
-        case ABILITY_THE_HOUSE_REMEMBERS:
-            return "Effect: Applies GREED - Win only 50% chips for 2 rounds";
-        case ABILITY_IRREGULARITY_DETECTED:
-            return "Effect: Applies CHIP_DRAIN - Lose 5 chips per round for 3 rounds";
-        case ABILITY_SYSTEM_OVERRIDE:
-            return "Effect: Heals 50 HP + Forces deck reshuffle (System recalibrates when threatened)";
-        default:
-            return "Effect: Unknown";
+    if (ability->trigger.type == TRIGGER_COUNTER) {
+        int remaining = ability->trigger.counter_max - ability->counter_current;
+        snprintf(buffer, buffer_size, "Progress: %d/%d (triggers in %d)",
+                ability->counter_current, ability->trigger.counter_max, remaining);
+    } else if (ability->trigger.type == TRIGGER_HP_THRESHOLD) {
+        if (ability->has_triggered) {
+            snprintf(buffer, buffer_size, "Status: Already used");
+        } else {
+            snprintf(buffer, buffer_size, "Status: Ready");
+        }
+    } else {
+        snprintf(buffer, buffer_size, "Status: Active");
     }
 }
 
@@ -142,157 +273,103 @@ static const char* GetAbilityEffectText(EnemyAbility_t ability) {
 void RenderAbilityTooltipModal(const AbilityTooltipModal_t* modal) {
     if (!modal || !modal->visible || !modal->ability) return;
 
-    int x = modal->x;
-    int y = modal->y;
+    const Ability_t* ability = modal->ability;
+    int padding = 15;
+    int wrap_width = ABILITY_TOOLTIP_WIDTH - (padding * 2);
 
-    // Padding and spacing constants
-    int padding = 16;
-    int content_width = ABILITY_TOOLTIP_WIDTH - (padding * 2);
+    // Pre-calculate description strings
+    char trigger_desc[256];
+    char state_desc[128];
+    GetTriggerDescription(ability, modal->enemy, trigger_desc, sizeof(trigger_desc));
+    GetStateDescription(ability, state_desc, sizeof(state_desc));
 
-    // Measure actual text heights dynamically
-    const char* name = GetAbilityFullName(modal->ability->ability_id);
-    const char* desc = GetAbilityDescription(modal->ability->ability_id);
-    const char* trigger = GetAbilityTriggerText(modal->ability);
-    const char* effect = GetAbilityEffectText(modal->ability->ability_id);
+    // Get effect description as dString (no truncation!)
+    dString_t* effect_desc = GetEffectDescription(ability);
 
-    int title_height = a_GetWrappedTextHeight((char*)name, FONT_ENTER_COMMAND, content_width);
-    int desc_height = a_GetWrappedTextHeight((char*)desc, FONT_GAME, content_width);
-    int trigger_height = a_GetWrappedTextHeight((char*)trigger, FONT_GAME, content_width);
-    int effect_height = a_GetWrappedTextHeight((char*)effect, FONT_GAME, content_width);
+    // Measure text heights using Archimedes
+    // NOTE: When text is scaled, wrap_width must be adjusted (divide by scale)
+    int title_height = a_GetWrappedTextHeight((char*)d_StringPeek(ability->name), FONT_ENTER_COMMAND, wrap_width);
 
-    // Calculate content height dynamically
-    int current_y = padding;  // Start with top padding
+    int desc_height = 0;
+    if (ability->description && d_StringGetLength(ability->description) > 0) {
+        desc_height = a_GetWrappedTextHeight((char*)d_StringPeek(ability->description), FONT_GAME, wrap_width);
+    }
+
+    // These are rendered at scale 1.1, so measure with adjusted wrap width
+    int scaled_wrap_width = (int)(wrap_width / 1.1f);
+    int trigger_height = a_GetWrappedTextHeight(trigger_desc, FONT_GAME, scaled_wrap_width);
+    int effects_height = a_GetWrappedTextHeight((char*)d_StringPeek(effect_desc), FONT_GAME, scaled_wrap_width);
+    int state_height = a_GetWrappedTextHeight(state_desc, FONT_GAME, scaled_wrap_width);
+
+    // Calculate modal height using current_y tracker pattern (matches old working version)
+    int current_y = padding;
     current_y += title_height + 10;  // Title + margin
-    current_y += desc_height + 8;  // Description + spacing
-    current_y += 1 + 12;  // Divider + spacing
-    current_y += trigger_height + 4;  // Trigger + spacing
-
-    // State line (if applicable)
-    if (modal->ability->trigger == TRIGGER_COUNTER) {
-        current_y += a_GetWrappedTextHeight("Countdown: 0 remaining (0/0)", FONT_GAME, content_width) + 4;
-    } else if (modal->ability->has_triggered && modal->ability->trigger == TRIGGER_HP_THRESHOLD) {
-        current_y += a_GetWrappedTextHeight("Status: Already used", FONT_GAME, content_width) + 4;
-    } else if (modal->ability->trigger == TRIGGER_ON_EVENT) {
-        current_y += a_GetWrappedTextHeight("Status: Ready", FONT_GAME, content_width) + 4;
+    if (desc_height > 0) {
+        current_y += desc_height + 8;   // Description + spacing
     }
+    current_y += 1 + 12;             // Divider + spacing
+    current_y += trigger_height + 4; // Trigger + spacing
+    current_y += state_height + 4;   // State + spacing
+    current_y += 8;                  // Spacing before effect
+    current_y += effects_height + padding;  // Effect + bottom padding
 
-    current_y += 8;  // Spacing before effect
-    current_y += effect_height + padding;  // Effect + bottom padding
-
-    // Calculate modal height
     int modal_height = current_y;
-    if (modal_height < ABILITY_TOOLTIP_MIN_HEIGHT) {
-        modal_height = ABILITY_TOOLTIP_MIN_HEIGHT;
-    }
 
-    // Draw background (dark with transparency)
-    a_DrawFilledRect((aRectf_t){x, y, ABILITY_TOOLTIP_WIDTH, modal_height},
-                    (aColor_t){20, 20, 30, 230});
+    // Draw background (dark semi-transparent)
+    a_DrawFilledRect((aRectf_t){modal->x, modal->y, ABILITY_TOOLTIP_WIDTH, modal_height},
+                    (aColor_t){20, 20, 25, 240});
 
     // Draw border
-    a_DrawRect((aRectf_t){x, y, ABILITY_TOOLTIP_WIDTH, modal_height},
-              (aColor_t){255, 255, 255, 255});
+    a_DrawRect((aRectf_t){modal->x, modal->y, ABILITY_TOOLTIP_WIDTH, modal_height},
+              (aColor_t){222, 158, 65, 255});
 
-    // Now draw content on top
-    int content_x = x + padding;
-    int content_y = y + padding;
-    current_y = content_y;
+    // Render content (track position as we draw)
+    int text_x = modal->x + padding;
+    int text_y = modal->y + padding;
 
-    // Title (ability name)
-    aTextStyle_t title_config = {
-        .type = FONT_ENTER_COMMAND,
-        .fg = {232, 193, 112, 255},  // Gold
-        .align = TEXT_ALIGN_LEFT,
-        .wrap_width = content_width,
-        .scale = 1.0f
-    };
-    a_DrawText((char*)name, content_x, current_y, title_config);
-    current_y += title_height + 10;  // Actual measured height + margin
+    // Draw ability name (title) - gold
+    a_DrawText((char*)d_StringPeek(ability->name),
+              text_x, text_y,
+              (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={232,193,112,255}, .bg={0,0,0,0},
+                            .align=TEXT_ALIGN_LEFT, .wrap_width=wrap_width, .scale=1.0f, .padding=0});
+    text_y += title_height + 10;
 
-    // Description (flavor text, italicized feel via smaller font)
-    aTextStyle_t desc_config = {
-        .type = FONT_GAME,
-        .fg = {180, 180, 180, 255},
-        .align = TEXT_ALIGN_LEFT,
-        .wrap_width = content_width,
-        .scale = 1.0f
-    };
-    a_DrawText((char*)desc, content_x, current_y, desc_config);
-    current_y += desc_height + 8;  // Actual measured height + spacing
-
-    // Divider
-    a_DrawFilledRect((aRectf_t){content_x, current_y, content_width, 1},
-                    (aColor_t){100, 100, 100, 200});
-    current_y += 12;  // Spacing around divider
-
-    // Trigger condition
-    aTextStyle_t trigger_config = {
-        .type = FONT_GAME,
-        .fg = {168, 202, 88, 255},  // Yellow-green
-        .align = TEXT_ALIGN_LEFT,
-        .wrap_width = content_width,
-        .scale = 1.1f
-    };
-    a_DrawText((char*)trigger, content_x, current_y, trigger_config);
-    current_y += trigger_height + 4;  // Actual measured height + spacing
-
-    // Current state (for counters or used abilities)
-    if (modal->ability->trigger == TRIGGER_COUNTER) {
-        int remaining = modal->ability->counter_max - modal->ability->counter_current;
-
-        dString_t* state_text = d_StringInit();
-        d_StringFormat(state_text, "Countdown: %d remaining (%d/%d)",
-                      remaining,
-                      modal->ability->counter_current,
-                      modal->ability->counter_max);
-
-        int state_height = a_GetWrappedTextHeight((char*)d_StringPeek(state_text), FONT_GAME, content_width);
-
-        aTextStyle_t state_config = {
-            .type = FONT_GAME,
-            .fg = {222, 158, 65, 255},  // Palette yellow-orange (matches badge)
-            .align = TEXT_ALIGN_LEFT,
-            .wrap_width = content_width,
-            .scale = 1.1f
-        };
-        a_DrawText((char*)d_StringPeek(state_text), content_x, current_y, state_config);
-        d_StringDestroy(state_text);
-        current_y += state_height + 4;
-    } else if (modal->ability->has_triggered && modal->ability->trigger == TRIGGER_HP_THRESHOLD) {
-        int state_height = a_GetWrappedTextHeight("Status: Already used", FONT_GAME, content_width);
-
-        aTextStyle_t state_config = {
-            .type = FONT_GAME,
-            .fg = {165, 48, 48, 255},  // Palette red (matches badge)
-            .align = TEXT_ALIGN_LEFT,
-            .wrap_width = content_width,
-            .scale = 1.1f
-        };
-        a_DrawText("Status: Already used", content_x, current_y, state_config);
-        current_y += state_height + 4;
-    } else if (modal->ability->trigger == TRIGGER_ON_EVENT) {
-        int state_height = a_GetWrappedTextHeight("Status: Ready", FONT_GAME, content_width);
-
-        aTextStyle_t state_config = {
-            .type = FONT_GAME,
-            .fg = {222, 158, 65, 255},  // Palette yellow-orange (matches badge)
-            .align = TEXT_ALIGN_LEFT,
-            .wrap_width = content_width,
-            .scale = 1.1f
-        };
-        a_DrawText("Status: Ready", content_x, current_y, state_config);
-        current_y += state_height + 4;
+    // Draw description (flavor text) - gray
+    if (desc_height > 0) {
+        a_DrawText((char*)d_StringPeek(ability->description),
+                  text_x, text_y,
+                  (aTextStyle_t){.type=FONT_GAME, .fg={180,180,180,255}, .bg={0,0,0,0},
+                                .align=TEXT_ALIGN_LEFT, .wrap_width=wrap_width, .scale=1.0f, .padding=0});
+        text_y += desc_height + 8;
     }
 
-    current_y += 8;  // Spacing before effect
+    // Draw divider
+    a_DrawFilledRect((aRectf_t){text_x, text_y, wrap_width, 1},
+                    (aColor_t){100, 100, 100, 200});
+    text_y += 12;
 
-    // Effect description (multi-line, wraps)
-    aTextStyle_t effect_config = {
-        .type = FONT_GAME,
-        .fg = {207, 87, 60, 255},  // Red-orange
-        .align = TEXT_ALIGN_LEFT,
-        .wrap_width = content_width,
-        .scale = 1.1f
-    };
-    a_DrawText((char*)effect, content_x, current_y, effect_config);
+    // Draw trigger description - yellow-green
+    a_DrawText(trigger_desc,
+              text_x, text_y,
+              (aTextStyle_t){.type=FONT_GAME, .fg={168,202,88,255}, .bg={0,0,0,0},
+                            .align=TEXT_ALIGN_LEFT, .wrap_width=wrap_width, .scale=1.1f, .padding=0});
+    text_y += trigger_height + 4;
+
+    // Draw current state - orange
+    a_DrawText(state_desc,
+              text_x, text_y,
+              (aTextStyle_t){.type=FONT_GAME, .fg={222,158,65,255}, .bg={0,0,0,0},
+                            .align=TEXT_ALIGN_LEFT, .wrap_width=wrap_width, .scale=1.1f, .padding=0});
+    text_y += state_height + 4;
+
+    text_y += 8;  // Spacing before effect
+
+    // Draw effect description - red-orange
+    a_DrawText((char*)d_StringPeek(effect_desc),
+              text_x, text_y,
+              (aTextStyle_t){.type=FONT_GAME, .fg={207,87,60,255}, .bg={0,0,0,0},
+                            .align=TEXT_ALIGN_LEFT, .wrap_width=wrap_width, .scale=1.1f, .padding=0});
+
+    // Cleanup
+    d_StringDestroy(effect_desc);
 }

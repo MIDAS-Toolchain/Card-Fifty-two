@@ -57,6 +57,10 @@ extern aAudioClip_t g_victory_sound;
 // Falls back to text abbreviations if texture is NULL
 extern dTable_t* g_ability_icons;
 
+// Enemy database: Parsed DUF file containing all enemy definitions
+// Loaded at startup, used to create enemies by key (e.g., "didact", "daemon")
+extern dDUFValue_t* g_enemies_db;
+
 // ============================================================================
 // GLOBAL FONT STYLES (defined in main.c)
 // ============================================================================

@@ -45,7 +45,7 @@ void State_InitContext(GameContext_t* game, Deck_t* deck) {
     }
 
     // Initialize active players array (holds int player_ids)
-    game->active_players = d_InitArray(8, sizeof(int));
+    game->active_players = d_ArrayInit(8, sizeof(int));
     if (!game->active_players) {
         d_LogFatal("State_InitContext: Failed to initialize active_players array");
         StateData_Cleanup(&game->state_data);
@@ -77,7 +77,7 @@ void State_CleanupContext(GameContext_t* game) {
 
     // Destroy active players array
     if (game->active_players) {
-        d_DestroyArray(game->active_players);
+        d_ArrayDestroy(game->active_players);
         game->active_players = NULL;
     }
 
@@ -135,7 +135,7 @@ void State_Transition(GameContext_t* game, GameState_t new_state) {
         case STATE_BETTING:
             // Reset player states
             for (size_t i = 0; i < game->active_players->count; i++) {
-                int* id = (int*)d_IndexDataFromArray(game->active_players, i);
+                int* id = (int*)d_ArrayGet(game->active_players, i);
                 Player_t* player = Game_GetPlayerByID(*id);
                 if (player && !player->is_dealer) {
                     player->state = PLAYER_STATE_BETTING;
@@ -149,14 +149,6 @@ void State_Transition(GameContext_t* game, GameState_t new_state) {
 
         case STATE_PLAYER_TURN:
             game->current_player_index = 0;
-
-            // Tick trinket cooldowns at start of player turn
-            {
-                Player_t* human_player = Game_GetPlayerByID(1);  // Human player ID is 1
-                if (human_player && human_player->trinket_slots) {
-                    TickTrinketCooldowns(human_player);
-                }
-            }
             break;
 
         case STATE_DEALER_TURN:
@@ -279,7 +271,7 @@ void State_UpdateBetting(GameContext_t* game) {
     bool all_bets_placed = true;
 
     for (size_t i = 0; i < game->active_players->count; i++) {
-        int* id = (int*)d_IndexDataFromArray(game->active_players, i);
+        int* id = (int*)d_ArrayGet(game->active_players, i);
         Player_t* player = Game_GetPlayerByID(*id);
 
         if (!player || player->is_dealer) continue;
@@ -323,7 +315,7 @@ void State_UpdatePlayerTurn(GameContext_t* game, float dt) {
         return;
     }
 
-    int* current_id = (int*)d_IndexDataFromArray(game->active_players,
+    int* current_id = (int*)d_ArrayGet(game->active_players,
                                                    game->current_player_index);
     if (!current_id) {
         d_LogWarningF("State_UpdatePlayerTurn: NULL player ID at index %d", game->current_player_index);
@@ -428,7 +420,7 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
             {
                 bool all_busted = true;
                 for (size_t i = 0; i < game->active_players->count; i++) {
-                    int* id = (int*)d_IndexDataFromArray(game->active_players, i);
+                    int* id = (int*)d_ArrayGet(game->active_players, i);
                     Player_t* p = Game_GetPlayerByID(*id);
                     if (p && !p->is_dealer && p->state != PLAYER_STATE_BUST) {
                         all_busted = false;
@@ -439,7 +431,7 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
                 if (all_busted) {
                     // Everyone busted - reveal card for counting, then end
                     if (dealer->hand.cards->count > 0) {
-                        Card_t* hidden = (Card_t*)d_IndexDataFromArray(dealer->hand.cards, 0);
+                        Card_t* hidden = (Card_t*)d_ArrayGet(dealer->hand.cards, 0);
                         if (hidden && !hidden->face_up) {
                             hidden->face_up = true;
                             d_LogInfo("Dealer reveals hidden card (all players busted - card counting)");
@@ -454,7 +446,7 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
                     // Wait for reveal animation time
                     if (game->state_timer >= CARD_REVEAL_DELAY) {
                         if (dealer->hand.cards->count > 0) {
-                            Card_t* hidden = (Card_t*)d_IndexDataFromArray(dealer->hand.cards, 0);
+                            Card_t* hidden = (Card_t*)d_ArrayGet(dealer->hand.cards, 0);
                             if (hidden && !hidden->face_up) {
                                 hidden->face_up = true;
                                 d_LogInfoF("Dealer reveals hidden card (player stood) - total: %d",
@@ -508,7 +500,7 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
                 } else {
                     // STAND: Reveal hidden card if not already revealed
                     if (dealer->hand.cards->count > 0) {
-                        Card_t* hidden = (Card_t*)d_IndexDataFromArray(dealer->hand.cards, 0);
+                        Card_t* hidden = (Card_t*)d_ArrayGet(dealer->hand.cards, 0);
                         if (hidden && !hidden->face_up) {
                             hidden->face_up = true;
                             d_LogInfo("Dealer reveals hidden card on STAND");
@@ -534,7 +526,7 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
                 } else if (dealer->hand.is_bust) {
                     // Dealer busted - reveal hole card to show bust score
                     if (dealer->hand.cards->count > 0) {
-                        Card_t* hidden = (Card_t*)d_IndexDataFromArray(dealer->hand.cards, 0);
+                        Card_t* hidden = (Card_t*)d_ArrayGet(dealer->hand.cards, 0);
                         if (hidden && !hidden->face_up) {
                             hidden->face_up = true;
                             d_LogInfo("Dealer reveals hidden card on BUST");

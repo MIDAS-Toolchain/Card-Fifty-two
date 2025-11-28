@@ -36,7 +36,7 @@ Choices copied into array on AddEventChoice(). No manual pointer management. Con
 
 1. **Consistency**: Matches Card_t storage pattern (value types in arrays)
 2. **Ownership Clarity**: Array owns choices, no lifetime ambiguity
-3. **Simple Cleanup**: Single d_DestroyArray() frees everything
+3. **Simple Cleanup**: Single d_ArrayDestroy() frees everything
 4. **Type Safety**: dArray_t element_size catches mismatched appends
 5. **Event Count**: Typically 2-5 choices, copy cost negligible
 
@@ -92,13 +92,13 @@ void AddEventChoice(GameEvent_t* event, const char* text,
     d_StringSet(choice.text, text, 0);
     d_StringSet(choice.result_text, result_text, 0);
     
-    d_AppendDataToArray(event->choices, &choice);  // Copy into array
+    d_ArrayAppend(event->choices, &choice);  // Copy into array
 }
 
 // Cleanup - array owns choices
 void DestroyEvent(GameEvent_t** event) {
     // Free choices array (Daedalus handles nested cleanup)
-    d_DestroyArray((*event)->choices);
+    d_ArrayDestroy((*event)->choices);
     free(*event);
     *event = NULL;
 }

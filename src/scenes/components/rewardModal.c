@@ -194,7 +194,7 @@ bool ShowRewardModal(RewardModal_t* modal) {
             bool already_has = false;
             if (existing_tags) {
                 for (size_t e = 0; e < existing_tags->count; e++) {
-                    CardTag_t* existing = (CardTag_t*)d_IndexDataFromArray((dArray_t*)existing_tags, e);
+                    CardTag_t* existing = (CardTag_t*)d_ArrayGet((dArray_t*)existing_tags, e);
                     if (existing && *existing == tag) {
                         already_has = true;
                         break;
@@ -535,12 +535,12 @@ void RenderRewardModal(const RewardModal_t* modal) {
             CardRank_t rank;
             IDToCard(modal->card_ids[i], &suit, &rank);
 
-            // Draw card texture
-            SDL_Texture** tex_ptr = (SDL_Texture**)d_GetDataFromTable(g_card_textures, &modal->card_ids[i]);
+            // Draw card surface (stored as pointer in table)
+            SDL_Surface** surf_ptr = (SDL_Surface**)d_TableGet(g_card_textures, &modal->card_ids[i]);
+            SDL_Surface* card_surface = (surf_ptr && *surf_ptr) ? *surf_ptr : NULL;
 
-            if (tex_ptr && *tex_ptr) {
-                SDL_Rect card_rect = {card_x, card_y, CARD_WIDTH, CARD_HEIGHT};
-                SDL_RenderCopy(app.renderer, *tex_ptr, NULL, &card_rect);
+            if (card_surface) {
+                a_BlitSurfaceRect(card_surface, (aRectf_t){card_x, card_y, CARD_WIDTH, CARD_HEIGHT}, 1);
             } else {
                 // Fallback: gray placeholder
                 a_DrawFilledRect((aRectf_t){card_x, card_y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){50, 50, 50, 255});
@@ -674,18 +674,16 @@ void RenderRewardModal(const RewardModal_t* modal) {
                 int card_x = card_item->calc_x;
                 int card_y = card_item->calc_y;
 
-                // Get card texture
-                SDL_Texture** tex_ptr = (SDL_Texture**)d_GetDataFromTable(g_card_textures, &modal->card_ids[i]);
-                if (tex_ptr && *tex_ptr) {
-                    // Set alpha based on selection
-                    Uint8 alpha = (i == selected) ? 255 : (Uint8)(modal->fade_out_alpha * 255);
-                    SDL_SetTextureAlphaMod(*tex_ptr, alpha);
-
-                    SDL_Rect card_rect = {card_x, card_y, CARD_WIDTH, CARD_HEIGHT};
-                    SDL_RenderCopy(app.renderer, *tex_ptr, NULL, &card_rect);
-
-                    // Reset alpha
-                    SDL_SetTextureAlphaMod(*tex_ptr, 255);
+                // Get card surface (stored as pointer in table)
+                SDL_Surface** surf_ptr = (SDL_Surface**)d_TableGet(g_card_textures, &modal->card_ids[i]);
+                SDL_Surface* card_surface = (surf_ptr && *surf_ptr) ? *surf_ptr : NULL;
+                if (card_surface) {
+                    // Note: Alpha transparency for fade animation not supported with surfaces
+                    // TODO: Implement surface-based alpha blending for fade effect
+                    // For now, skip rendering unselected cards during fade
+                    if (i == selected || modal->fade_out_alpha > 0.1f) {
+                        a_BlitSurfaceRect(card_surface, (aRectf_t){card_x, card_y, CARD_WIDTH, CARD_HEIGHT}, 1);
+                    }
                 }
             }
 
@@ -713,19 +711,19 @@ void RenderRewardModal(const RewardModal_t* modal) {
             modal->anim_stage == ANIM_FADE_IN_TAG ||
             modal->anim_stage == ANIM_COMPLETE) {
 
-            // Get card texture
-            SDL_Texture** tex_ptr = (SDL_Texture**)d_GetDataFromTable(g_card_textures, &modal->card_ids[selected]);
+            // Get card surface (stored as pointer in table)
+            SDL_Surface** surf_ptr = (SDL_Surface**)d_TableGet(g_card_textures, &modal->card_ids[selected]);
+            SDL_Surface* card_surface = (surf_ptr && *surf_ptr) ? *surf_ptr : NULL;
 
-            if (tex_ptr && *tex_ptr) {
+            if (card_surface) {
                 // Calculate scaled card dimensions (shifted 96px right from center)
                 int scaled_w = (int)(CARD_WIDTH * modal->card_scale);
                 int scaled_h = (int)(CARD_HEIGHT * modal->card_scale);
                 int centered_x = ((SCREEN_WIDTH - scaled_w) / 2) + 96;
                 int centered_y = (SCREEN_HEIGHT - scaled_h) / 2;
 
-                // Render scaled card
-                SDL_Rect dest = {centered_x, centered_y, scaled_w, scaled_h};
-                SDL_RenderCopy(app.renderer, *tex_ptr, NULL, &dest);
+                // Render scaled card using surface blitting
+                a_BlitSurfaceRect(card_surface, (aRectf_t){centered_x, centered_y, scaled_w, scaled_h}, 1);
 
                 // Draw tag badge (top-right corner) - only during fade-in stage
                 // Match the style of badges above cards

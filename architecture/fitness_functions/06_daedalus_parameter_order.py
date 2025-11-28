@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-FF-006: d_InitArray Parameter Order Verification
+FF-006: d_ArrayInit Parameter Order Verification
 
-Enforces correct parameter order for d_InitArray(capacity, element_size).
+Enforces correct parameter order for d_ArrayInit(capacity, element_size).
 Prevents catastrophic bugs from swapped parameters that cause misaligned array access.
 
-Based on: ADR-006 (d_InitArray Parameter Order Enforcement)
+Based on: ADR-006 (d_ArrayInit Parameter Order Enforcement)
 
 Architecture Characteristic: Safety, Correctness
 Domain Knowledge Required: Understanding of Daedalus library API
@@ -16,28 +16,28 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 
-# Correct pattern: d_InitArray(CAPACITY, sizeof(...))
+# Correct pattern: d_ArrayInit(CAPACITY, sizeof(...))
 # Where CAPACITY is a number, constant, or expression WITHOUT sizeof
 CORRECT_PATTERN = re.compile(
-    r'd_InitArray\s*\(\s*'           # Function call
+    r'd_ArrayInit\s*\(\s*'           # Function call
     r'([^,]+?)\s*,\s*'                # First param (capacity) - capture group 1
     r'sizeof\s*\([^)]+\)\s*'          # Second param (element_size) - must be sizeof(...)
     r'\)',
     re.MULTILINE
 )
 
-# WRONG pattern: d_InitArray(sizeof(...), ...)
+# WRONG pattern: d_ArrayInit(sizeof(...), ...)
 # This is the BUG we're preventing - sizeof in first parameter position
 WRONG_SIZEOF_FIRST = re.compile(
-    r'd_InitArray\s*\(\s*'
+    r'd_ArrayInit\s*\(\s*'
     r'sizeof\s*\([^)]+\)\s*,',        # sizeof in FIRST parameter (WRONG!)
     re.MULTILINE
 )
 
-# WRONG pattern: d_InitArray(element_size, capacity) - variable element_size first
+# WRONG pattern: d_ArrayInit(element_size, capacity) - variable element_size first
 # Less common but still wrong
 WRONG_VARIABLE_FIRST = re.compile(
-    r'd_InitArray\s*\(\s*'
+    r'd_ArrayInit\s*\(\s*'
     r'(\w*size\w*)\s*,\s*'            # Variable with "size" in name
     r'([^)]+)\)',
     re.MULTILINE
@@ -80,14 +80,14 @@ def has_clarifying_comment(prev_line: str) -> bool:
     Check if previous line has the recommended clarifying comment.
 
     We recommend adding:
-    // d_InitArray(capacity, element_size) - capacity FIRST!
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
 
     to make the parameter order explicit.
     """
     clarifying_patterns = [
         'capacity first',
         'capacity, element_size',
-        'd_InitArray(capacity',
+        'd_ArrayInit(capacity',
     ]
     prev_lower = prev_line.lower()
     return any(pattern in prev_lower for pattern in clarifying_patterns)
@@ -95,7 +95,7 @@ def has_clarifying_comment(prev_line: str) -> bool:
 
 def extract_first_param(match_text: str) -> str:
     """
-    Extract the first parameter from a d_InitArray call.
+    Extract the first parameter from a d_ArrayInit call.
 
     Used to provide helpful error messages.
     """
@@ -109,7 +109,7 @@ def extract_first_param(match_text: str) -> str:
 
 def scan_file_for_violations(file_path: Path) -> List[Dict[str, Any]]:
     """
-    Scan a single C file for d_InitArray parameter order violations.
+    Scan a single C file for d_ArrayInit parameter order violations.
 
     Returns: List of violation dictionaries
     """
@@ -148,7 +148,7 @@ def scan_file_for_violations(file_path: Path) -> List[Dict[str, Any]]:
             'code': line_text.strip(),
             'issue': f'sizeof(...) in FIRST parameter position',
             'first_param': first_param,
-            'suggestion': 'Swap parameters: d_InitArray(capacity, sizeof(Type_t))',
+            'suggestion': 'Swap parameters: d_ArrayInit(capacity, sizeof(Type_t))',
             'has_comment': has_clarifying_comment(prev_line)
         })
 
@@ -180,7 +180,7 @@ def scan_file_for_violations(file_path: Path) -> List[Dict[str, Any]]:
                 'code': line_text.strip(),
                 'issue': f'Suspicious: "{first_param}" (size-like name) in first position',
                 'first_param': first_param,
-                'suggestion': 'Verify parameter order: d_InitArray(capacity, element_size)',
+                'suggestion': 'Verify parameter order: d_ArrayInit(capacity, element_size)',
                 'has_comment': has_clarifying_comment(prev_line)
             })
 
@@ -200,11 +200,11 @@ def verify_daedalus_parameter_order(project_root: Path) -> bool:
     Returns: True if no violations found, False otherwise
     """
     print("=" * 80)
-    print("FF-006: d_InitArray Parameter Order Verification")
+    print("FF-006: d_ArrayInit Parameter Order Verification")
     print("=" * 80)
     print()
-    print("Enforcing: d_InitArray(capacity, element_size) - CAPACITY FIRST!")
-    print("Based on: ADR-006 (d_InitArray Parameter Order Enforcement)")
+    print("Enforcing: d_ArrayInit(capacity, element_size) - CAPACITY FIRST!")
+    print("Based on: ADR-006 (d_ArrayInit Parameter Order Enforcement)")
     print()
 
     src_dir = project_root / "src"
@@ -234,7 +234,7 @@ def verify_daedalus_parameter_order(project_root: Path) -> bool:
 
     # Report results
     if all_violations:
-        print("❌ FAILURE: d_InitArray parameter order violations detected!")
+        print("❌ FAILURE: d_ArrayInit parameter order violations detected!")
         print()
         print(f"Found {len(all_violations)} violation(s):")
         print()
@@ -249,7 +249,7 @@ def verify_daedalus_parameter_order(project_root: Path) -> bool:
             print(f"   Fix: {v['suggestion']}")
 
             if not v['has_comment']:
-                print(f"   💡 Add comment: // d_InitArray(capacity, element_size) - capacity FIRST!")
+                print(f"   💡 Add comment: // d_ArrayInit(capacity, element_size) - capacity FIRST!")
 
             print()
 
@@ -269,7 +269,7 @@ def verify_daedalus_parameter_order(project_root: Path) -> bool:
         print()
         return False
 
-    print("✅ SUCCESS: All d_InitArray calls have correct parameter order")
+    print("✅ SUCCESS: All d_ArrayInit calls have correct parameter order")
     print(f"✅ SUCCESS: Zero violations in {len(all_files)} scanned files")
     print()
 
@@ -285,7 +285,7 @@ def verify_daedalus_parameter_order(project_root: Path) -> bool:
 
 def check_file_has_clarifying_comments(file_path: Path) -> bool:
     """
-    Check if file has at least one d_InitArray with clarifying comment.
+    Check if file has at least one d_ArrayInit with clarifying comment.
 
     This is a bonus check - not required, but recommended.
     """
@@ -296,7 +296,7 @@ def check_file_has_clarifying_comments(file_path: Path) -> bool:
         return False
 
     for i, line in enumerate(lines):
-        if 'd_InitArray' in line and i > 0:
+        if 'd_ArrayInit' in line and i > 0:
             prev_line = lines[i-1]
             if has_clarifying_comment(prev_line):
                 return True

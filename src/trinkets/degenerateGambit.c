@@ -43,7 +43,7 @@ void DegenerateGambitPassive(Player_t* player, GameContext_t* game, Trinket_t* s
     if (player->hand.cards->count < 1) return;  // Need at least 1 card
 
     // Get the last drawn card
-    Card_t* last_card = (Card_t*)d_IndexDataFromArray(player->hand.cards, player->hand.cards->count - 1);
+    Card_t* last_card = (Card_t*)d_ArrayGet(player->hand.cards, player->hand.cards->count - 1);
     if (!last_card) return;
 
     // Calculate value BEFORE the hit (current value - last card value)
@@ -90,7 +90,7 @@ void DegenerateGambitPassive(Player_t* player, GameContext_t* game, Trinket_t* s
             VFX_SpawnDamageNumber(vfx, damage,
                                  SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
                                  ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                                 false, is_crit);  // Pass crit flag
+                                 false, is_crit, false);  // Pass crit flag, not rake
         }
 
         d_LogInfoF("⚡ Degenerate's Gambit (Passive): Reckless hit at %d! Dealt %d damage%s",
@@ -119,9 +119,9 @@ void DegenerateGambitActive(Player_t* player, GameContext_t* game, void* target,
 
     Card_t* card = (Card_t*)target;
 
-    // Validate: Card rank <= 5
-    if (card->rank > 5) {
-        d_LogWarning("Cannot double card above rank 5");
+    // Validate: Card rank 2-9 only (block Aces and 10+ face cards)
+    if (card->rank < RANK_TWO || card->rank >= RANK_TEN) {
+        d_LogWarning("Cannot double Aces or cards rank 10+");
         return;
     }
 
@@ -180,7 +180,7 @@ Trinket_t* CreateDegenerateGambitTrinket(void) {
     trinket->active_cooldown_max = 3;
     trinket->active_cooldown_current = 0;  // Ready on start
     d_StringSet(trinket->active_description,
-                "Target a card value 5 or less, double it for this turns hand value. (3 turn cooldown)", 0);
+                "Target a card rank 2-9, double its value (max 10) for this hand. Cooldown: 3 turns", 0);
 
     // State initialization
     trinket->passive_damage_bonus = 0;  // Starts at 10, scales to 15, 20, etc.

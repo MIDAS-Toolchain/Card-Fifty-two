@@ -14,7 +14,9 @@
 // ============================================================================
 
 #define TERMINAL_MAX_OUTPUT_LINES  100  // Keep last 100 lines
-#define TERMINAL_HEIGHT_RATIO      0.5f // Top half of screen
+#define TERMINAL_MAX_HISTORY       100  // Command history limit
+#define TERMINAL_MAX_INPUT_LENGTH  256  // Max chars per command
+#define TERMINAL_HEIGHT_RATIO      0.6f // Top 60% of screen
 #define TERMINAL_PROMPT            "> "
 #define TERMINAL_BG_COLOR          ((aColor_t){20, 20, 20, 230})   // Semi-transparent dark
 #define TERMINAL_TEXT_COLOR        ((aColor_t){0, 255, 0, 255})    // Green
@@ -28,17 +30,30 @@
 typedef struct Terminal Terminal_t;
 
 /**
- * CommandHandler_t - Function pointer for terminal commands
+ * CommandFunc_t - Function pointer for terminal command execution
  *
  * @param terminal - Terminal instance
  * @param args - Command arguments (everything after command name)
  */
 typedef void (*CommandFunc_t)(Terminal_t* terminal, const char* args);
 
+/**
+ * ArgSuggestFunc_t - Function pointer for argument autocompletion
+ *
+ * @param terminal - Terminal instance
+ * @param partial_arg - Current partial argument being typed
+ * @return dArray_t* - Array of char* suggestions (caller must destroy), or NULL if no suggestions
+ *
+ * Called when user types "command <partial>" to provide autocomplete suggestions.
+ * Return array of string pointers (suggestions own their strings, caller frees array only).
+ */
+typedef dArray_t* (*ArgSuggestFunc_t)(Terminal_t* terminal, const char* partial_arg);
+
 typedef struct CommandHandler {
-    dString_t* name;       // Command name (e.g., "help")
-    CommandFunc_t execute; // Function to execute
-    dString_t* help_text;  // Help description
+    dString_t* name;            // Command name (e.g., "help")
+    CommandFunc_t execute;      // Function to execute
+    dString_t* help_text;       // Help description
+    ArgSuggestFunc_t suggest_args; // Optional: Argument autocomplete function (NULL if none)
 } CommandHandler_t;
 
 // ============================================================================
@@ -59,6 +74,17 @@ typedef struct Terminal {
     bool scrollbar_dragging;      // Currently dragging scrollbar thumb
     int drag_start_y;             // Mouse Y position when drag started
     int drag_start_scroll;        // Scroll offset when drag started
+
+    // Autocomplete state
+    dArray_t* autocomplete_matches; // Array of char* (matching command names)
+    int autocomplete_index;        // Current selection in matches (-1 = none)
+    dString_t* autocomplete_suggestion; // Current suggestion text (ghost text)
+
+    // Text selection/highlighting state (for copy/paste)
+    int cursor_position;           // Cursor position in input_buffer (0 = start, length = end)
+    int selection_start;           // Start of selection (-1 = no selection)
+    int selection_end;             // End of selection (-1 = no selection)
+    dString_t* highlighted_text;   // Currently selected text (for future clipboard operations)
 } Terminal_t;
 
 // ============================================================================
@@ -157,8 +183,9 @@ void TerminalClear(Terminal_t* terminal);
  * @param name - Command name (case-insensitive)
  * @param execute - Function to execute when command is called
  * @param help_text - Description shown in 'help' command
+ * @param suggest_args - Optional: Argument autocomplete function (NULL if none)
  */
-void RegisterCommand(Terminal_t* terminal, const char* name, CommandFunc_t execute, const char* help_text);
+void RegisterCommand(Terminal_t* terminal, const char* name, CommandFunc_t execute, const char* help_text, ArgSuggestFunc_t suggest_args);
 
 /**
  * ExecuteCommand - Parse and run terminal command

@@ -448,4 +448,38 @@ EventEncounter_t* CreateSystemMaintenanceEvent(void);
  */
 EventEncounter_t* CreateHouseOddsEvent(void);
 
+// ============================================================================
+// EVENT REGISTRY (Single Source of Truth)
+// ============================================================================
+
+/**
+ * EventFactory_t - Function pointer for event factory functions
+ *
+ * @return EventEncounter_t* - Newly created event
+ */
+typedef EventEncounter_t* (*EventFactory_t)(void);
+
+/**
+ * EventRegistryEntry_t - Registry entry for an event
+ *
+ * Maps terminal command names to event factory functions.
+ * Provides single source of truth for event name -> factory mapping.
+ */
+typedef struct EventRegistryEntry {
+    const char* command_name;   // Terminal command argument (e.g., "maintenance")
+    const char* display_name;   // Human-readable name (e.g., "System Maintenance")
+    EventFactory_t factory;     // Factory function to create event
+} EventRegistryEntry_t;
+
+/**
+ * GetEventRegistry - Get global event registry
+ *
+ * @param out_count - Output: Number of entries in registry
+ * @return const EventRegistryEntry_t* - Array of registry entries (static, don't free)
+ *
+ * Single source of truth for event name -> factory mapping.
+ * Used by terminal autocomplete and command execution.
+ */
+const EventRegistryEntry_t* GetEventRegistry(int* out_count);
+
 #endif // EVENT_H

@@ -21,8 +21,8 @@ void InitHand(Hand_t* hand) {
 
     // Constitutional pattern: dArray_t for card storage (only heap allocation)
     // Initial capacity: 10 cards (typical max in Blackjack)
-    // d_InitArray(capacity, element_size) - capacity FIRST!
-    hand->cards = d_InitArray(10, sizeof(Card_t));
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
+    hand->cards = d_ArrayInit(10, sizeof(Card_t));
     if (!hand->cards) {
         d_LogFatal("InitHand: Failed to initialize card array");
         return;
@@ -48,7 +48,7 @@ void CleanupHand(Hand_t* hand) {
 
     // Destroy Daedalus array (only heap-allocated resource)
     if (hand->cards) {
-        d_DestroyArray(hand->cards);
+        d_ArrayDestroy(hand->cards);
         hand->cards = NULL;
     }
 
@@ -76,7 +76,7 @@ void AddCardToHand(Hand_t* hand, Card_t card) {
                hand->cards->element_size, sizeof(Card_t), sizeof(card));
 
     // Constitutional pattern: Card_t copied by value into array
-    d_AppendDataToArray(hand->cards, &card);
+    d_ArrayAppend(hand->cards, &card);
 
     // Track card drawn in global stats
     Stats_IncrementCardsDrawn();
@@ -101,7 +101,7 @@ void ClearHand(Hand_t* hand, Deck_t* deck) {
 
     // Remove DOUBLED tags from all cards before clearing (cleanup at end of turn)
     for (size_t i = 0; i < hand->cards->count; i++) {
-        Card_t* card = (Card_t*)d_IndexDataFromArray(hand->cards, i);
+        Card_t* card = (Card_t*)d_ArrayGet(hand->cards, i);
         if (card && HasCardTag(card->card_id, CARD_TAG_DOUBLED)) {
             RemoveCardTag(card->card_id, CARD_TAG_DOUBLED);
             d_LogInfoF("Removed DOUBLED tag from card %d", card->card_id);
@@ -111,7 +111,7 @@ void ClearHand(Hand_t* hand, Deck_t* deck) {
     // If deck provided, discard all cards to deck's discard pile
     if (deck) {
         for (size_t i = 0; i < hand->cards->count; i++) {
-            Card_t* card = (Card_t*)d_IndexDataFromArray(hand->cards, i);
+            Card_t* card = (Card_t*)d_ArrayGet(hand->cards, i);
             if (card) {
                 DiscardCard(deck, *card);
             }
@@ -120,7 +120,7 @@ void ClearHand(Hand_t* hand, Deck_t* deck) {
     }
 
     // Clear array (doesn't free array itself, just removes elements)
-    d_ClearArray(hand->cards);
+    d_ArrayClear(hand->cards);
 
     // Reset hand state
     hand->total_value = 0;
@@ -142,7 +142,7 @@ int CalculateHandValue(Hand_t* hand) {
 
     // Sum up card values
     for (size_t i = 0; i < hand->cards->count; i++) {
-        Card_t* card = (Card_t*)d_IndexDataFromArray(hand->cards, i);
+        Card_t* card = (Card_t*)d_ArrayGet(hand->cards, i);
         if (!card) continue;
 
         // DEBUG: What are we reading back?
@@ -179,6 +179,12 @@ int CalculateHandValue(Hand_t* hand) {
         if (HasCardTag(card->card_id, CARD_TAG_DOUBLED)) {
             int original_value = value;
             value *= 2;
+
+            // Cap at 10 (blackjack face card value) - ranks 6-9 → 10
+            if (value > 10) {
+                value = 10;
+            }
+
             d_LogInfoF("Card %d doubled: %d → %d", card->card_id, original_value, value);
 
             // Keep tag for visual feedback - will be removed when hand is cleared
@@ -214,7 +220,7 @@ int CalculateVisibleHandValue(const Hand_t* hand) {
 
     // Sum up ONLY face-up card values
     for (size_t i = 0; i < hand->cards->count; i++) {
-        const Card_t* card = (const Card_t*)d_IndexDataFromArray(hand->cards, i);
+        const Card_t* card = (const Card_t*)d_ArrayGet(hand->cards, i);
         if (!card) continue;
 
         // Skip face-down cards
@@ -244,6 +250,16 @@ int CalculateVisibleHandValue(const Hand_t* hand) {
                 d_LogErrorF("CalculateVisibleHandValue: Invalid rank %d", card->rank);
                 value = 0;
                 break;
+        }
+
+        // Check for DOUBLED tag (same as CalculateHandValue)
+        if (HasCardTag(card->card_id, CARD_TAG_DOUBLED)) {
+            value *= 2;
+
+            // Cap at 10 (blackjack face card value) - ranks 6-9 → 10
+            if (value > 10) {
+                value = 10;
+            }
         }
 
         total += value;
@@ -280,7 +296,7 @@ const Card_t* GetCardFromHand(const Hand_t* hand, size_t index) {
         return NULL;
     }
 
-    return (const Card_t*)d_IndexDataFromArray(hand->cards, index);
+    return (const Card_t*)d_ArrayGet(hand->cards, index);
 }
 
 bool IsHandBust(const Hand_t* hand) {
@@ -307,7 +323,7 @@ int GetAceValue(const Hand_t* hand, size_t ace_index) {
         return 0;
     }
 
-    const Card_t* ace = (const Card_t*)d_IndexDataFromArray(hand->cards, ace_index);
+    const Card_t* ace = (const Card_t*)d_ArrayGet(hand->cards, ace_index);
     if (!ace || ace->rank != RANK_ACE) {
         return 0;  // Not an ace
     }
@@ -319,7 +335,7 @@ int GetAceValue(const Hand_t* hand, size_t ace_index) {
     for (size_t i = 0; i < hand->cards->count; i++) {
         if (i == ace_index) continue;  // Skip the ace we're checking
 
-        const Card_t* card = (const Card_t*)d_IndexDataFromArray(hand->cards, i);
+        const Card_t* card = (const Card_t*)d_ArrayGet(hand->cards, i);
         if (!card) continue;
 
         int value = 0;
@@ -350,6 +366,11 @@ int GetAceValue(const Hand_t* hand, size_t ace_index) {
         // Check for DOUBLED tag
         if (HasCardTag(card->card_id, CARD_TAG_DOUBLED)) {
             value *= 2;
+
+            // Cap at 10 (blackjack face card value) - ranks 6-9 → 10
+            if (value > 10) {
+                value = 10;
+            }
         }
 
         total_without_ace += value;

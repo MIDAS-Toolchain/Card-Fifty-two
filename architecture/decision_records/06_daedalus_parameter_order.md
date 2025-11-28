@@ -1,11 +1,11 @@
-# ADR-006: d_InitArray Parameter Order Enforcement
+# ADR-006: d_ArrayInit Parameter Order Enforcement
 
 ## Context
 
-Daedalus library's `d_InitArray()` function has a **non-intuitive parameter order**:
+Daedalus library's `d_ArrayInit()` function has a **non-intuitive parameter order**:
 
 ```c
-dArray_t* d_InitArray(size_t capacity, size_t element_size);
+dArray_t* d_ArrayInit(size_t capacity, size_t element_size);
 ```
 
 This order is **backwards** from common C idioms like `calloc(count, size)` and many array libraries that put element type/size first.
@@ -14,7 +14,7 @@ This order is **backwards** from common C idioms like `calloc(count, size)` and 
 
 In `src/player.c:66`, we had:
 ```c
-player.trinket_slots = d_InitArray(sizeof(Trinket_t*), 6);  // WRONG!
+player.trinket_slots = d_ArrayInit(sizeof(Trinket_t*), 6);  // WRONG!
 ```
 
 This created an array with:
@@ -37,7 +37,7 @@ This bug caused **intermittent crashes** at COMBAT_START that took days to debug
 
 2. **Wrapper macro with natural order**
    ```c
-   #define INIT_ARRAY(type, capacity) d_InitArray(capacity, sizeof(type))
+   #define INIT_ARRAY(type, capacity) d_ArrayInit(capacity, sizeof(type))
    ```
    - Pros: Natural order, type-safe
    - Cons: Hides library API, inconsistent with direct Daedalus calls
@@ -55,18 +55,18 @@ This bug caused **intermittent crashes** at COMBAT_START that took days to debug
 
 ## Decision
 
-**Implement FF-006 (d_InitArray Parameter Order Verification) as mandatory pre-commit check.**
+**Implement FF-006 (d_ArrayInit Parameter Order Verification) as mandatory pre-commit check.**
 
-All `d_InitArray()` calls MUST follow this pattern:
+All `d_ArrayInit()` calls MUST follow this pattern:
 ```c
 // ✅ CORRECT: Capacity first, element_size second
-array = d_InitArray(CAPACITY_CONSTANT, sizeof(Type_t));
+array = d_ArrayInit(CAPACITY_CONSTANT, sizeof(Type_t));
 ```
 
 All violations must include an inline comment explaining the correct order:
 ```c
-// d_InitArray(capacity, element_size) - capacity FIRST!
-player.trinket_slots = d_InitArray(6, sizeof(Trinket_t*));
+// d_ArrayInit(capacity, element_size) - capacity FIRST!
+player.trinket_slots = d_ArrayInit(6, sizeof(Trinket_t*));
 ```
 
 **Justification:**
@@ -102,30 +102,30 @@ player.trinket_slots = d_InitArray(6, sizeof(Trinket_t*));
 
 ```c
 // ✅ Array of value types (Card_t stored directly)
-dArray_t* cards = d_InitArray(52, sizeof(Card_t));
+dArray_t* cards = d_ArrayInit(52, sizeof(Card_t));
 
 // ✅ Array of pointers (Player_t* stored)
-dArray_t* player_refs = d_InitArray(4, sizeof(Player_t*));
+dArray_t* player_refs = d_ArrayInit(4, sizeof(Player_t*));
 
 // ✅ Array with variable capacity
-dArray_t* abilities = d_InitArray(enemy->max_abilities, sizeof(AbilityData_t));
+dArray_t* abilities = d_ArrayInit(enemy->max_abilities, sizeof(AbilityData_t));
 
 // ✅ With inline comment for clarity
-// d_InitArray(capacity, element_size) - capacity FIRST!
-player.trinket_slots = d_InitArray(6, sizeof(Trinket_t*));
+// d_ArrayInit(capacity, element_size) - capacity FIRST!
+player.trinket_slots = d_ArrayInit(6, sizeof(Trinket_t*));
 ```
 
 **Incorrect Patterns (Caught by FF-006):**
 
 ```c
 // ❌ Parameters swapped
-dArray_t* cards = d_InitArray(sizeof(Card_t), 52);
+dArray_t* cards = d_ArrayInit(sizeof(Card_t), 52);
 
 // ❌ sizeof first (looks like calloc but wrong!)
-dArray_t* trinkets = d_InitArray(sizeof(Trinket_t*), 6);
+dArray_t* trinkets = d_ArrayInit(sizeof(Trinket_t*), 6);
 
 // ❌ Variable element_size first
-dArray_t* array = d_InitArray(element_size, capacity);
+dArray_t* array = d_ArrayInit(element_size, capacity);
 ```
 
 ## Evidence From Codebase
@@ -133,14 +133,14 @@ dArray_t* array = d_InitArray(element_size, capacity);
 **Bug Location (src/player.c:66 - BEFORE FIX):**
 ```c
 // ❌ WRONG - Created array with capacity=8, element_size=6
-player.trinket_slots = d_InitArray(sizeof(Trinket_t*), 6);
+player.trinket_slots = d_ArrayInit(sizeof(Trinket_t*), 6);
 ```
 
 **Fixed Version (src/player.c:67 - AFTER FIX):**
 ```c
 // ✅ CORRECT - Creates array with capacity=6, element_size=8
-// d_InitArray(capacity, element_size) - capacity FIRST!
-player.trinket_slots = d_InitArray(6, sizeof(Trinket_t*));
+// d_ArrayInit(capacity, element_size) - capacity FIRST!
+player.trinket_slots = d_ArrayInit(6, sizeof(Trinket_t*));
 ```
 
 **Other Correct Examples in Codebase:**
@@ -148,19 +148,19 @@ player.trinket_slots = d_InitArray(6, sizeof(Trinket_t*));
 **src/enemy.c:57-58:**
 ```c
 // Capacity: 16 (prevents realloc during combat)
-enemy->passive_abilities = d_InitArray(16, sizeof(AbilityData_t));
-enemy->active_abilities = d_InitArray(16, sizeof(AbilityData_t));
+enemy->passive_abilities = d_ArrayInit(16, sizeof(AbilityData_t));
+enemy->active_abilities = d_ArrayInit(16, sizeof(AbilityData_t));
 ```
 
 **src/statusEffects.c:20:**
 ```c
 // Capacity: 32 (generous to prevent realloc bugs)
-manager->active_effects = d_InitArray(32, sizeof(StatusEffectInstance_t));
+manager->active_effects = d_ArrayInit(32, sizeof(StatusEffectInstance_t));
 ```
 
 **src/hand.c:21:**
 ```c
-hand.cards = d_InitArray(16, sizeof(Card_t));  // Max 16 cards in hand
+hand.cards = d_ArrayInit(16, sizeof(Card_t));  // Max 16 cards in hand
 ```
 
 ## Impact Analysis
@@ -190,8 +190,8 @@ hand.cards = d_InitArray(16, sizeof(Card_t));  // Max 16 cards in hand
 ## Success Metrics
 
 **Fitness Function (FF-006):**
-- Zero `d_InitArray(sizeof(...), ...)` patterns in src/ or include/
-- All d_InitArray calls match regex: `d_InitArray\([A-Z_0-9]+,\s*sizeof\(`
+- Zero `d_ArrayInit(sizeof(...), ...)` patterns in src/ or include/
+- All d_ArrayInit calls match regex: `d_ArrayInit\([A-Z_0-9]+,\s*sizeof\(`
 - Exception markers allowed for justified violations
 - Pre-commit hook rejects commits with violations
 
@@ -201,7 +201,7 @@ hand.cards = d_InitArray(16, sizeof(Card_t));  // Max 16 cards in hand
 - Array capacity verification test passes
 
 **Code Quality:**
-- All d_InitArray calls include inline comment with parameter order
+- All d_ArrayInit calls include inline comment with parameter order
 - Developers understand why this pattern matters (link to this ADR)
 - New contributors warned by FF before submitting bad code
 
@@ -216,7 +216,7 @@ hand.cards = d_InitArray(16, sizeof(Card_t));  // Max 16 cards in hand
 **Existing Code:**
 1. Run `python architecture/fitness_functions/06_daedalus_parameter_order.py`
 2. Fix all violations by swapping parameters
-3. Add inline comment: `// d_InitArray(capacity, element_size) - capacity FIRST!`
+3. Add inline comment: `// d_ArrayInit(capacity, element_size) - capacity FIRST!`
 4. Verify with stress tests and Valgrind
 
 **New Code:**

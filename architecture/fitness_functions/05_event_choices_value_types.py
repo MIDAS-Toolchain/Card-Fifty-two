@@ -102,7 +102,7 @@ def check_event_choice_allocation(src_path: Path) -> List[str]:
                 f"event.c:{line_num}\n"
                 f"   Code: {line.strip()}\n"
                 f"   EventChoice_t should be stack-allocated, not heap-allocated\n"
-                f"   Per ADR-006: Use 'EventChoice_t choice = {{0}};' then d_AppendDataToArray"
+                f"   Per ADR-006: Use 'EventChoice_t choice = {{0}};' then d_ArrayAppend"
             )
 
         # Check for EventChoice_t** (pointer-to-pointer suggests pointer array)
@@ -158,11 +158,11 @@ def check_add_event_choice_pattern(src_path: Path) -> List[str]:
             "   EventChoice_t should be stack-allocated (value type)"
         )
 
-    # Check for d_AppendDataToArray with address-of operator
-    # Look for pattern: d_AppendDataToArray(..., &variable)
-    if not re.search(r'd_AppendDataToArray\s*\([^,]+,\s*&\w+\s*\)', func_body):
+    # Check for d_ArrayAppend with address-of operator
+    # Look for pattern: d_ArrayAppend(..., &variable)
+    if not re.search(r'd_ArrayAppend\s*\([^,]+,\s*&\w+\s*\)', func_body):
         violations.append(
-            "AddEventChoice: Missing 'd_AppendDataToArray(..., &choice)'\n"
+            "AddEventChoice: Missing 'd_ArrayAppend(..., &choice)'\n"
             "   Must pass address of stack variable to copy into array"
         )
 
@@ -245,7 +245,7 @@ def verify_event_choices_value_types(project_root: Path) -> bool:
         print("💡 Pattern:")
         print("   EventChoice_t choice = {0};          // Stack allocation")
         print("   // ... initialize fields ...")
-        print("   d_AppendDataToArray(array, &choice); // Copy into array")
+        print("   d_ArrayAppend(array, &choice); // Copy into array")
         print()
         return False
 

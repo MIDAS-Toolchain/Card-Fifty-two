@@ -53,7 +53,7 @@ void ShuffleDeck(Deck_t* deck);
  * @return Card_t by value, or Card with card_id=-1 if deck empty
  *
  * Constitutional pattern: Returns Card_t by value (not pointer)
- * Uses d_PopDataFromArray for O(1) operation
+ * Uses d_ArrayPop for O(1) operation
  */
 Card_t DealCard(Deck_t* deck);
 

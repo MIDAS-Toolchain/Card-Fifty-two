@@ -65,7 +65,7 @@ All dynamic strings use dString_t. All dynamic arrays use dArray_t. All key-valu
 ```c
 dArray_t* cards = d_CreateArray(sizeof(Card_t));
 Card_t card = {...};
-d_AppendDataToArray(cards, &card);  // memcpy into array
+d_ArrayAppend(cards, &card);  // memcpy into array
 ```
 
 **Reference types** (Player name) are stored AS library types:
@@ -79,7 +79,7 @@ typedef struct Player {
 **Tables store entire structs** by value using memcpy:
 ```c
 Player_t player = {...};
-d_SetDataInTable(g_players, &player.player_id, &player);  // Copies entire struct
+d_TableSet(g_players, &player.player_id, &player);  // Copies entire struct
 ```
 
 ## Evidence From Codebase

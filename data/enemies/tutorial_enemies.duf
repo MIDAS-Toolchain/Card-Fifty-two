@@ -1,0 +1,152 @@
+# Tutorial enemies for Card Fifty-Two
+
+@didact {
+    name: "The Didact"
+    description: """A corrupted tutorial program that still thinks it's teaching you the game.
+Its lessons have become twisted, turning the casino's rules against you."""
+    hp: 500
+    image_path: "resources/enemies/didact.png"
+
+    abilities: [
+        {
+            name: "The House Remembers"
+            description: "The casino is alive, and it never forgets a winner."
+            trigger: {
+                type: "on_event"
+                event: "PLAYER_BLACKJACK"
+            }
+            effects: [
+                {
+                    type: "apply_status"
+                    target: "player"
+                    status: "GREED"
+                    value: 0
+                    duration: 2
+                },
+                {
+                    type: "message"
+                    message: "The Didact: \"The casino is alive, and it never forgets a winner.\""
+                }
+            ]
+        },
+        {
+            name: "Irregularity Detected"
+            description: "You've been noticed. The system is watching."
+            trigger: {
+                type: "counter"
+                event: "CARD_DRAWN"
+                count: 5
+            }
+            effects: [
+                {
+                    type: "apply_status"
+                    target: "player"
+                    status: "CHIP_DRAIN"
+                    value: 5
+                    duration: 3
+                },
+                {
+                    type: "message"
+                    message: "The Didact: \"You've been noticed. The system is watching.\""
+                }
+            ]
+        },
+        {
+            name: "System Override"
+            description: "The casino is taking control. The system recalibrates."
+            trigger: {
+                type: "hp_threshold"
+                threshold: 0.3
+            }
+            effects: [
+                {
+                    type: "heal"
+                    target: "self"
+                    value: 50
+                },
+                {
+                    type: "shuffle_deck"
+                },
+                {
+                    type: "message"
+                    message: "The Didact: \"The casino is taking control. The system recalibrates.\""
+                }
+            ]
+        }
+    ]
+}
+
+@daemon {
+    name: "The Daemon"
+    description: """A corrupted process that has gained sentience. It feeds on players' desperation,
+growing stronger with each hand you lose."""
+    hp: 5000
+    image_path: "resources/enemies/daemon.png"
+
+    abilities: [
+        {
+            name: "The House Remembers"
+            description: "The casino is alive, and it never forgets a winner."
+            trigger: {
+                type: "on_event"
+                event: "PLAYER_BLACKJACK"
+            }
+            effects: [
+                {
+                    type: "apply_status"
+                    target: "player"
+                    status: "GREED"
+                    value: 0
+                    duration: 2
+                },
+                {
+                    type: "message"
+                    message: "The Daemon: \"The casino is alive, and it never forgets a winner.\""
+                }
+            ]
+        },
+        {
+            name: "Irregularity Detected"
+            description: "You've been noticed. The system is watching."
+            trigger: {
+                type: "counter"
+                event: "CARD_DRAWN"
+                count: 5
+            }
+            effects: [
+                {
+                    type: "apply_status"
+                    target: "player"
+                    status: "CHIP_DRAIN"
+                    value: 5
+                    duration: 3
+                },
+                {
+                    type: "message"
+                    message: "The Daemon: \"You've been noticed. The system is watching.\""
+                }
+            ]
+        },
+        {
+            name: "The Rake"
+            description: "Victory has a price. The house always takes its cut."
+            trigger: {
+                type: "hp_segment"
+                segment_percent: 25
+            }
+            effects: [
+                {
+                    type: "apply_status"
+                    target: "player"
+                    status: "RAKE"
+                    value: 5
+                    duration: 1
+                },
+                {
+                    type: "message"
+                    message: "The Daemon: \"The house takes its percentage.\""
+                }
+            ]
+        }
+    ]
+}

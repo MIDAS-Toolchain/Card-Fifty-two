@@ -30,18 +30,18 @@ bool StateData_Init(GameStateData_t* data) {
     }
 
     // Initialize typed state tables (Constitutional: explicit types, no void*)
-    data->bool_flags = d_InitTable(sizeof(char*), sizeof(bool),
+    data->bool_flags = d_TableInit(sizeof(char*), sizeof(bool),
                                     d_HashString, d_CompareString, 16);
-    data->int_values = d_InitTable(sizeof(char*), sizeof(int),
+    data->int_values = d_TableInit(sizeof(char*), sizeof(int),
                                     d_HashString, d_CompareString, 8);
-    data->dealer_phase = d_InitTable(sizeof(char*), sizeof(DealerPhase_t),
+    data->dealer_phase = d_TableInit(sizeof(char*), sizeof(DealerPhase_t),
                                       d_HashString, d_CompareString, 2);
 
     if (!data->bool_flags || !data->int_values || !data->dealer_phase) {
         d_LogError("StateData_Init: Failed to initialize state tables");
-        if (data->bool_flags) d_DestroyTable(&data->bool_flags);
-        if (data->int_values) d_DestroyTable(&data->int_values);
-        if (data->dealer_phase) d_DestroyTable(&data->dealer_phase);
+        if (data->bool_flags) d_TableDestroy(&data->bool_flags);
+        if (data->int_values) d_TableDestroy(&data->int_values);
+        if (data->dealer_phase) d_TableDestroy(&data->dealer_phase);
         return false;
     }
 
@@ -65,17 +65,17 @@ void StateData_Cleanup(GameStateData_t* data) {
 
     // Destroy typed state tables
     if (data->bool_flags) {
-        d_DestroyTable(&data->bool_flags);
+        d_TableDestroy(&data->bool_flags);
         data->bool_flags = NULL;
     }
 
     if (data->int_values) {
-        d_DestroyTable(&data->int_values);
+        d_TableDestroy(&data->int_values);
         data->int_values = NULL;
     }
 
     if (data->dealer_phase) {
-        d_DestroyTable(&data->dealer_phase);
+        d_TableDestroy(&data->dealer_phase);
         data->dealer_phase = NULL;
     }
 
@@ -101,10 +101,10 @@ void StateData_SetBool(GameStateData_t* data, const char* key, bool value) {
     }
 
     // Store pointer to static bool (persistent memory, not stack!)
-    d_SetDataInTable(data->bool_flags, &key, value ? &BOOL_TRUE : &BOOL_FALSE);
+    d_TableSet(data->bool_flags, &key, value ? &BOOL_TRUE : &BOOL_FALSE);
 
     // Verify storage (SUSSY checks)
-    bool* verify = (bool*)d_GetDataFromTable(data->bool_flags, &key);
+    bool* verify = (bool*)d_TableGet(data->bool_flags, &key);
     if (!verify) {
         d_LogWarningF("StateData_SetBool: SUSSY - Failed to store key='%s', value=%d", key, value);
     } else if (*verify != value) {
@@ -118,7 +118,7 @@ bool StateData_GetBool(const GameStateData_t* data, const char* key, bool defaul
         return default_value;
     }
 
-    bool* value_ptr = (bool*)d_GetDataFromTable(data->bool_flags, &key);
+    bool* value_ptr = (bool*)d_TableGet(data->bool_flags, &key);
     return value_ptr ? *value_ptr : default_value;
 }
 
@@ -135,9 +135,9 @@ void StateData_ClearBool(GameStateData_t* data, const char* key) {
     }
 
     // Check if key exists before removing (not an error if it doesn't)
-    bool* exists = (bool*)d_GetDataFromTable(data->bool_flags, &key);
+    bool* exists = (bool*)d_TableGet(data->bool_flags, &key);
     if (exists) {
-        d_RemoveDataFromTable(data->bool_flags, &key);
+        d_TableRemove(data->bool_flags, &key);
         d_LogDebugF("StateData_ClearBool: Removed key='%s' (was %d)", key, *exists);
     } else {
         d_LogDebugF("StateData_ClearBool: Key='%s' not found (already clear)", key);
@@ -154,7 +154,7 @@ void StateData_SetInt(GameStateData_t* data, const char* key, int value) {
         return;
     }
 
-    d_SetDataInTable(data->int_values, &key, &value);
+    d_TableSet(data->int_values, &key, &value);
 }
 
 int StateData_GetInt(const GameStateData_t* data, const char* key, int default_value) {
@@ -163,7 +163,7 @@ int StateData_GetInt(const GameStateData_t* data, const char* key, int default_v
         return default_value;
     }
 
-    int* value_ptr = (int*)d_GetDataFromTable(data->int_values, &key);
+    int* value_ptr = (int*)d_TableGet(data->int_values, &key);
     return value_ptr ? *value_ptr : default_value;
 }
 
@@ -192,10 +192,10 @@ void StateData_SetPhase(GameStateData_t* data, DealerPhase_t phase) {
 
     if (phase_ptr) {
         const char* key = "phase";
-        d_SetDataInTable(data->dealer_phase, &key, phase_ptr);
+        d_TableSet(data->dealer_phase, &key, phase_ptr);
 
         // Verify storage (SUSSY checks)
-        DealerPhase_t* verify = (DealerPhase_t*)d_GetDataFromTable(data->dealer_phase, &key);
+        DealerPhase_t* verify = (DealerPhase_t*)d_TableGet(data->dealer_phase, &key);
         if (!verify) {
             d_LogWarningF("StateData_SetPhase: SUSSY - Failed to store phase=%d", phase);
         } else if (*verify != phase) {
@@ -213,7 +213,7 @@ DealerPhase_t StateData_GetPhase(const GameStateData_t* data) {
     }
 
     const char* key = "phase";
-    DealerPhase_t* phase_ptr = (DealerPhase_t*)d_GetDataFromTable(data->dealer_phase, &key);
+    DealerPhase_t* phase_ptr = (DealerPhase_t*)d_TableGet(data->dealer_phase, &key);
     return phase_ptr ? *phase_ptr : DEALER_PHASE_CHECK_REVEAL;
 }
 
@@ -234,15 +234,15 @@ void StateData_ClearPhase(GameStateData_t* data) {
 
     // Check if phase exists before removing (not an error if it doesn't)
     const char* key_str = "phase";
-    d_LogInfoF("StateData_ClearPhase: About to call d_GetDataFromTable with key='%s' at %p",
+    d_LogInfoF("StateData_ClearPhase: About to call d_TableGet with key='%s' at %p",
                key_str, (void*)key_str);
 
-    DealerPhase_t* exists = (DealerPhase_t*)d_GetDataFromTable(data->dealer_phase, &key_str);
+    DealerPhase_t* exists = (DealerPhase_t*)d_TableGet(data->dealer_phase, &key_str);
 
-    d_LogInfo("StateData_ClearPhase: d_GetDataFromTable returned");
+    d_LogInfo("StateData_ClearPhase: d_TableGet returned");
 
     if (exists) {
-        d_RemoveDataFromTable(data->dealer_phase, &key_str);
+        d_TableRemove(data->dealer_phase, &key_str);
         d_LogDebugF("StateData_ClearPhase: Removed phase (was %d)", *exists);
     } else {
         d_LogDebug("StateData_ClearPhase: Phase not found (already clear)");

@@ -114,7 +114,7 @@ def should_skip_directory(file_path: Path) -> bool:
 
 def scan_file_for_table_misuse(file_path: Path) -> List[Dict[str, Any]]:
     """
-    Scan for incorrect d_GetDataFromTable usage patterns.
+    Scan for incorrect d_TableGet usage patterns.
 
     Detects: Player_t** when g_players stores Player_t by value (should be Player_t*)
 
@@ -128,9 +128,9 @@ def scan_file_for_table_misuse(file_path: Path) -> List[Dict[str, Any]]:
     except Exception as e:
         return violations
 
-    # Pattern: Player_t** ... = (Player_t**)d_GetDataFromTable(g_players, ...)
+    # Pattern: Player_t** ... = (Player_t**)d_TableGet(g_players, ...)
     # This is WRONG because g_players stores Player_t by value, not by pointer
-    player_double_ptr_pattern = r'Player_t\s*\*\*.*=\s*\(\s*Player_t\s*\*\*\s*\)\s*d_GetDataFromTable\s*\(\s*g_players'
+    player_double_ptr_pattern = r'Player_t\s*\*\*.*=\s*\(\s*Player_t\s*\*\*\s*\)\s*d_TableGet\s*\(\s*g_players'
 
     for line_num, line in enumerate(lines, 1):
         if re.search(player_double_ptr_pattern, line):

@@ -25,14 +25,14 @@ void InitDeck(Deck_t* deck, int num_decks) {
 
     // Constitutional pattern: Use dArray_t for card storage (only heap allocation)
     // Initial capacity: 52 cards per deck
-    // d_InitArray(capacity, element_size) - capacity FIRST!
-    deck->cards = d_InitArray(52 * num_decks, sizeof(Card_t));
-    deck->discard_pile = d_InitArray(52 * num_decks, sizeof(Card_t));
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
+    deck->cards = d_ArrayInit(52 * num_decks, sizeof(Card_t));
+    deck->discard_pile = d_ArrayInit(52 * num_decks, sizeof(Card_t));
 
     if (!deck->cards || !deck->discard_pile) {
         d_LogFatal("InitDeck: Failed to initialize card arrays");
-        if (deck->cards) d_DestroyArray(deck->cards);
-        if (deck->discard_pile) d_DestroyArray(deck->discard_pile);
+        if (deck->cards) d_ArrayDestroy(deck->cards);
+        if (deck->discard_pile) d_ArrayDestroy(deck->discard_pile);
         return;
     }
 
@@ -42,7 +42,7 @@ void InitDeck(Deck_t* deck, int num_decks) {
         for (int suit = 0; suit < SUIT_MAX; suit++) {
             for (int rank = 1; rank <= RANK_KING; rank++) {
                 Card_t card = CreateCard((CardSuit_t)suit, (CardRank_t)rank);
-                d_AppendDataToArray(deck->cards, &card);
+                d_ArrayAppend(deck->cards, &card);
             }
         }
     }
@@ -62,11 +62,11 @@ void CleanupDeck(Deck_t* deck) {
 
     // Destroy Daedalus arrays (only heap-allocated resources)
     if (deck->cards) {
-        d_DestroyArray(deck->cards);
+        d_ArrayDestroy(deck->cards);
         deck->cards = NULL;
     }
     if (deck->discard_pile) {
-        d_DestroyArray(deck->discard_pile);
+        d_ArrayDestroy(deck->discard_pile);
         deck->discard_pile = NULL;
     }
 
@@ -100,8 +100,8 @@ void ShuffleDeck(Deck_t* deck) {
         size_t j = (size_t)GetRandomInt(0, (int)i);
 
         // Swap cards[i] and cards[j]
-        Card_t* card_i = (Card_t*)d_IndexDataFromArray(deck->cards, i);
-        Card_t* card_j = (Card_t*)d_IndexDataFromArray(deck->cards, j);
+        Card_t* card_i = (Card_t*)d_ArrayGet(deck->cards, i);
+        Card_t* card_j = (Card_t*)d_ArrayGet(deck->cards, j);
 
         // Constitutional pattern: Card_t is value type, safe to copy
         Card_t temp = *card_i;
@@ -131,8 +131,8 @@ Card_t DealCard(Deck_t* deck) {
     }
 
     // Constitutional pattern: Pop from dArray_t (O(1) from end)
-    // d_PopDataFromArray returns void* to the popped data
-    Card_t* card_ptr = (Card_t*)d_PopDataFromArray(deck->cards);
+    // d_ArrayPop returns void* to the popped data
+    Card_t* card_ptr = (Card_t*)d_ArrayPop(deck->cards);
     if (!card_ptr) {
         d_LogError("DealCard: Failed to pop card from array");
         Card_t invalid = {.card_id = -1};
@@ -155,7 +155,7 @@ void DiscardCard(Deck_t* deck, Card_t card) {
     }
 
     // Constitutional pattern: Card_t copied by value into array
-    d_AppendDataToArray(deck->discard_pile, &card);
+    d_ArrayAppend(deck->discard_pile, &card);
 }
 
 void ResetDeck(Deck_t* deck) {
@@ -166,15 +166,15 @@ void ResetDeck(Deck_t* deck) {
     }
 
     // Clear both deck and discard pile
-    d_ClearArray(deck->cards);
-    d_ClearArray(deck->discard_pile);
+    d_ArrayClear(deck->cards);
+    d_ArrayClear(deck->discard_pile);
 
     // Regenerate all 52 cards from scratch
     // Standard deck: 4 suits × 13 ranks = 52 cards
     for (int suit = 0; suit < SUIT_MAX; suit++) {
         for (int rank = 1; rank <= RANK_KING; rank++) {
             Card_t card = CreateCard((CardSuit_t)suit, (CardRank_t)rank);
-            d_AppendDataToArray(deck->cards, &card);
+            d_ArrayAppend(deck->cards, &card);
         }
     }
 

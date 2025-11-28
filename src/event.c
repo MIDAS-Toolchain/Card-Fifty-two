@@ -32,15 +32,15 @@ static void DestroyEventChoice(EventChoice_t* choice) {
         choice->result_text = NULL;
     }
     if (choice->granted_tags) {
-        d_DestroyArray(choice->granted_tags);
+        d_ArrayDestroy(choice->granted_tags);
         choice->granted_tags = NULL;
     }
     if (choice->tag_target_strategies) {
-        d_DestroyArray(choice->tag_target_strategies);
+        d_ArrayDestroy(choice->tag_target_strategies);
         choice->tag_target_strategies = NULL;
     }
     if (choice->removed_tags) {
-        d_DestroyArray(choice->removed_tags);
+        d_ArrayDestroy(choice->removed_tags);
         choice->removed_tags = NULL;
     }
 }
@@ -64,8 +64,8 @@ EventEncounter_t* CreateEvent(const char* title, const char* description, EventT
     event->title = d_StringInit();
     event->description = d_StringInit();
     event->type = type;
-    // d_InitArray(capacity, element_size) - capacity FIRST!
-    event->choices = d_InitArray(4, sizeof(EventChoice_t));  // Typical event has 2-4 choices
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
+    event->choices = d_ArrayInit(4, sizeof(EventChoice_t));  // Typical event has 2-4 choices
     event->selected_choice = -1;
     event->is_complete = false;
 
@@ -73,7 +73,7 @@ EventEncounter_t* CreateEvent(const char* title, const char* description, EventT
         d_LogFatal("CreateEvent: Failed to initialize internal resources");
         if (event->title) d_StringDestroy(event->title);
         if (event->description) d_StringDestroy(event->description);
-        if (event->choices) d_DestroyArray(event->choices);
+        if (event->choices) d_ArrayDestroy(event->choices);
         free(event);
         return NULL;
     }
@@ -96,10 +96,10 @@ void DestroyEvent(EventEncounter_t** event) {
     // Free all choices (value types in array, per ADR-006)
     if (evt->choices) {
         for (size_t i = 0; i < evt->choices->count; i++) {
-            EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(evt->choices, i);
+            EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(evt->choices, i);
             DestroyEventChoice(choice);
         }
-        d_DestroyArray(evt->choices);
+        d_ArrayDestroy(evt->choices);
     }
 
     // Free event strings
@@ -137,10 +137,10 @@ void AddEventChoice(EventEncounter_t* event, const char* text, const char* resul
     choice.result_text = d_StringInit();
     choice.chips_delta = chips_delta;
     choice.sanity_delta = sanity_delta;
-    // d_InitArray(capacity, element_size) - capacity FIRST!
-    choice.granted_tags = d_InitArray(2, sizeof(CardTag_t));
-    choice.tag_target_strategies = d_InitArray(2, sizeof(TagTargetStrategy_t));
-    choice.removed_tags = d_InitArray(2, sizeof(CardTag_t));
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
+    choice.granted_tags = d_ArrayInit(2, sizeof(CardTag_t));
+    choice.tag_target_strategies = d_ArrayInit(2, sizeof(TagTargetStrategy_t));
+    choice.removed_tags = d_ArrayInit(2, sizeof(CardTag_t));
 
     // Initialize requirement to NONE (no requirement by default)
     choice.requirement.type = REQUIREMENT_NONE;
@@ -162,7 +162,7 @@ void AddEventChoice(EventEncounter_t* event, const char* text, const char* resul
     d_StringSet(choice.result_text, result_text, 0);
 
     // Copy choice into array (value type, per ADR-006)
-    d_AppendDataToArray(event->choices, &choice);
+    d_ArrayAppend(event->choices, &choice);
 
     d_LogInfoF("Added choice to event: %s", text);
 }
@@ -179,9 +179,9 @@ void AddCardTagToChoiceWithStrategy(EventEncounter_t* event, int choice_index,
         return;
     }
 
-    EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(event->choices, choice_index);
-    d_AppendDataToArray(choice->granted_tags, &tag);
-    d_AppendDataToArray(choice->tag_target_strategies, &strategy);
+    EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(event->choices, choice_index);
+    d_ArrayAppend(choice->granted_tags, &tag);
+    d_ArrayAppend(choice->tag_target_strategies, &strategy);
 
     d_LogInfoF("Choice %d: Added tag grant %s (strategy: %d)", choice_index, GetCardTagName(tag), strategy);
 }
@@ -192,8 +192,8 @@ void RemoveCardTagFromChoice(EventEncounter_t* event, int choice_index, CardTag_
         return;
     }
 
-    EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(event->choices, choice_index);
-    d_AppendDataToArray(choice->removed_tags, &tag);
+    EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(event->choices, choice_index);
+    d_ArrayAppend(choice->removed_tags, &tag);
 
     d_LogInfoF("Choice %d: Added tag removal %s", choice_index, GetCardTagName(tag));
 }
@@ -204,7 +204,7 @@ void SetChoiceRequirement(EventEncounter_t* event, int choice_index, ChoiceRequi
         return;
     }
 
-    EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(event->choices, choice_index);
+    EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(event->choices, choice_index);
     choice->requirement = requirement;
 
     d_LogInfoF("Choice %d: Set requirement (type: %d)", choice_index, requirement.type);
@@ -220,7 +220,7 @@ void SetChoiceTrinketReward(EventEncounter_t* event, int choice_index, int trink
         d_LogWarning("SetChoiceTrinketReward: Negative trinket_id (use -1 for no reward)");
     }
 
-    EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(event->choices, choice_index);
+    EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(event->choices, choice_index);
     choice->trinket_reward_id = trinket_id;
 
     d_LogInfoF("Choice %d: Set trinket reward (ID: %d)", choice_index, trinket_id);
@@ -237,7 +237,7 @@ void SetChoiceEnemyHPMultiplier(EventEncounter_t* event, int choice_index, float
         multiplier = 0.0f;
     }
 
-    EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(event->choices, choice_index);
+    EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(event->choices, choice_index);
     choice->enemy_hp_multiplier = multiplier;
 
     d_LogInfoF("Choice %d: Set enemy HP multiplier to %.2f", choice_index, multiplier);
@@ -265,7 +265,7 @@ const EventChoice_t* GetEventChoice(const EventEncounter_t* event, int choice_in
         return NULL;
     }
 
-    return (const EventChoice_t*)d_IndexDataFromArray(event->choices, choice_index);
+    return (const EventChoice_t*)d_ArrayGet(event->choices, choice_index);
 }
 
 int GetChoiceCount(const EventEncounter_t* event) {
@@ -312,8 +312,8 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
 
     // Apply granted tags (using targeting strategies)
     for (size_t i = 0; i < choice->granted_tags->count; i++) {
-        CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray(choice->granted_tags, i);
-        TagTargetStrategy_t* strategy = (TagTargetStrategy_t*)d_IndexDataFromArray(choice->tag_target_strategies, i);
+        CardTag_t* tag = (CardTag_t*)d_ArrayGet(choice->granted_tags, i);
+        TagTargetStrategy_t* strategy = (TagTargetStrategy_t*)d_ArrayGet(choice->tag_target_strategies, i);
 
         if (!tag || !strategy) {
             d_LogErrorF("ApplyEventConsequences: Missing tag or strategy at index %zu", i);
@@ -462,7 +462,7 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
 
     // Apply removed tags (from all cards)
     for (size_t i = 0; i < choice->removed_tags->count; i++) {
-        CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray(choice->removed_tags, i);
+        CardTag_t* tag = (CardTag_t*)d_ArrayGet(choice->removed_tags, i);
 
         // Remove from all 52 cards
         for (int card_id = 0; card_id < 52; card_id++) {
@@ -650,6 +650,24 @@ const char* GetEventTypeName(EventType_t type) {
         case EVENT_TYPE_CURSE:    return "Curse";
         default:                  return "Unknown";
     }
+}
+
+// ============================================================================
+// EVENT REGISTRY (Single Source of Truth)
+// ============================================================================
+
+const EventRegistryEntry_t* GetEventRegistry(int* out_count) {
+    // Static registry - single source of truth for event name -> factory mapping
+    static const EventRegistryEntry_t registry[] = {
+        {"maintenance", "System Maintenance", CreateSystemMaintenanceEvent},
+        {"house_odds", "House Odds", CreateHouseOddsEvent},
+    };
+
+    if (out_count) {
+        *out_count = sizeof(registry) / sizeof(registry[0]);
+    }
+
+    return registry;
 }
 
 // ============================================================================

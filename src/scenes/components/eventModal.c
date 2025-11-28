@@ -117,8 +117,8 @@ static int GenerateChoiceTooltipLines(const EventChoice_t* choice, TooltipLine_t
     // Tag grants - consolidate duplicates
     int tag_counts[CARD_TAG_MAX][16] = {0};
     for (size_t i = 0; i < choice->granted_tags->count; i++) {
-        CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray(choice->granted_tags, i);
-        TagTargetStrategy_t* strategy = (TagTargetStrategy_t*)d_IndexDataFromArray(choice->tag_target_strategies, i);
+        CardTag_t* tag = (CardTag_t*)d_ArrayGet(choice->granted_tags, i);
+        TagTargetStrategy_t* strategy = (TagTargetStrategy_t*)d_ArrayGet(choice->tag_target_strategies, i);
         if (tag && strategy && *tag < CARD_TAG_MAX && *strategy < 16) {
             tag_counts[*tag][*strategy]++;
         }
@@ -159,7 +159,7 @@ static int GenerateChoiceTooltipLines(const EventChoice_t* choice, TooltipLine_t
 
     // Tag removals
     for (size_t i = 0; i < choice->removed_tags->count && count < max_lines; i++) {
-        CardTag_t* tag = (CardTag_t*)d_IndexDataFromArray(choice->removed_tags, i);
+        CardTag_t* tag = (CardTag_t*)d_ArrayGet(choice->removed_tags, i);
         if (!tag) continue;
 
         snprintf(lines[count].text, sizeof(lines[count].text), "Lose %s (all cards)", GetCardTagName(*tag));
@@ -213,7 +213,7 @@ EventModal_t* CreateEventModal(void) {
     modal->result_alpha = 0.0f;
 
     // Calculate modal position (matching RewardModal pattern)
-    int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 128;  // Offset right (past deck UI)
+    int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 132;  // Offset right (past deck UI)
     int modal_y = (SCREEN_HEIGHT - EVENT_MODAL_HEIGHT) / 2;
     int panel_body_y = modal_y + EVENT_MODAL_HEADER_HEIGHT;
 
@@ -356,7 +356,7 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
             // Check hover state
             modal->hovered_choice = -1;
             for (int i = 0; i < choice_count; i++) {
-                EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, i);
+                EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(modal->current_event->choices, i);
                 if (!choice) continue;
 
                 int choice_y = choice_start_y + i * (EVENT_CHOICE_HEIGHT + EVENT_CHOICE_SPACING);
@@ -375,7 +375,7 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
                 SDL_Scancode key = (i == 0) ? SDL_SCANCODE_1 : (i == 1) ? SDL_SCANCODE_2 : SDL_SCANCODE_3;
                 if (app.keyboard[key]) {
                     app.keyboard[key] = 0;
-                    EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, i);
+                    EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(modal->current_event->choices, i);
                     if (choice && IsChoiceRequirementMet(&choice->requirement, player)) {
                         ConfirmChoice(modal, i);
                         return false;  // Don't close yet - show result first
@@ -387,7 +387,7 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
 
             // Check for click
             if (app.mouse.pressed && modal->hovered_choice != -1) {
-                EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, modal->hovered_choice);
+                EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(modal->current_event->choices, modal->hovered_choice);
                 if (choice && IsChoiceRequirementMet(&choice->requirement, player)) {
                     ConfirmChoice(modal, modal->hovered_choice);
                     return false;  // Don't close yet - show result first
@@ -500,7 +500,7 @@ static int SplitTextIntoBlocks(const char* source, char blocks[][512], int max_b
 static void RenderEventResult(const EventModal_t* modal, int modal_x, int modal_y, Uint8 fade_alpha) {
     if (!modal || modal->confirmed_choice < 0) return;
 
-    const EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(
+    const EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(
         modal->current_event->choices, modal->confirmed_choice);
     if (!choice) return;
 
@@ -606,8 +606,8 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
                      (aColor_t){COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b,
                      (Uint8)(COLOR_OVERLAY.a * modal->fade_in_alpha)});
 
-    // Modal panel (shifted 96px right from center, matching RewardModal)
-    int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 128;
+    // Modal panel (shifted right from center, matching RewardModal)
+    int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 132;
     int modal_y = (SCREEN_HEIGHT - EVENT_MODAL_HEIGHT) / 2;
 
     // Draw panel body
@@ -713,7 +713,7 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
         int choice_start_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + content_area_height + 20;
 
         for (int i = 0; i < choice_count; i++) {
-            EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, i);
+            EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(modal->current_event->choices, i);
             if (!choice || !choice->text) continue;
 
             int choice_y = choice_start_y + i * (EVENT_CHOICE_HEIGHT + EVENT_CHOICE_SPACING);
@@ -781,7 +781,7 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
         // Only during CHOOSING phase (not during fade-out)
         if (modal->phase == EVENT_PHASE_CHOOSING &&
             modal->hovered_choice >= 0 && modal->hovered_choice < (int)modal->current_event->choices->count) {
-            const EventChoice_t* hovered = (EventChoice_t*)d_IndexDataFromArray(modal->current_event->choices, modal->hovered_choice);
+            const EventChoice_t* hovered = (EventChoice_t*)d_ArrayGet(modal->current_event->choices, modal->hovered_choice);
             bool hovered_locked = !IsChoiceRequirementMet(&hovered->requirement, player);
 
             // Tooltip sizing constants

@@ -30,13 +30,13 @@ typedef enum EncounterType {
  * Encounter_t - Single encounter in an act sequence
  *
  * Constitutional pattern:
- * - Stores factory function pointer (not enemy instance!)
+ * - Stores DUF enemy key (not factory function!)
  * - Portrait path as C string (will be loaded on-demand)
- * - For EVENT encounters: enemy_factory and portrait_path are NULL
+ * - For EVENT encounters: enemy_key and portrait_path are empty
  */
 typedef struct Encounter {
     EncounterType_t type;              // Type of encounter
-    Enemy_t* (*enemy_factory)(void);   // Factory for combat encounters (NULL for events)
+    char enemy_key[64];                // DUF key for enemy (e.g., "didact", "daemon")
     char portrait_path[128];           // Path to enemy PNG (empty for events)
 } Encounter_t;
 
@@ -100,7 +100,7 @@ void DestroyAct(Act_t** act);
  *   AddEncounter(act, ENCOUNTER_EVENT, NULL, NULL);
  */
 void AddEncounter(Act_t* act, EncounterType_t type,
-                  Enemy_t* (*enemy_factory)(void),
+                  const char* enemy_key,
                   const char* portrait_path);
 
 /**

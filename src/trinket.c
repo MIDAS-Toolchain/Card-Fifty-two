@@ -30,7 +30,7 @@ void InitTrinketSystem(void) {
 
     // Constitutional pattern: Store trinket templates BY VALUE (not pointers!)
     // Matches g_players pattern (ADR-003)
-    g_trinket_templates = d_InitTable(sizeof(int), sizeof(Trinket_t),
+    g_trinket_templates = d_TableInit(sizeof(int), sizeof(Trinket_t),
                                        d_HashInt, d_CompareInt, 16);
 
     if (!g_trinket_templates) {
@@ -52,22 +52,22 @@ void CleanupTrinketSystem(void) {
     }
 
     // Get all trinket IDs from table (Constitutional: use Daedalus helper)
-    dArray_t* trinket_ids = d_GetAllKeysFromTable(g_trinket_templates);
+    dArray_t* trinket_ids = d_TableGetAllKeys(g_trinket_templates);
     if (trinket_ids) {
         // Iterate through all templates and clean up internal dStrings
         for (size_t i = 0; i < trinket_ids->count; i++) {
-            int* trinket_id = (int*)d_IndexDataFromArray(trinket_ids, i);
+            int* trinket_id = (int*)d_ArrayGet(trinket_ids, i);
             if (trinket_id) {
-                Trinket_t* trinket = (Trinket_t*)d_GetDataFromTable(g_trinket_templates, trinket_id);
+                Trinket_t* trinket = (Trinket_t*)d_TableGet(g_trinket_templates, trinket_id);
                 if (trinket) {
                     CleanupTrinketValue(trinket);  // Free dStrings inside
                 }
             }
         }
-        d_DestroyArray(trinket_ids);  // Pass pointer directly, not address
+        d_ArrayDestroy(trinket_ids);  // Pass pointer directly, not address
     }
 
-    d_DestroyTable(&g_trinket_templates);
+    d_TableDestroy(&g_trinket_templates);
     g_trinket_templates = NULL;
 
     d_LogInfo("Trinket system cleaned up");
@@ -142,10 +142,10 @@ Trinket_t* CreateTrinketTemplate(int trinket_id, const char* name, const char* d
     template.total_refunded_chips = 0;
 
     // Store template BY VALUE in global table (Constitutional pattern!)
-    d_SetDataInTable(g_trinket_templates, &template.trinket_id, &template);
+    d_TableSet(g_trinket_templates, &template.trinket_id, &template);
 
     // Return pointer to VALUE stored in table (like g_players)
-    Trinket_t* stored_template = (Trinket_t*)d_GetDataFromTable(g_trinket_templates, &trinket_id);
+    Trinket_t* stored_template = (Trinket_t*)d_TableGet(g_trinket_templates, &trinket_id);
     if (!stored_template) {
         d_LogError("CreateTrinketTemplate: Failed to store template in table");
         CleanupTrinketValue(&template);  // Clean up dStrings before returning
@@ -192,7 +192,7 @@ Trinket_t* GetTrinketByID(int trinket_id) {
     }
 
     // Constitutional pattern: Table stores VALUES, return pointer to value in table
-    Trinket_t* trinket = (Trinket_t*)d_GetDataFromTable(g_trinket_templates, &trinket_id);
+    Trinket_t* trinket = (Trinket_t*)d_TableGet(g_trinket_templates, &trinket_id);
     if (!trinket) {
         return NULL;  // Trinket not found
     }
@@ -232,7 +232,7 @@ bool EquipTrinket(Player_t* player, int slot_index, Trinket_t* trinket_template)
 
     // Constitutional pattern: COPY template → slot by VALUE (each player gets own instance!)
     // Get pointer to slot value in array
-    Trinket_t* slot = (Trinket_t*)d_IndexDataFromArray(player->trinket_slots, slot_index);
+    Trinket_t* slot = (Trinket_t*)d_ArrayGet(player->trinket_slots, slot_index);
     if (!slot) {
         d_LogError("EquipTrinket: Failed to access slot");
         return false;
@@ -289,7 +289,7 @@ void UnequipTrinket(Player_t* player, int slot_index) {
     }
 
     // Get pointer to slot value
-    Trinket_t* slot = (Trinket_t*)d_IndexDataFromArray(player->trinket_slots, slot_index);
+    Trinket_t* slot = (Trinket_t*)d_ArrayGet(player->trinket_slots, slot_index);
     if (slot) {
         // Cleanup dStrings inside trinket value
         if (slot->name) {  // name != NULL means slot was occupied
@@ -316,7 +316,7 @@ Trinket_t* GetEquippedTrinket(const Player_t* player, int slot_index) {
     }
 
     // Constitutional pattern: Return pointer to VALUE in array
-    Trinket_t* trinket = (Trinket_t*)d_IndexDataFromArray(player->trinket_slots, slot_index);
+    Trinket_t* trinket = (Trinket_t*)d_ArrayGet(player->trinket_slots, slot_index);
     if (!trinket) {
         return NULL;
     }

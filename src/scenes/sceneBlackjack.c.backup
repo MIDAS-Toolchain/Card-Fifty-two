@@ -1133,7 +1133,7 @@ static void BlackjackLogic(float dt) {
             // Choice was selected
             int choice_idx = GetSelectedChoiceIndex(g_event_modal);
             if (choice_idx >= 0 && g_current_event && g_human_player) {
-                EventChoice_t* choice = (EventChoice_t*)d_IndexDataFromArray(g_current_event->choices, choice_idx);
+                EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(g_current_event->choices, choice_idx);
                 if (choice) {
                     d_LogInfoF("Event choice selected: %s", d_StringPeek(choice->text));
 
