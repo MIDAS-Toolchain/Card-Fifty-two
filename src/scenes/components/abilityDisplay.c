@@ -106,7 +106,7 @@ static void GetAbilityAbbreviation(const char* name, char* out_buffer, size_t bu
 /**
  * GetAbilityBadgeText - Get badge text for ability state
  */
-static bool GetAbilityBadgeText(const Ability_t* ability, char* out_buffer, size_t buffer_size) {
+static bool GetAbilityBadgeText(const Ability_t* ability, const Enemy_t* enemy, char* out_buffer, size_t buffer_size) {
     if (!ability || !out_buffer) return false;
 
     switch (ability->trigger.type) {
@@ -116,13 +116,27 @@ static bool GetAbilityBadgeText(const Ability_t* ability, char* out_buffer, size
             return true;
         }
 
-        case TRIGGER_HP_THRESHOLD:
+        case TRIGGER_HP_THRESHOLD: {
             if (ability->has_triggered) {
-                snprintf(out_buffer, buffer_size, "USED");
+                // Don't show badge for used abilities - will be filtered out in render
+                return false;
+            }
+
+            // Calculate HP remaining until trigger
+            if (enemy && enemy->max_hp > 0) {
+                int threshold_hp = (int)(ability->trigger.threshold * enemy->max_hp);
+                int hp_until_trigger = enemy->current_hp - threshold_hp;
+
+                if (hp_until_trigger <= 0) {
+                    snprintf(out_buffer, buffer_size, "READY");
+                } else {
+                    snprintf(out_buffer, buffer_size, "%d", hp_until_trigger);
+                }
             } else {
                 snprintf(out_buffer, buffer_size, "READY");
             }
             return true;
+        }
 
         case TRIGGER_ON_EVENT:
             snprintf(out_buffer, buffer_size, "READY");
@@ -131,6 +145,23 @@ static bool GetAbilityBadgeText(const Ability_t* ability, char* out_buffer, size
         case TRIGGER_RANDOM:
             snprintf(out_buffer, buffer_size, "%.0f%%", ability->trigger.chance * 100.0f);
             return true;
+
+        case TRIGGER_DAMAGE_ACCUMULATOR: {
+            int threshold = ability->trigger.damage_threshold;
+            int accumulated = ability->trigger.damage_accumulated;
+            int enemy_total = enemy ? enemy->total_damage_taken : 0;
+
+            // Calculate remaining damage needed
+            int damage_since_last = enemy_total - accumulated;
+            int remaining = threshold - damage_since_last;
+
+            if (remaining <= 0) {
+                snprintf(out_buffer, buffer_size, "READY");
+            } else {
+                snprintf(out_buffer, buffer_size, "%d", remaining);
+            }
+            return true;
+        }
 
         default:
             return false;
@@ -174,6 +205,11 @@ void RenderAbilityDisplay(AbilityDisplay_t* display) {
 
         Ability_t* ability = *ability_ptr;
 
+        // Skip completely faded out abilities (finished fade-out animation)
+        if (ability->fade_alpha <= 0.0f) {
+            continue;
+        }
+
         // Apply shake offsets if animating
         int current_x = base_x + (int)ability->shake_offset_x;
         int current_y = base_y + (int)ability->shake_offset_y;
@@ -185,11 +221,8 @@ void RenderAbilityDisplay(AbilityDisplay_t* display) {
             display->hovered_index = (int)i;
         }
 
-        // Determine opacity
-        Uint8 alpha = 255;
-        if (ability->has_triggered && ability->trigger.type == TRIGGER_HP_THRESHOLD) {
-            alpha = 120;  // Dimmed if already used
-        }
+        // Apply fade alpha (for smooth fade-out when consumed)
+        Uint8 alpha = (Uint8)(255 * ability->fade_alpha);
 
         // Draw card background (color by trigger type)
         aColor_t bg_color = GetAbilityColor(ability->trigger.type);
@@ -221,9 +254,11 @@ void RenderAbilityDisplay(AbilityDisplay_t* display) {
 
         // Draw badge (state indicator) - matches old working version
         char badge_text[16];
-        if (GetAbilityBadgeText(ability, badge_text, sizeof(badge_text))) {
+        if (GetAbilityBadgeText(ability, display->enemy, badge_text, sizeof(badge_text))) {
             aColor_t badge_color = GetAbilityBadgeColor(ability, alpha);
-            bool is_numeric = (ability->trigger.type == TRIGGER_COUNTER);
+            bool is_numeric = (ability->trigger.type == TRIGGER_COUNTER ||
+                               ability->trigger.type == TRIGGER_DAMAGE_ACCUMULATOR ||
+                               ability->trigger.type == TRIGGER_HP_THRESHOLD);
 
             // Calculate badge dimensions
             int badge_width = is_numeric ? 44 : 48;
@@ -256,10 +291,25 @@ void RenderAbilityDisplay(AbilityDisplay_t* display) {
                       });
         }
 
-        // Draw red flash overlay if animating
+        // Draw flash overlay when ability triggers (green for heal, white for others)
         if (ability->flash_alpha > 0.0f) {
-            a_DrawFilledRect((aRectf_t){current_x, current_y, ABILITY_CARD_WIDTH, ABILITY_CARD_HEIGHT},
-                            (aColor_t){255, 0, 0, (Uint8)ability->flash_alpha});
+            Uint8 flash = (Uint8)(ability->flash_alpha * 255.0f);
+
+            // Check if ability contains heal effects
+            bool is_heal_ability = false;
+            for (size_t j = 0; j < ability->effects->count; j++) {
+                AbilityEffect_t* effect = (AbilityEffect_t*)d_ArrayGet(ability->effects, j);
+                if (effect && effect->type == EFFECT_HEAL && effect->target == TARGET_SELF) {
+                    is_heal_ability = true;
+                    break;
+                }
+            }
+
+            aColor_t flash_color = is_heal_ability ?
+                (aColor_t){100, 255, 100, flash} :  // Green for heal
+                (aColor_t){255, 255, 255, flash};   // White for others
+
+            a_DrawFilledRect((aRectf_t){current_x, current_y, ABILITY_CARD_WIDTH, ABILITY_CARD_HEIGHT}, flash_color);
         }
 
         // Move to next card position (vertical stack)

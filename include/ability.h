@@ -65,13 +65,14 @@ typedef struct {
  * TriggerType_t - When an ability triggers
  */
 typedef enum {
-    TRIGGER_PASSIVE,        // Always active (stat modifiers, auras)
-    TRIGGER_ON_EVENT,       // Fires every time specific event occurs
-    TRIGGER_COUNTER,        // Fires after N occurrences of event
-    TRIGGER_HP_THRESHOLD,   // Fires when enemy HP% ≤ threshold (one-time)
-    TRIGGER_RANDOM,         // % chance on event
-    TRIGGER_ON_ACTION,      // Fires on player HIT/STAND/DOUBLE
-    TRIGGER_HP_SEGMENT      // Fires at regular HP intervals (e.g., every 25% lost)
+    TRIGGER_PASSIVE,            // Always active (stat modifiers, auras)
+    TRIGGER_ON_EVENT,           // Fires every time specific event occurs
+    TRIGGER_COUNTER,            // Fires after N occurrences of event
+    TRIGGER_HP_THRESHOLD,       // Fires when enemy HP% ≤ threshold (one-time)
+    TRIGGER_RANDOM,             // % chance on event
+    TRIGGER_ON_ACTION,          // Fires on player HIT/STAND/DOUBLE
+    TRIGGER_HP_SEGMENT,         // Fires at regular HP intervals (e.g., every 25% lost)
+    TRIGGER_DAMAGE_ACCUMULATOR  // Fires based on total damage dealt (ignores healing)
 } TriggerType_t;
 
 /**
@@ -99,6 +100,10 @@ typedef struct {
     // HP segment trigger (fires at regular intervals)
     int segment_percent;      // Interval size (25 = every 25% HP lost)
     uint8_t segments_triggered;  // Bitmask tracking which thresholds crossed
+
+    // Damage accumulator trigger (fires every X total damage dealt)
+    int damage_threshold;     // Damage required per trigger (e.g., 1250)
+    int damage_accumulated;   // Runtime: Total damage dealt when last checked
 } AbilityTrigger_t;
 
 // ============================================================================
@@ -128,6 +133,7 @@ typedef struct {
     float shake_offset_x;
     float shake_offset_y;
     float flash_alpha;
+    float fade_alpha;          // Fade-out alpha when consumed (1.0 = visible, 0.0 = hidden)
 } Ability_t;
 
 // ============================================================================
@@ -172,11 +178,12 @@ void AddEffect(Ability_t* ability, const AbilityEffect_t* effect);
  * @param ability - Ability to check
  * @param event - Game event that occurred
  * @param enemy_hp_percent - Enemy's current HP% (0.0-1.0)
+ * @param enemy_total_damage - Enemy's total cumulative damage taken (for TRIGGER_DAMAGE_ACCUMULATOR)
  * @return bool - true if ability should execute
  *
  * Checks trigger type and conditions, updates counters/flags
  */
-bool CheckAbilityTrigger(Ability_t* ability, GameEvent_t event, float enemy_hp_percent);
+bool CheckAbilityTrigger(Ability_t* ability, GameEvent_t event, float enemy_hp_percent, int enemy_total_damage);
 
 /**
  * ExecuteAbility - Run all effects in ability

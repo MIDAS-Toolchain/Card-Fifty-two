@@ -32,19 +32,18 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     // Arrow pointing from dialogue bottom to bet buttons center
     TutorialArrow_t bet_buttons_arrow = {
         .enabled = true,
-        .from_x = (250 / 2) - 32,  // Center of dialogue width minus 32px offset
-        .from_y = 200,      // Slightly higher than bottom edge (was 250)
+        .from_x = (250 / 2) + 32,  // Center of dialogue width minus 32px offset
+        .from_y = 239,      // Slightly higher than bottom edge
         .to_x = buttons_x + (bet_buttons_width / 2),  // Center of bet buttons
         .to_y = buttons_y
     };
 
     TutorialStep_t* step1 = CreateTutorialStep(
-        "Place your bet.\n"
-        "Min (1), Med (2), or Max (3).\n\n"
-        "The dealer is watching.\n\n",
+        "The Bet",  // Title in header
+        "Place your bet. Min (1), Med (2), or Max (3). The dealer is watching.",  // Body text (Archimedes handles wrapping)
         bet_listener,
         false,  // Not final step
-        -32,  // Move 32px to the left
+        32,
         (SCREEN_HEIGHT - 250) / 2,  // CENTER - vertically center the dialogue
         STATE_BETTING,  // This step shows during betting
         bet_buttons_arrow,
@@ -65,16 +64,15 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     // Arrow pointing from dialogue bottom to action buttons center
     TutorialArrow_t action_buttons_arrow = {
         .enabled = true,
-        .from_x = 250 / 2,  // Center of dialogue width (DIALOGUE_WIDTH / 2)
-        .from_y = 200,      // Same as step 1 arrow height
+        .from_x = 250 / 2,  // Center of dialogue width
+        .from_y = 238,      // Same as step 1 arrow height
         .to_x = buttons_x + (action_buttons_width / 2),  // Center of action buttons
         .to_y = buttons_y
     };
 
     TutorialStep_t* step2 = CreateTutorialStep(
-        "HIT to draw. (1)\n"
-        "STAND to wait. (2)\n"
-        "DOUBLE to escalate. (3)\n\n",
+        "Your Turn",  // Title in header
+        "HIT to draw. (1) STAND to wait. (2) DOUBLE to escalate. (3)",  // Body text
         action_listener,
         false,  // Not final step
         0,  // Centered horizontally (where step 1 USED to be)
@@ -109,9 +107,8 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     };
 
     TutorialStep_t* step3 = CreateTutorialStep(
-        "Chips are your life force.\n\n"
-        "Don't lose them all.\n"
-        "Hover your chips to learn more.",
+        "Betting Power",  // Title in header
+        "Chips are your life force. Don't lose them all. Hover your chips to learn more.",  // Body text
         hover_chips_listener,
         false,  // Not final step
         0,  // Centered horizontally
@@ -137,19 +134,18 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
         .triggered = false
     };
 
-    // Arrow pointing from dialogue left edge to bet display center (offset right 32px from chips arrow)
+    // Arrow pointing from dialogue left edge to bet display center
     TutorialArrow_t bet_arrow = {
         .enabled = true,
-        .from_x = 0,  // 32px right offset from chips arrow (which was at 0)
+        .from_x = 0,  // Left edge
         .from_y = 125,  // Middle of dialogue height
         .to_x = bet_x + (bet_width / 2),  // Center of bet area
         .to_y = bet_y + (bet_height / 2)
     };
 
     TutorialStep_t* step4 = CreateTutorialStep(
-        "Chips are also your betting power.\n\n"
-        "The house tracks everything.\n\n"
-        "Nothing is forgotten.",
+        "Active Stake",  // Title in header
+        "Chips are also your betting power. The house tracks everything. Nothing is forgotten.",  // Body text
         hover_bet_listener,
         false,  // Not final step
         0,  // Centered horizontally
@@ -176,21 +172,19 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     // Arrow pointing from dialogue left edge to abilities icons
     TutorialArrow_t abilities_arrow = {
         .enabled = true,
-        .from_x = 0, 
+        .from_x = 0,
         .from_y = 125,  // Middle of dialogue height
         .to_x = abilities_x + (ABILITY_CARD_WIDTH / 2),  // Center of ability icons
         .to_y = abilities_y + (abilities_height / 2)
     };
 
     TutorialStep_t* step5 = CreateTutorialStep(
-        "The dealer's abilities\n"
-        "trigger automatically.\n\n"
-        "Study them. Each one changes\n"
-        "how you must play.",
+        "Enemy Abilities",  // Title in header
+        "The dealer's abilities trigger automatically. Study them. Each one changes how you must play.",  // Body text
         hover_abilities_listener,
         false,  // Not final step
-        330,  // Move right 330px
-        ((SCREEN_HEIGHT - 250) / 2) + 250,  // Move down 250px from center
+        290,  
+        ((SCREEN_HEIGHT - 250) / 2) + 200,  // Move down 250px from center
         STATE_BETTING,  // Show this step during betting (like steps 3 and 4)
         abilities_arrow,
         false  // Show dialogue immediately on hover (like steps 3 and 4)
@@ -211,19 +205,18 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     // Arrow pointing from dialogue to class trinket center
     TutorialArrow_t trinket_arrow = {
         .enabled = true,
-        .from_x = 250 / 2,  // Center of dialogue
-        .from_y = 125,      // Middle height
+        .from_x = 0,  // Center of dialogue
+        .from_y = 125 + 50,  // Add 50px for header offset (middle of body section)
         .to_x = class_trinket_x + (CLASS_TRINKET_SIZE / 2),
         .to_y = class_trinket_y + (CLASS_TRINKET_SIZE / 2)
     };
 
     TutorialStep_t* step6 = CreateTutorialStep(
-        "This power is yours.\n\n"
-        "Use it. You'll need every advantage\n"
-        "to survive what's coming.",
+        "Your Power",  // Title in header
+        "This power is yours. Use it. You'll need every advantage to survive what's coming.",  // Body text
         trinket_listener,
         false,  // Not final step
-        0,  // Centered horizontally
+        128,  // Move 64px to the right
         (SCREEN_HEIGHT - 250) / 2,  // Centered vertically
         STATE_PLAYER_TURN,  // Show during player turn
         trinket_arrow,
@@ -238,12 +231,11 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     };
 
     TutorialStep_t* step7 = CreateTutorialStep(
-        "Good.\n\n"
-        "You understand the rules.\n\n"
-        "Now let's see if you can survive them.",
+        "Ready",  // Title in header
+        "Good. You understand the rules. Now let's see if you can survive them.",  // Body text
         manual_advance_final,
         true,  // FINAL STEP - shows "Finish" instead of "Skip"
-        0,  // Centered horizontally
+        48,  // Move 32px to the right
         (SCREEN_HEIGHT - 200) / 2,  // CENTER - back to center for final message
         STATE_BETTING,  // Wait for betting state before showing
         no_arrow,

@@ -75,6 +75,14 @@ void RenderEnemyHealthBar(const EnemyHealthBar_t* bar) {
     // Draw filled portion (red) - animates smoothly
     a_DrawFilledRect((aRectf_t){bar->x, bar->y, filled_width, bar->h}, COLOR_FILL);
 
+    // Draw green flash overlay when enemy is healed
+    float green_alpha = GetEnemyGreenFlashAlpha(bar->enemy);
+    if (green_alpha > 0.0f) {
+        Uint8 flash = (Uint8)(green_alpha * 255.0f);
+        a_DrawFilledRect((aRectf_t){bar->x, bar->y, filled_width, bar->h},
+                        (aColor_t){100, 255, 100, flash});
+    }
+
     // Draw border (off-white)
     a_DrawRect((aRectf_t){bar->x, bar->y, bar->w, bar->h}, COLOR_BORDER);
 

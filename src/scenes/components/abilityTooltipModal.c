@@ -131,6 +131,22 @@ static void GetTriggerDescription(const Ability_t* ability, const Enemy_t* enemy
                     ability->trigger.segment_percent);
             break;
 
+        case TRIGGER_DAMAGE_ACCUMULATOR: {
+            int threshold = ability->trigger.damage_threshold;
+            int accumulated = ability->trigger.damage_accumulated;
+            int enemy_total = enemy ? enemy->total_damage_taken : 0;
+
+            // Calculate progress toward next trigger
+            int damage_since_last = enemy_total - accumulated;
+            int remaining = threshold - damage_since_last;
+
+            if (remaining < 0) remaining = 0;  // Already triggered, waiting for next check
+
+            snprintf(buffer, buffer_size, "Every %d total damage dealt (%d/%d)",
+                    threshold, damage_since_last, threshold);
+            break;
+        }
+
         default:
             snprintf(buffer, buffer_size, "Unknown trigger");
             break;

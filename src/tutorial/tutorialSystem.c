@@ -46,7 +46,8 @@ void DestroyTutorialSystem(TutorialSystem_t** system) {
 // TUTORIAL STEP CREATION
 // ============================================================================
 
-TutorialStep_t* CreateTutorialStep(const char* dialogue_text,
+TutorialStep_t* CreateTutorialStep(const char* title,
+                                   const char* dialogue_text,
                                    TutorialListener_t listener,
                                    bool is_final_step,
                                    int dialogue_x_offset,
@@ -54,6 +55,10 @@ TutorialStep_t* CreateTutorialStep(const char* dialogue_text,
                                    int wait_for_game_state,
                                    TutorialArrow_t arrow,
                                    bool advance_immediately) {
+    if (!title) {
+        d_LogError("CreateTutorialStep: NULL title");
+        return NULL;
+    }
     if (!dialogue_text) {
         d_LogError("CreateTutorialStep: NULL dialogue_text");
         return NULL;
@@ -65,9 +70,19 @@ TutorialStep_t* CreateTutorialStep(const char* dialogue_text,
         return NULL;
     }
 
+    // Create title string (dString_t)
+    step->title = d_StringInit();
+    if (!step->title) {
+        free(step);
+        d_LogFatal("Failed to allocate title string");
+        return NULL;
+    }
+    d_StringSet(step->title, title, 0);
+
     // Create dialogue text (dString_t)
     step->dialogue_text = d_StringInit();
     if (!step->dialogue_text) {
+        d_StringDestroy(step->title);
         free(step);
         d_LogFatal("Failed to allocate dialogue text");
         return NULL;
@@ -89,6 +104,10 @@ TutorialStep_t* CreateTutorialStep(const char* dialogue_text,
 
 void DestroyTutorialStep(TutorialStep_t** step) {
     if (!step || !*step) return;
+
+    if ((*step)->title) {
+        d_StringDestroy((*step)->title);
+    }
 
     if ((*step)->dialogue_text) {
         d_StringDestroy((*step)->dialogue_text);
@@ -292,9 +311,10 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
     // If skip confirmation visible, handle it exclusively
     if (system->skip_confirmation.visible) {
         int conf_w = 400;
-        int conf_h = 150;
+        int conf_h = 200;  // Updated to match RenderSkipConfirmation
         int conf_x = (SCREEN_WIDTH - conf_w) / 2;
         int conf_y = (SCREEN_HEIGHT - conf_h) / 2;
+        int body_y = conf_y + TUTORIAL_MODAL_HEADER_HEIGHT;
 
         // Keyboard shortcuts for confirmation modal
         if (app.keyboard[SDL_SCANCODE_RETURN] || app.keyboard[SDL_SCANCODE_KP_ENTER]) {
@@ -315,9 +335,9 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
         }
 
         if (app.mouse.pressed) {
-            // YES button (60, 90, 100, 40 relative to conf_x, conf_y)
+            // YES button (60, 60 relative to body_y, adjusted for header)
             int yes_x = conf_x + 60;
-            int yes_y = conf_y + 90;
+            int yes_y = body_y + 60;
             if (app.mouse.x >= yes_x && app.mouse.x <= yes_x + 100 &&
                 app.mouse.y >= yes_y && app.mouse.y <= yes_y + 40) {
                 // User confirmed skip
@@ -327,9 +347,9 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
                 return true;
             }
 
-            // NO button (240, 90, 100, 40 relative to conf_x, conf_y)
+            // NO button (240, 60 relative to body_y, adjusted for header)
             int no_x = conf_x + 240;
-            int no_y = conf_y + 90;
+            int no_y = body_y + 60;
             if (app.mouse.x >= no_x && app.mouse.x <= no_x + 100 &&
                 app.mouse.y >= no_y && app.mouse.y <= no_y + 40) {
                 // User canceled skip
@@ -346,15 +366,15 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
     // Mouse click on skip/finish button
     if (app.mouse.pressed) {
         // Final step gets wider dialogue box
-        int dialogue_width = system->current_step->is_final_step ? 800 : DIALOGUE_WIDTH;
-        int dialogue_height = DIALOGUE_HEIGHT;
+        int dialogue_width = system->current_step->is_final_step ? 800 : TUTORIAL_MODAL_WIDTH;
+        int dialogue_height = TUTORIAL_MODAL_HEIGHT;
         int button_width = system->current_step->is_final_step ? 120 : 80;
         int button_height = 30;
 
         int dialogue_x = ((SCREEN_WIDTH - dialogue_width) / 2) + system->current_step->dialogue_x_offset;
         int dialogue_y = system->current_step->dialogue_y_position;
-        int button_x = dialogue_x + dialogue_width - DIALOGUE_ARROW_MARGIN - button_width;
-        int button_y = dialogue_y + dialogue_height - DIALOGUE_ARROW_MARGIN - button_height;
+        int button_x = dialogue_x + dialogue_width - TUTORIAL_BUTTON_MARGIN - button_width;
+        int button_y = dialogue_y + dialogue_height - TUTORIAL_BUTTON_MARGIN - button_height;
 
         // DEBUG: Log click and bounds (rate-limited to once per second)
         d_LogRateLimitedF(D_LOG_RATE_LIMIT_FLAG_HASH_FORMAT_STRING, D_LOG_LEVEL_INFO, 1, 1.0,
@@ -451,67 +471,74 @@ static void DrawTutorialButton(int x, int y, int w, int h,
 
 
 static void RenderDialogue(const TutorialStep_t* step) {
-    if (!step || !step->dialogue_text) return;
+    if (!step || !step->title || !step->dialogue_text) return;
 
     // Final step gets wider dialogue box
-    int dialogue_width = step->is_final_step ? 800 : DIALOGUE_WIDTH;
-    int dialogue_height = DIALOGUE_HEIGHT;
+    int dialogue_width = step->is_final_step ? 800 : TUTORIAL_MODAL_WIDTH;
+    int dialogue_height = TUTORIAL_MODAL_HEIGHT;
 
     // Dialogue box position (use step-specific X offset and Y position)
     int dialogue_x = ((SCREEN_WIDTH - dialogue_width) / 2) + step->dialogue_x_offset;
     int dialogue_y = step->dialogue_y_position;
 
-    // Draw dialogue background
-    a_DrawFilledRect((aRectf_t){dialogue_x, dialogue_y, dialogue_width, dialogue_height},
-                     (aColor_t){DIALOGUE_BG.r, DIALOGUE_BG.g, DIALOGUE_BG.b, DIALOGUE_BG.a});
+    // Calculate section positions
+    int header_y = dialogue_y;
+    int body_y = dialogue_y + TUTORIAL_MODAL_HEADER_HEIGHT;
+    int body_height = dialogue_height - TUTORIAL_MODAL_HEADER_HEIGHT;
 
-    // Draw dialogue border
-    a_DrawRect((aRectf_t){dialogue_x, dialogue_y, dialogue_width, dialogue_height},
-               (aColor_t){DIALOGUE_BORDER.r, DIALOGUE_BORDER.g, DIALOGUE_BORDER.b, DIALOGUE_BORDER.a});
+    // === DRAW HEADER SECTION ===
 
-    // Draw dialogue text (split by \n and render each line separately)
-    int text_x = dialogue_x + DIALOGUE_PADDING;
-    int text_y = dialogue_y + DIALOGUE_PADDING;
+    // Draw header background (navy blue)
+    a_DrawFilledRect((aRectf_t){dialogue_x, header_y, dialogue_width, TUTORIAL_MODAL_HEADER_HEIGHT},
+                     TUTORIAL_HEADER_BG);
 
-    // Get full text
-    const char* full_text = d_StringPeek(step->dialogue_text);
+    // Draw header border (medium blue)
+    a_DrawRect((aRectf_t){dialogue_x, header_y, dialogue_width, TUTORIAL_MODAL_HEADER_HEIGHT},
+               TUTORIAL_HEADER_BORDER);
 
-    // Split by \n and render each line
-    char line_buffer[256];
-    int line_index = 0;
-    int char_index = 0;
+    // Draw title in header (centered, cream color, scale 1.0f)
+    const char* title_text = d_StringPeek(step->title);
+    aTextStyle_t title_style = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = TUTORIAL_HEADER_TEXT,
+        .bg = {0, 0, 0, 0},
+        .align = TEXT_ALIGN_CENTER,
+        .wrap_width = 0,
+        .scale = 1.0f,
+        .padding = 0
+    };
 
-    for (int i = 0; full_text[i] != '\0'; i++) {
-        if (full_text[i] == '\n') {
-            // End of line - render it
-            line_buffer[char_index] = '\0';
+    // Center title vertically in header (50px height)
+    float title_w, title_h;
+    a_CalcTextDimensions((char*)title_text, FONT_ENTER_COMMAND, &title_w, &title_h);
+    int title_x = dialogue_x + dialogue_width / 2;
+    int title_y = header_y + (TUTORIAL_MODAL_HEADER_HEIGHT - title_h) / 2;
 
-            // Calculate line height for this line
-            float line_w, line_h;
-            a_CalcTextDimensions(line_buffer, FONT_ENTER_COMMAND, &line_w, &line_h);
+    a_DrawText((char*)title_text, title_x, title_y, title_style);
 
-            // Render line
-            a_DrawText(line_buffer, text_x, text_y,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={DIALOGUE_TEXT.r,DIALOGUE_TEXT.g,DIALOGUE_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
+    // === DRAW BODY SECTION ===
 
-            // Move Y position down by line height
-            text_y += (int)line_h;
+    // Draw body background (almost black)
+    a_DrawFilledRect((aRectf_t){dialogue_x, body_y, dialogue_width, body_height},
+                     TUTORIAL_BODY_BG);
 
-            // Reset for next line
-            char_index = 0;
-            line_index++;
-        } else {
-            // Add character to current line
-            line_buffer[char_index++] = full_text[i];
-        }
-    }
+    // Draw dialogue text with Archimedes automatic wrapping (light gray, scale 1.1f)
+    const char* dialogue_text = d_StringPeek(step->dialogue_text);
+    int text_x = dialogue_x + TUTORIAL_MODAL_PADDING;
+    int text_y = body_y + TUTORIAL_MODAL_PADDING;
+    int wrap_width = dialogue_width - (TUTORIAL_MODAL_PADDING * 2);
 
-    // Render final line (no trailing \n)
-    if (char_index > 0) {
-        line_buffer[char_index] = '\0';
-        a_DrawText(line_buffer, text_x, text_y,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={DIALOGUE_TEXT.r,DIALOGUE_TEXT.g,DIALOGUE_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
-    }
+    aTextStyle_t body_style = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = TUTORIAL_BODY_TEXT,
+        .bg = {0, 0, 0, 0},
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = wrap_width,  // Archimedes handles wrapping!
+        .scale = 1.1f,  // Matches ADR-008 (readability)
+        .padding = 0
+    };
+
+    a_DrawText((char*)dialogue_text, text_x, text_y, body_style);
 
     // Draw arrow if enabled (pointing from dialogue to target)
     if (step->arrow.enabled) {
@@ -553,9 +580,9 @@ static void RenderDialogue(const TutorialStep_t* step) {
             SDL_RenderDrawLine(app.renderer, fill_x1, fill_y1, fill_x2, fill_y2);
         }
 
-        // === DRAW YELLOW ARROW ON TOP ===
-        // Thicker yellow arrow line (draw 3 lines for 3px thickness)
-        SDL_SetRenderDrawColor(app.renderer, DIALOGUE_ARROW.r, DIALOGUE_ARROW.g, DIALOGUE_ARROW.b, 255);
+        // === DRAW CYAN ARROW ON TOP ===
+        // Thicker cyan arrow line (draw 3 lines for 3px thickness)
+        SDL_SetRenderDrawColor(app.renderer, TUTORIAL_ARROW_COLOR.r, TUTORIAL_ARROW_COLOR.g, TUTORIAL_ARROW_COLOR.b, 255);
         for (int offset = -1; offset <= 1; offset++) {
             int offset_x = (int)(offset * sinf(angle));
             int offset_y = (int)(-offset * cosf(angle));
@@ -564,7 +591,7 @@ static void RenderDialogue(const TutorialStep_t* step) {
                 arrow_to_x + offset_x, arrow_to_y + offset_y);
         }
 
-        // Yellow filled triangle arrowhead
+        // Cyan filled triangle arrowhead
         for (int i = 0; i <= arrow_size; i++) {
             int fill_x1 = arrow_to_x - (int)(i * cosf(angle - arrow_angle));
             int fill_y1 = arrow_to_y - (int)(i * sinf(angle - arrow_angle));
@@ -578,45 +605,71 @@ static void RenderDialogue(const TutorialStep_t* step) {
     const char* button_text = step->is_final_step ? "Finish" : "Skip";
     int button_width = step->is_final_step ? 120 : 80;  // Wider for "Finish"
     int button_height = 30;
-    int button_x = dialogue_x + dialogue_width - DIALOGUE_ARROW_MARGIN - button_width;
-    int button_y = dialogue_y + dialogue_height - DIALOGUE_ARROW_MARGIN - button_height;
+    int button_x = dialogue_x + dialogue_width - TUTORIAL_BUTTON_MARGIN - button_width;
+    int button_y = dialogue_y + dialogue_height - TUTORIAL_BUTTON_MARGIN - button_height;
 
     // Check if button is hovered
     bool skip_hovered = (app.mouse.x >= button_x && app.mouse.x <= button_x + button_width &&
                          app.mouse.y >= button_y && app.mouse.y <= button_y + button_height);
 
     // Use helper for properly centered text with hover effect
-    aColor_t button_bg = {DIALOGUE_ARROW.r, DIALOGUE_ARROW.g, DIALOGUE_ARROW.b, 100};
+    aColor_t button_bg = {TUTORIAL_ARROW_COLOR.r, TUTORIAL_ARROW_COLOR.g, TUTORIAL_ARROW_COLOR.b, 100};
     DrawTutorialButton(button_x, button_y, button_width, button_height,
                        button_text,
                        button_bg,
-                       DIALOGUE_TEXT,
+                       TUTORIAL_HEADER_TEXT,  // Cream color for button text
                        true,
                        skip_hovered);
 }
 
 static void RenderSkipConfirmation(void) {
-    // Confirmation dialogue (smaller than main dialogue)
+    // Confirmation modal (modern design with header)
     int conf_w = 400;
-    int conf_h = 150;
+    int conf_h = 200;  // Increased from 150 to account for header
     int conf_x = (SCREEN_WIDTH - conf_w) / 2;
     int conf_y = (SCREEN_HEIGHT - conf_h) / 2;
 
-    // Draw confirmation background
-    a_DrawFilledRect((aRectf_t){conf_x, conf_y, conf_w, conf_h},
-                     (aColor_t){DIALOGUE_BG.r, DIALOGUE_BG.g, DIALOGUE_BG.b, DIALOGUE_BG.a});
+    // Calculate header and body positions
+    int header_y = conf_y;
+    int body_y = conf_y + TUTORIAL_MODAL_HEADER_HEIGHT;
+    int body_height = conf_h - TUTORIAL_MODAL_HEADER_HEIGHT;
 
-    // Draw confirmation border
-    a_DrawRect((aRectf_t){conf_x, conf_y, conf_w, conf_h},
-               (aColor_t){DIALOGUE_BORDER.r, DIALOGUE_BORDER.g, DIALOGUE_BORDER.b, DIALOGUE_BORDER.a});
+    // === DRAW HEADER ===
 
-    // Draw confirmation text
-    a_DrawText("Skip Tutorial?", conf_x + conf_w / 2, conf_y + 30,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={DIALOGUE_TEXT.r,DIALOGUE_TEXT.g,DIALOGUE_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+    // Draw header background (navy blue)
+    a_DrawFilledRect((aRectf_t){conf_x, header_y, conf_w, TUTORIAL_MODAL_HEADER_HEIGHT},
+                     TUTORIAL_HEADER_BG);
+
+    // Draw header border (medium blue)
+    a_DrawRect((aRectf_t){conf_x, header_y, conf_w, TUTORIAL_MODAL_HEADER_HEIGHT},
+               TUTORIAL_HEADER_BORDER);
+
+    // Draw header title (centered, cream color)
+    float title_w, title_h;
+    a_CalcTextDimensions("Skip Tutorial?", FONT_ENTER_COMMAND, &title_w, &title_h);
+    int title_x = conf_x + conf_w / 2;
+    int title_y = header_y + (TUTORIAL_MODAL_HEADER_HEIGHT - title_h) / 2;
+
+    a_DrawText("Skip Tutorial?", title_x, title_y,
+               (aTextStyle_t){
+                   .type = FONT_ENTER_COMMAND,
+                   .fg = TUTORIAL_HEADER_TEXT,
+                   .bg = {0, 0, 0, 0},
+                   .align = TEXT_ALIGN_CENTER,
+                   .wrap_width = 0,
+                   .scale = 1.0f,
+                   .padding = 0
+               });
+
+    // === DRAW BODY ===
+
+    // Draw body background (almost black)
+    a_DrawFilledRect((aRectf_t){conf_x, body_y, conf_w, body_height},
+                     TUTORIAL_BODY_BG);
 
     // Draw YES button using helper with hover detection
     int yes_x = conf_x + 60;
-    int yes_y = conf_y + 90;
+    int yes_y = body_y + 60;  // Adjusted for header
     bool yes_hovered = (app.mouse.x >= yes_x && app.mouse.x <= yes_x + 100 &&
                         app.mouse.y >= yes_y && app.mouse.y <= yes_y + 40);
 
@@ -631,7 +684,7 @@ static void RenderSkipConfirmation(void) {
 
     // Draw NO button using helper with hover detection
     int no_x = conf_x + 240;
-    int no_y = conf_y + 90;
+    int no_y = body_y + 60;  // Adjusted for header
     bool no_hovered = (app.mouse.x >= no_x && app.mouse.x <= no_x + 100 &&
                        app.mouse.y >= no_y && app.mouse.y <= no_y + 40);
 

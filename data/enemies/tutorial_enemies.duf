@@ -4,7 +4,7 @@
     name: "The Didact"
     description: """A corrupted tutorial program that still thinks it's teaching you the game.
 Its lessons have become twisted, turning the casino's rules against you."""
-    hp: 500
+    hp: 550
     image_path: "resources/enemies/didact.png"
 
     abilities: [
@@ -131,8 +131,8 @@ growing stronger with each hand you lose."""
             name: "The Rake"
             description: "Victory has a price. The house always takes its cut."
             trigger: {
-                type: "hp_segment"
-                segment_percent: 25
+                type: "damage_accumulator"
+                damage_threshold: 1250
             }
             effects: [
                 {

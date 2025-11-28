@@ -8,6 +8,7 @@
 #include "../include/game.h"
 #include "../include/player.h"
 #include "../include/deck.h"
+#include "../include/tween/tween.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -65,6 +66,7 @@ Ability_t* CreateAbility(const char* name, const char* description) {
     ability->shake_offset_x = 0.0f;
     ability->shake_offset_y = 0.0f;
     ability->flash_alpha = 0.0f;
+    ability->fade_alpha = 1.0f;  // Start fully visible
 
     return ability;
 }
@@ -106,7 +108,7 @@ void AddEffect(Ability_t* ability, const AbilityEffect_t* effect) {
 // EXECUTION
 // ============================================================================
 
-bool CheckAbilityTrigger(Ability_t* ability, GameEvent_t event, float enemy_hp_percent) {
+bool CheckAbilityTrigger(Ability_t* ability, GameEvent_t event, float enemy_hp_percent, int enemy_total_damage) {
     if (!ability) return false;
 
     // Check cooldown
@@ -143,14 +145,11 @@ bool CheckAbilityTrigger(Ability_t* ability, GameEvent_t event, float enemy_hp_p
             break;
 
         case TRIGGER_HP_THRESHOLD:
+            // HP thresholds always fire once (you only cross a threshold once going down)
             if (enemy_hp_percent <= ability->trigger.threshold) {
-                if (ability->trigger.once) {
-                    if (!ability->has_triggered) {
-                        should_trigger = true;
-                        ability->has_triggered = true;
-                    }
-                } else {
+                if (!ability->has_triggered) {
                     should_trigger = true;
+                    ability->has_triggered = true;
                 }
             }
             break;
@@ -199,6 +198,30 @@ bool CheckAbilityTrigger(Ability_t* ability, GameEvent_t event, float enemy_hp_p
             }
             break;
         }
+
+        case TRIGGER_DAMAGE_ACCUMULATOR: {
+            // Fires when enemy takes damage_threshold cumulative damage
+            // Unlike HP_SEGMENT, this survives enemy healing
+            // Example: RAKE triggers every 1250 total damage dealt
+            int threshold = ability->trigger.damage_threshold;
+
+            if (threshold <= 0) {
+                d_LogErrorF("Invalid damage_threshold %d (must be > 0)", threshold);
+                break;
+            }
+
+            // Check if we've crossed another threshold
+            int damage_since_last_trigger = enemy_total_damage - ability->trigger.damage_accumulated;
+
+            if (damage_since_last_trigger >= threshold) {
+                // Update accumulated damage to current total
+                ability->trigger.damage_accumulated = enemy_total_damage;
+                should_trigger = true;
+                d_LogInfoF("Damage Accumulator triggered at %d total damage (threshold: %d)",
+                           enemy_total_damage, threshold);
+            }
+            break;
+        }
     }
 
     return should_trigger;
@@ -211,6 +234,18 @@ void ExecuteAbility(Ability_t* ability, Enemy_t* enemy, GameContext_t* game) {
     }
 
     d_LogInfoF("Ability triggered: %s", d_StringPeek(ability->name));
+
+    // Trigger visual flash on ability icon (gentler, less seizure-inducing)
+    extern TweenManager_t g_tween_manager;  // From sceneBlackjack.c
+    StopTweensForTarget(&g_tween_manager, &ability->flash_alpha);
+    ability->flash_alpha = 0.65f;  // Gentler flash (was 1.0)
+    TweenFloat(&g_tween_manager, &ability->flash_alpha, 0.0f, 0.9f, TWEEN_EASE_OUT_QUAD);  // Slower fade
+
+    // If this is a one-time HP threshold ability, trigger fade-out animation
+    if (ability->trigger.type == TRIGGER_HP_THRESHOLD && ability->has_triggered) {
+        StopTweensForTarget(&g_tween_manager, &ability->fade_alpha);
+        TweenFloat(&g_tween_manager, &ability->fade_alpha, 0.0f, 0.8f, TWEEN_EASE_OUT_CUBIC);
+    }
 
     // Execute all effects in sequence
     for (size_t i = 0; i < ability->effects->count; i++) {
@@ -255,7 +290,8 @@ void ExecuteEffect(const AbilityEffect_t* effect, Enemy_t* enemy, GameContext_t*
 
         case EFFECT_HEAL:
             if (effect->target == TARGET_SELF) {
-                HealEnemy(enemy, effect->value);
+                extern TweenManager_t g_tween_manager;  // From sceneBlackjack.c
+                HealEnemy(enemy, effect->value, &g_tween_manager);
                 d_LogInfoF("Enemy healed for %d HP", effect->value);
             } else {
                 // TARGET_PLAYER - heal chips
@@ -377,6 +413,7 @@ TriggerType_t TriggerTypeFromString(const char* str) {
     if (strcmp(str, "random") == 0) return TRIGGER_RANDOM;
     if (strcmp(str, "on_action") == 0) return TRIGGER_ON_ACTION;
     if (strcmp(str, "hp_segment") == 0) return TRIGGER_HP_SEGMENT;
+    if (strcmp(str, "damage_accumulator") == 0) return TRIGGER_DAMAGE_ACCUMULATOR;
 
     d_LogWarningF("Unknown trigger type: %s", str);
     return TRIGGER_PASSIVE;

@@ -41,6 +41,7 @@ typedef struct Enemy {
     int max_hp;                     // Maximum HP
     int current_hp;                 // Current HP (combat ends at 0)
     float display_hp;               // Displayed HP (tweened for smooth HP bar drain)
+    int total_damage_taken;         // Cumulative damage dealt (never decreases, even if healed)
 
     dArray_t* abilities;            // Array of Ability_t* (unified - no passive/active split)
 
@@ -53,6 +54,7 @@ typedef struct Enemy {
     float shake_offset_x;           // Horizontal shake offset (tweened)
     float shake_offset_y;           // Vertical shake offset (tweened)
     float red_flash_alpha;          // Red overlay alpha (tweened from 1.0 to 0.0)
+    float green_flash_alpha;        // Green overlay alpha for heal effects (tweened)
 
     // Defeat animation
     float defeat_fade_alpha;        // Alpha for fade-out (1.0 → 0.0)
@@ -116,10 +118,11 @@ void TakeDamage(Enemy_t* enemy, int damage);
  *
  * @param enemy - Enemy to heal
  * @param amount - Healing amount
+ * @param tween_manager - Tween manager for green flash animation (can be NULL)
  *
- * Clamps HP to max_hp
+ * Clamps HP to max_hp, triggers green flash effect if tween_manager provided
  */
-void HealEnemy(Enemy_t* enemy, int amount);
+void HealEnemy(Enemy_t* enemy, int amount, TweenManager_t* tween_manager);
 
 /**
  * GetEnemyHPPercent - Get HP as percentage
@@ -232,6 +235,16 @@ SDL_Texture* GetEnemyPortraitTexture(Enemy_t* enemy);
 void TriggerEnemyDamageEffect(Enemy_t* enemy, TweenManager_t* tween_manager);
 
 /**
+ * TriggerEnemyHealEffect - Trigger green flash effect for healing
+ *
+ * @param enemy - Enemy that was healed
+ * @param tween_manager - Tween manager to use for animation
+ *
+ * Creates green flash overlay (alpha 0.6 → 0.0 over 0.5s)
+ */
+void TriggerEnemyHealEffect(Enemy_t* enemy, TweenManager_t* tween_manager);
+
+/**
  * GetEnemyShakeOffset - Get current shake offset for rendering
  *
  * @param enemy - Enemy to query
@@ -251,6 +264,16 @@ void GetEnemyShakeOffset(const Enemy_t* enemy, float* out_x, float* out_y);
  * Draw a red filled rect over enemy portrait with this alpha value
  */
 float GetEnemyRedFlashAlpha(const Enemy_t* enemy);
+
+/**
+ * GetEnemyGreenFlashAlpha - Get current green flash alpha
+ *
+ * @param enemy - Enemy to query
+ * @return float - Green overlay alpha (0.0-1.0)
+ *
+ * Draw a green filled rect over enemy portrait with this alpha value
+ */
+float GetEnemyGreenFlashAlpha(const Enemy_t* enemy);
 
 /**
  * TriggerEnemyDefeatAnimation - Trigger fade-out and zoom-out on defeat

@@ -23,8 +23,10 @@
 #include "../../include/scenes/components/introNarrativeModal.h"
 #include "../../include/scenes/components/eventModal.h"
 #include "../../include/scenes/components/resultScreen.h"
+#include "../../include/scenes/components/victoryOverlay.h"
 #include "../../include/scenes/components/trinketUI.h"
 #include "../../include/scenes/components/visualEffects.h"
+#include "../../include/scenes/components/enemyPortraitRenderer.h"
 #include "../../include/eventPool.h"
 #include "../../include/act.h"
 #include "../../include/scenes/sections/topBarSection.h"
@@ -92,6 +94,7 @@ static CombatPreviewModal_t* g_combat_preview_modal = NULL;
 static IntroNarrativeModal_t* g_intro_narrative_modal = NULL;
 EventModal_t* g_event_modal = NULL;  // Non-static for terminal command access
 static ResultScreen_t* g_result_screen = NULL;
+static VictoryOverlay_t* g_victory_overlay = NULL;
 
 // Event system
 EventEncounter_t* g_current_event = NULL;  // Non-static for terminal command access
@@ -103,6 +106,8 @@ static TrinketUI_t* g_trinket_ui = NULL;
 // Visual effects component (damage numbers + screen shake)
 static VisualEffects_t* g_visual_effects = NULL;
 
+// Enemy portrait renderer component
+static EnemyPortraitRenderer_t* g_enemy_portrait_renderer = NULL;
 
 // Popup notification state (for invalid target feedback)
 static char g_popup_message[128] = {0};
@@ -269,11 +274,19 @@ static void InitializeLayout(void) {
         SetGlobalResultScreen(g_result_screen);  // Register for statusEffects.c callbacks
     }
 
+    // Create victory overlay component
+    g_victory_overlay = CreateVictoryOverlay();
+
     // Create trinket UI component
     g_trinket_ui = CreateTrinketUI();
 
     // Create visual effects component
     g_visual_effects = CreateVisualEffects(&g_tween_manager);
+
+    // Create enemy portrait renderer (400x400 for 0.8x scale)
+    int portrait_x = GAME_AREA_X + (GAME_AREA_WIDTH - 400) / 2 + ENEMY_PORTRAIT_X_OFFSET;
+    int portrait_y = (SCREEN_HEIGHT - 400) / 2 + ENEMY_PORTRAIT_Y_OFFSET;
+    g_enemy_portrait_renderer = CreateEnemyPortraitRenderer(portrait_x, portrait_y, 400, 400, NULL);
 
     // Create tutorial event pool
     g_tutorial_event_pool = CreateTutorialEventPool();
@@ -337,8 +350,14 @@ static void CleanupLayout(void) {
         SetGlobalResultScreen(NULL);  // Unregister before destroying
         DestroyResultScreen(&g_result_screen);
     }
+    if (g_victory_overlay) {
+        DestroyVictoryOverlay(&g_victory_overlay);
+    }
     if (g_trinket_ui) {
         DestroyTrinketUI(&g_trinket_ui);
+    }
+    if (g_enemy_portrait_renderer) {
+        DestroyEnemyPortraitRenderer(&g_enemy_portrait_renderer);
     }
 
     // Destroy event pool
@@ -485,7 +504,7 @@ void InitBlackjackScene(void) {
         const char* block2 =
             "Machines begin lighting up, one by one down the hallway.\n\n"
             "The lights reveal a red velvet table at the end of the hall.\n\n"
-            "The faceless, lifeless dealer behind - nametag reads 'DIDACT' -\n\n"
+            "The faceless, lifeless dealer behind \n\n"
             "recites with a mechanical voice: 'The system requires demonstration. Place your bet.'\n\n";
 
         const char* final_line = "You approach the table.";
@@ -649,6 +668,11 @@ static void StartNextEncounter(void) {
 
         g_game.current_enemy = enemy;
         g_game.is_combat_mode = true;
+
+        // Update portrait renderer with new enemy
+        if (g_enemy_portrait_renderer) {
+            SetEnemyPortraitEnemy(g_enemy_portrait_renderer, enemy);
+        }
 
         // Fade in enemy on spawn (0.0 → 1.0 over 1.0 second)
         TweenFloat(&g_tween_manager, &enemy->defeat_fade_alpha, 1.0f, 1.0f, TWEEN_EASE_OUT_CUBIC);
@@ -944,6 +968,11 @@ static void BlackjackLogic(float dt) {
             bool is_victory = (g_game.current_state == STATE_COMBAT_VICTORY);
             ShowResultScreen(g_result_screen, result_old_chips, chip_delta, g_result_screen->status_drain, is_victory);
         }
+
+        // Show victory overlay when entering COMBAT_VICTORY
+        if (g_game.current_state == STATE_COMBAT_VICTORY && g_victory_overlay) {
+            ShowVictoryOverlay(g_victory_overlay, g_game.current_enemy);
+        }
     }
 
     // Update result screen timer (during result screen)
@@ -953,6 +982,11 @@ static void BlackjackLogic(float dt) {
 
     // Show reward modal when entering STATE_REWARD_SCREEN
     if (previous_state != STATE_REWARD_SCREEN && g_game.current_state == STATE_REWARD_SCREEN) {
+        // Hide victory overlay (transitioning away from victory state)
+        if (g_victory_overlay) {
+            HideVictoryOverlay(g_victory_overlay);
+        }
+
         if (g_reward_modal) {
             if (!ShowRewardModal(g_reward_modal)) {
                 // No untagged cards - skip reward
@@ -1966,72 +2000,8 @@ static void BlackjackDraw(float dt) {
     }
 
     // Draw enemy portrait as background (if in combat)
-    if (g_game.is_combat_mode && g_game.current_enemy) {
-        // Get enemy portrait texture
-        SDL_Texture* enemy_portrait = GetEnemyPortraitTexture(g_game.current_enemy);
-        if (enemy_portrait) {
-            // Get texture dimensions
-            int portrait_w, portrait_h;
-            SDL_QueryTexture(enemy_portrait, NULL, NULL, &portrait_w, &portrait_h);
-
-            // Scale down to 0.8x for rendering
-            int scaled_width = (int)(portrait_w * 0.8f);
-            int scaled_height = (int)(portrait_h * 0.8f);
-
-            // Center the portrait in game area, then apply offset
-            int centered_x = GAME_AREA_X + (GAME_AREA_WIDTH - scaled_width) / 2;
-            int portrait_x = centered_x + ENEMY_PORTRAIT_X_OFFSET + 40;  // 40px right (30 + 10)
-
-            // Center portrait vertically in screen, then apply Y offset
-            int centered_y = (SCREEN_HEIGHT - scaled_height) / 2;
-            int portrait_y = centered_y + ENEMY_PORTRAIT_Y_OFFSET - 15;  // 15px up (10 + 5)
-
-            // Get shake offset for damage feedback
-            float shake_x, shake_y;
-            GetEnemyShakeOffset(g_game.current_enemy, &shake_x, &shake_y);
-
-            // Get red flash and defeat animation states
-            float red_alpha = GetEnemyRedFlashAlpha(g_game.current_enemy);
-            float defeat_alpha = GetEnemyDefeatAlpha(g_game.current_enemy);
-            float defeat_scale = GetEnemyDefeatScale(g_game.current_enemy);
-
-            // Apply defeat scale to dimensions
-            int final_width = (int)(scaled_width * defeat_scale);
-            int final_height = (int)(scaled_height * defeat_scale);
-
-            // Center the scaled portrait vertically only (no horizontal drift)
-            int scale_offset_x = 0;  // No horizontal offset - prevent leftward drift
-            int scale_offset_y = (final_height - scaled_height) / 2;
-
-            // Apply red tint via texture color modulation
-            if (red_alpha > 0.0f) {
-                Uint8 g_channel = (Uint8)(255 * (1.0f - red_alpha));
-                Uint8 b_channel = (Uint8)(255 * (1.0f - red_alpha));
-                SDL_SetTextureColorMod(enemy_portrait, 255, g_channel, b_channel);
-            }
-
-            // Apply defeat fade alpha
-            if (defeat_alpha < 1.0f) {
-                SDL_SetTextureAlphaMod(enemy_portrait, (Uint8)(defeat_alpha * 255));
-            }
-
-            // Render portrait using texture with position and scale
-            aRectf_t dest = {
-                portrait_x + shake_x + scale_offset_x,
-                portrait_y + shake_y + scale_offset_y,
-                final_width,
-                final_height
-            };
-            a_BlitTextureRect(enemy_portrait, dest, 1);
-
-            // Reset texture mods after rendering
-            if (red_alpha > 0.0f) {
-                SDL_SetTextureColorMod(enemy_portrait, 255, 255, 255);
-            }
-            if (defeat_alpha < 1.0f) {
-                SDL_SetTextureAlphaMod(enemy_portrait, 255);
-            }
-        }
+    if (g_game.is_combat_mode && g_enemy_portrait_renderer) {
+        RenderEnemyPortrait(g_enemy_portrait_renderer);
     }
 
     // Draw blackjack table sprite at bottom (on top of portrait)
@@ -2130,39 +2100,10 @@ static void BlackjackDraw(float dt) {
     // Render targeting arrow (if in targeting mode)
     RenderTargetingArrow();
 
-    // Render combat victory overlay (if in victory state)
-    // Render combat victory celebration (after round end, before rewards)
-    if (g_game.current_state == STATE_COMBAT_VICTORY && g_game.current_enemy) {
-        // Dark overlay
-        a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 200});
-
-        // "VICTORY!" text (centered, large, gold)
-        int center_x = SCREEN_WIDTH / 2;
-        int center_y = SCREEN_HEIGHT / 2 - 50;
-        aTextStyle_t gold_title = {
-            .type = FONT_ENTER_COMMAND,
-            .fg = {232, 193, 112, 255},  // Gold
-            .align = TEXT_ALIGN_CENTER,
-            .wrap_width = 0,
-            .scale = 1.5f
-        };
-        a_DrawText("VICTORY!", center_x, center_y, gold_title);
-
-        // Victory message
-        dString_t* victory_msg = d_StringInit();
-        d_StringFormat(victory_msg, "You defeated %s!",
-                       GetEnemyName(g_game.current_enemy));
-        aTextStyle_t off_white = {
-            .type = FONT_ENTER_COMMAND,
-            .fg = {235, 237, 233, 255},  // Off-white
-            .align = TEXT_ALIGN_CENTER,
-            .wrap_width = 0,
-            .scale = 1.0f
-        };
-        a_DrawText((char*)d_StringPeek(victory_msg), center_x, center_y + 50, off_white);
-        d_StringDestroy(victory_msg);
-
-        // FlexBox result screen shows winnings + "Cleansed!" message
+    // Render victory overlay component (extracted from inline code for maintainability)
+    if (g_victory_overlay && IsVictoryOverlayVisible(g_victory_overlay)) {
+        RenderVictoryOverlay(g_victory_overlay);
+        // FlexBox result screen shows winnings + "Cleansed!" message (rendered by resultScreen.c)
     }
 
     // Render reward modal (if visible) - BEFORE pause menu

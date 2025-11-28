@@ -13,18 +13,20 @@
 // TUTORIAL SYSTEM CONSTANTS
 // ============================================================================
 
-// Dialogue constants
-#define DIALOGUE_WIDTH              600
-#define DIALOGUE_HEIGHT             200
-#define DIALOGUE_PADDING            30
-#define DIALOGUE_ARROW_SIZE         40   // Size of continue arrow (→) - increased for visibility
-#define DIALOGUE_ARROW_MARGIN       15   // Margin from dialogue edge
+// Tutorial modal constants (modern design matching EventModal/RewardModal)
+#define TUTORIAL_MODAL_WIDTH         700   // Wider modal (between old 600 and final 800)
+#define TUTORIAL_MODAL_HEIGHT        240   // Taller for header + body
+#define TUTORIAL_MODAL_HEADER_HEIGHT 50    // Navy blue header bar (matches EventModal/RewardModal)
+#define TUTORIAL_MODAL_PADDING       30    // Body padding (consistent with modern modals)
+#define TUTORIAL_BUTTON_MARGIN       15    // Margin for skip/finish button
 
-// Colors (palette-based)
-#define DIALOGUE_BG                 ((aColor_t){9, 10, 20, 240})     // #090a14 - almost black
-#define DIALOGUE_BORDER             ((aColor_t){168, 181, 178, 255}) // #a8b5b2 - light gray
-#define DIALOGUE_TEXT               ((aColor_t){235, 237, 233, 255}) // #ebede9 - off-white
-#define DIALOGUE_ARROW              ((aColor_t){115, 190, 211, 255}) // #73bed3 - light cyan
+// Colors (modern modal palette matching EventModal/RewardModal/IntroNarrativeModal)
+#define TUTORIAL_HEADER_BG          ((aColor_t){37, 58, 94, 255})    // #253a5e - dark navy blue
+#define TUTORIAL_HEADER_BORDER      ((aColor_t){60, 94, 139, 255})   // #3c5e8b - medium blue
+#define TUTORIAL_HEADER_TEXT        ((aColor_t){231, 213, 179, 255}) // #e7d5b3 - cream
+#define TUTORIAL_BODY_BG            ((aColor_t){9, 10, 20, 240})     // #090a14 - almost black
+#define TUTORIAL_BODY_TEXT          ((aColor_t){168, 181, 178, 255}) // #a8b5b2 - light gray
+#define TUTORIAL_ARROW_COLOR        ((aColor_t){115, 190, 211, 255}) // #73bed3 - light cyan
 
 // ============================================================================
 // TUTORIAL ENUMS
@@ -60,7 +62,8 @@ typedef struct {
 
 // Tutorial step (one dialogue + listener)
 typedef struct TutorialStep {
-    dString_t* dialogue_text;        // Dialogue content
+    dString_t* title;                // Step title (displayed in header bar)
+    dString_t* dialogue_text;        // Dialogue content (body text)
     TutorialListener_t listener;     // Event trigger for next step
     struct TutorialStep* next_step;  // Next step pointer (NULL = end)
     bool is_final_step;              // Is this the last step (shows "Finish" instead of "Skip")
@@ -195,7 +198,8 @@ bool HandleTutorialInput(TutorialSystem_t* system);
 /**
  * CreateTutorialStep - Create a new tutorial step
  *
- * @param dialogue_text - Dialogue content
+ * @param title - Step title (displayed in header bar)
+ * @param dialogue_text - Dialogue content (body text)
  * @param listener - Event listener configuration
  * @param is_final_step - Is this the final step (shows "Finish" instead of "Skip")
  * @param dialogue_x_offset - X offset from center (0 = centered)
@@ -205,7 +209,8 @@ bool HandleTutorialInput(TutorialSystem_t* system);
  * @param advance_immediately - Advance to this step right away (don't wait for previous step's state)
  * @return TutorialStep_t* - Heap-allocated step (must be freed)
  */
-TutorialStep_t* CreateTutorialStep(const char* dialogue_text,
+TutorialStep_t* CreateTutorialStep(const char* title,
+                                   const char* dialogue_text,
                                    TutorialListener_t listener,
                                    bool is_final_step,
                                    int dialogue_x_offset,

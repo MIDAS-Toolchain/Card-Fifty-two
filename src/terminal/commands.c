@@ -10,6 +10,8 @@
 #include "../../include/event.h"
 #include "../../include/state.h"
 #include "../../include/scenes/components/eventModal.h"
+#include "../../include/scenes/sceneBlackjack.h"  // For GetVisualEffects
+#include "../../include/scenes/components/visualEffects.h"
 
 // External globals (from sceneBlackjack.c)
 extern Player_t* g_human_player;
@@ -145,7 +147,8 @@ void CMD_Help(Terminal_t* terminal, const char* args) {
     TerminalPrint(terminal, "  echo <text>       - Print text to terminal");
     TerminalPrint(terminal, "  give_chips <amt>  - Add chips to player");
     TerminalPrint(terminal, "  set_sanity <amt>  - Set player sanity (0-100)");
-    TerminalPrint(terminal, "  set_hp <amt>      - Set enemy HP (combat only)");
+    TerminalPrint(terminal, "  set_hp <amt>      - Set enemy HP (triggers victory if HP <= 0)");
+    TerminalPrint(terminal, "  deal_damage <amt> - Deal damage to enemy (uses player modifiers)");
     TerminalPrint(terminal, "  spawn_enemy <name> <hp> <atk> - Spawn combat enemy");
     TerminalPrint(terminal, "  add_tag <id|all> <tag> - Add tag to card (0-51 or 'all')");
     TerminalPrint(terminal, "  apply_status <effect> <val> <dur> - Apply status (RAKE, TILT, etc)");
@@ -250,14 +253,83 @@ void CMD_SetHP(Terminal_t* terminal, const char* args) {
     int old_hp = g_game.current_enemy->current_hp;
     g_game.current_enemy->current_hp = hp;
 
-    // Update defeated status
+    // Tween HP bar for visual update
+    TweenEnemyHP(g_game.current_enemy);
+
+    // Update defeated status and trigger victory flow
     if (hp <= 0) {
         g_game.current_enemy->is_defeated = true;
+
+        // Immediately trigger victory flow
+        State_Transition(&g_game, STATE_SHOWDOWN);
+
+        TerminalPrint(terminal, "[Terminal] Enemy HP: %d -> %d (VICTORY triggered!)", old_hp, hp);
     } else {
         g_game.current_enemy->is_defeated = false;
+        TerminalPrint(terminal, "[Terminal] Enemy HP: %d -> %d", old_hp, hp);
+    }
+}
+
+void CMD_DealDamage(Terminal_t* terminal, const char* args) {
+    if (!args || strlen(args) == 0) {
+        TerminalPrint(terminal, "[Error] Usage: deal_damage <amount>");
+        TerminalPrint(terminal, "[Error] Example: deal_damage 50");
+        return;
     }
 
-    TerminalPrint(terminal, "[Terminal] Enemy HP: %d -> %d", old_hp, hp);
+    int base_damage = atoi(args);
+    if (base_damage <= 0) {
+        TerminalPrint(terminal, "[Error] Damage must be positive");
+        return;
+    }
+
+    if (!g_game.is_combat_mode || !g_game.current_enemy) {
+        TerminalPrint(terminal, "[Error] Not in combat (no enemy)");
+        return;
+    }
+
+    if (!g_human_player) {
+        TerminalPrint(terminal, "[Error] No player found");
+        return;
+    }
+
+    // Apply player damage modifiers (ADR-013: Universal damage modifier)
+    bool is_crit = false;
+    int modified_damage = ApplyPlayerDamageModifiers(g_human_player, base_damage, &is_crit);
+
+    // Apply damage to enemy
+    int old_hp = g_game.current_enemy->current_hp;
+    TakeDamage(g_game.current_enemy, modified_damage);
+
+    // Tween HP bar for visual update
+    TweenEnemyHP(g_game.current_enemy);
+
+    // Spawn visual damage number
+    VisualEffects_t* vfx = GetVisualEffects();
+    if (vfx) {
+        // Enemy portrait position (center of game area + offsets)
+        float enemy_x = GAME_AREA_X + (GAME_AREA_WIDTH / 2) + ENEMY_PORTRAIT_X_OFFSET;
+        float enemy_y = (SCREEN_HEIGHT / 2) + ENEMY_PORTRAIT_Y_OFFSET;
+        VFX_SpawnDamageNumber(vfx, modified_damage, enemy_x, enemy_y, false, is_crit, false);
+    }
+
+    // Log damage
+    TerminalPrint(terminal, "[Terminal] Dealt %d damage to enemy (base: %d, %s)",
+                  modified_damage, base_damage, is_crit ? "CRIT!" : "normal");
+    TerminalPrint(terminal, "[Terminal] Enemy HP: %d -> %d", old_hp, g_game.current_enemy->current_hp);
+
+    // Check for defeat and trigger victory flow
+    if (g_game.current_enemy->is_defeated || g_game.current_enemy->current_hp <= 0) {
+        // Ensure is_defeated flag is set (TakeDamage should set it, but be safe)
+        if (!g_game.current_enemy->is_defeated) {
+            g_game.current_enemy->is_defeated = true;
+        }
+
+        // Immediately trigger victory flow
+        State_Transition(&g_game, STATE_SHOWDOWN);
+
+        TerminalPrint(terminal, "[Terminal] Enemy defeated! (VICTORY triggered!)");
+    }
 }
 
 void CMD_SpawnEnemy(Terminal_t* terminal, const char* args) {
@@ -496,7 +568,8 @@ void RegisterBuiltinCommands(Terminal_t* terminal) {
     RegisterCommand(terminal, "echo", CMD_Echo, "Print text to terminal", NULL);
     RegisterCommand(terminal, "give_chips", CMD_GiveChips, "Add chips to player", NULL);
     RegisterCommand(terminal, "set_sanity", CMD_SetSanity, "Set player sanity (0-100)", NULL);
-    RegisterCommand(terminal, "set_hp", CMD_SetHP, "Set enemy HP (combat only)", NULL);
+    RegisterCommand(terminal, "set_hp", CMD_SetHP, "Set enemy HP (triggers victory if HP <= 0)", NULL);
+    RegisterCommand(terminal, "deal_damage", CMD_DealDamage, "Deal damage to enemy (uses player modifiers)", NULL);
     RegisterCommand(terminal, "spawn_enemy", CMD_SpawnEnemy, "Spawn combat enemy", SuggestEnemyNames);
     RegisterCommand(terminal, "add_tag", CMD_AddTag, "Add tag to card(s) by ID or 'all'", NULL);
     RegisterCommand(terminal, "apply_status", CMD_ApplyStatus, "Apply status effect to player", SuggestStatusEffects);

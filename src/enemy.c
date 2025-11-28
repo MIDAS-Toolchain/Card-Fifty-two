@@ -55,6 +55,7 @@ Enemy_t* CreateEnemy(const char* name, int max_hp) {
     enemy->max_hp = max_hp;
     enemy->current_hp = max_hp;
     enemy->display_hp = (float)max_hp;  // Start at max (will be tweened on damage)
+    enemy->total_damage_taken = 0;      // Track cumulative damage for TRIGGER_DAMAGE_ACCUMULATOR
     enemy->is_defeated = false;
 
     // Initialize abilities array (Constitutional: dArray_t storing Ability_t*)
@@ -78,6 +79,7 @@ Enemy_t* CreateEnemy(const char* name, int max_hp) {
     enemy->shake_offset_x = 0.0f;
     enemy->shake_offset_y = 0.0f;
     enemy->red_flash_alpha = 0.0f;
+    enemy->green_flash_alpha = 0.0f;
 
     // Initialize defeat animation (start invisible for spawn fade-in)
     enemy->defeat_fade_alpha = 0.0f;  // Start invisible, will fade in
@@ -157,13 +159,16 @@ void TakeDamage(Enemy_t* enemy, int damage) {
     int old_hp = enemy->current_hp;
     enemy->current_hp -= damage;
 
+    // Accumulate total damage (never decreases, even if enemy heals)
+    enemy->total_damage_taken += damage;
+
     // Clamp to 0
     if (enemy->current_hp < 0) {
         enemy->current_hp = 0;
     }
 
-    d_LogInfoF("%s took %d damage (%d -> %d HP)",
-               d_StringPeek(enemy->name), damage, old_hp, enemy->current_hp);
+    d_LogInfoF("%s took %d damage (%d -> %d HP, %d total damage)",
+               d_StringPeek(enemy->name), damage, old_hp, enemy->current_hp, enemy->total_damage_taken);
 
     // Check for defeat
     if (enemy->current_hp <= 0 && !enemy->is_defeated) {
@@ -178,7 +183,7 @@ void TakeDamage(Enemy_t* enemy, int damage) {
     }
 }
 
-void HealEnemy(Enemy_t* enemy, int amount) {
+void HealEnemy(Enemy_t* enemy, int amount, TweenManager_t* tween_manager) {
     if (!enemy) return;
 
     int old_hp = enemy->current_hp;
@@ -191,6 +196,11 @@ void HealEnemy(Enemy_t* enemy, int amount) {
 
     d_LogInfoF("%s healed %d HP (%d -> %d)",
                d_StringPeek(enemy->name), amount, old_hp, enemy->current_hp);
+
+    // Trigger heal visual effect (green flash)
+    if (tween_manager) {
+        TriggerEnemyHealEffect(enemy, tween_manager);
+    }
 }
 
 float GetEnemyHPPercent(const Enemy_t* enemy) {
@@ -206,6 +216,7 @@ void CheckEnemyAbilityTriggers(Enemy_t* enemy, GameEvent_t event, GameContext_t*
     if (!enemy || !game) return;
 
     float hp_percent = GetEnemyHPPercent(enemy);
+    int total_damage = enemy->total_damage_taken;
 
     // Check each ability in unified array
     for (size_t i = 0; i < enemy->abilities->count; i++) {
@@ -214,7 +225,7 @@ void CheckEnemyAbilityTriggers(Enemy_t* enemy, GameEvent_t event, GameContext_t*
 
         Ability_t* ability = *ability_ptr;
 
-        if (CheckAbilityTrigger(ability, event, hp_percent)) {
+        if (CheckAbilityTrigger(ability, event, hp_percent, total_damage)) {
             ExecuteAbility(ability, enemy, game);
         }
     }
@@ -337,6 +348,19 @@ void TriggerEnemyDamageEffect(Enemy_t* enemy, TweenManager_t* tween_manager) {
     d_LogInfo("Enemy damage effect triggered (shake + red flash)");
 }
 
+void TriggerEnemyHealEffect(Enemy_t* enemy, TweenManager_t* tween_manager) {
+    if (!enemy || !tween_manager) return;
+
+    // Stop any existing green flash tweens
+    StopTweensForTarget(tween_manager, &enemy->green_flash_alpha);
+
+    // Green flash: Start at 0.6 alpha, fade to 0 over 0.5s (slightly longer than damage for soothing feel)
+    enemy->green_flash_alpha = 0.6f;
+    TweenFloat(tween_manager, &enemy->green_flash_alpha, 0.0f, 0.5f, TWEEN_EASE_OUT_QUAD);
+
+    d_LogInfo("Enemy heal effect triggered (green flash)");
+}
+
 void GetEnemyShakeOffset(const Enemy_t* enemy, float* out_x, float* out_y) {
     if (!enemy) {
         if (out_x) *out_x = 0.0f;
@@ -351,6 +375,11 @@ void GetEnemyShakeOffset(const Enemy_t* enemy, float* out_x, float* out_y) {
 float GetEnemyRedFlashAlpha(const Enemy_t* enemy) {
     if (!enemy) return 0.0f;
     return enemy->red_flash_alpha;
+}
+
+float GetEnemyGreenFlashAlpha(const Enemy_t* enemy) {
+    if (!enemy) return 0.0f;
+    return enemy->green_flash_alpha;
 }
 
 void TriggerEnemyDefeatAnimation(Enemy_t* enemy, TweenManager_t* tween_manager) {

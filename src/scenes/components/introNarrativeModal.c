@@ -10,12 +10,12 @@
 #include <string.h>
 
 // Color palette (matching EventModal for consistency)
-static const SDL_Color COLOR_OVERLAY = {9, 10, 20, 180};         // #090a14 - almost black overlay
-static const SDL_Color COLOR_PANEL_BG = {9, 10, 20, 240};        // #090a14 - almost black
-static const SDL_Color COLOR_HEADER_BG = {37, 58, 94, 255};      // #253a5e - dark navy blue
-static const SDL_Color COLOR_HEADER_BORDER = {60, 94, 139, 255}; // #3c5e8b - medium blue
-static const SDL_Color COLOR_HEADER_TEXT = {231, 213, 179, 255}; // #e7d5b3 - cream
-static const SDL_Color COLOR_NARRATIVE_TEXT = {168, 181, 178, 255}; // #a8b5b2 - light gray
+static const aColor_t COLOR_OVERLAY = {9, 10, 20, 180};         // #090a14 - almost black overlay
+static const aColor_t COLOR_PANEL_BG = {9, 10, 20, 240};        // #090a14 - almost black
+static const aColor_t COLOR_HEADER_BG = {37, 58, 94, 255};      // #253a5e - dark navy blue
+static const aColor_t COLOR_HEADER_BORDER = {60, 94, 139, 255}; // #3c5e8b - medium blue
+static const aColor_t COLOR_HEADER_TEXT = {231, 213, 179, 255}; // #e7d5b3 - cream
+static const aColor_t COLOR_NARRATIVE_TEXT = {168, 181, 178, 255}; // #a8b5b2 - light gray
 
 // Layout constants (almost full screen, slight inset)
 #define MODAL_WIDTH          (SCREEN_WIDTH - 32)  // Screen width minus 32

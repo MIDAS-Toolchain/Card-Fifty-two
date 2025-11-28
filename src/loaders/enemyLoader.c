@@ -89,6 +89,19 @@ static bool ParseTrigger(dDUFValue_t* trigger_node, AbilityTrigger_t* out_trigge
             break;
         }
 
+        case TRIGGER_DAMAGE_ACCUMULATOR: {
+            dDUFValue_t* threshold_node = d_DUFGetObjectItem(trigger_node, "damage_threshold");
+            if (threshold_node) {
+                out_trigger->damage_threshold = (int)threshold_node->value_int;
+                out_trigger->damage_accumulated = 0;  // Start at 0
+            } else {
+                d_LogError("damage_accumulator trigger missing damage_threshold field");
+                out_trigger->damage_threshold = 1000;  // Default threshold
+                out_trigger->damage_accumulated = 0;
+            }
+            break;
+        }
+
         case TRIGGER_PASSIVE:
         default:
             break;

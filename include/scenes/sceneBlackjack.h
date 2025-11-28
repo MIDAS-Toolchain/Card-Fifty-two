@@ -107,8 +107,8 @@ static inline void CalculateCardFanPosition(size_t card_index, size_t hand_size,
 }
 
 // Enemy portrait positioning
-#define ENEMY_PORTRAIT_X_OFFSET -100    // Offset portrait from center (negative = left)
-#define ENEMY_PORTRAIT_Y_OFFSET -50     // Offset portrait from vertical center (negative = up)
+#define ENEMY_PORTRAIT_X_OFFSET -15    // Offset portrait from center (negative = left)
+#define ENEMY_PORTRAIT_Y_OFFSET -94     // Offset portrait from vertical center (negative = up)
 
 // Combat UI positioning (enemy HP bar and damage numbers)
 #define ENEMY_HP_BAR_X_OFFSET   -300    // Offset from center (0 = centered, + = right, - = left)

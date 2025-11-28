@@ -194,7 +194,8 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
         if (hovered_ability && section->ability_tooltip) {
             int card_x, card_y;
             if (GetHoveredAbilityPosition(section->ability_display, &card_x, &card_y)) {
-                ShowAbilityTooltipModal(section->ability_tooltip, hovered_ability, enemy, card_x, card_y);
+                // Offset tooltip position: 16px left, 24px up
+                ShowAbilityTooltipModal(section->ability_tooltip, hovered_ability, enemy, card_x - 16, card_y - 24);
             }
         } else if (section->ability_tooltip) {
             HideAbilityTooltipModal(section->ability_tooltip);

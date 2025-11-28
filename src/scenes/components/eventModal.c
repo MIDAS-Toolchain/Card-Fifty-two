@@ -17,21 +17,21 @@
 extern TweenManager_t g_tween_manager;
 
 // Color palette (EXACTLY matching RewardModal)
-static const SDL_Color COLOR_OVERLAY = {9, 10, 20, 180};         // #090a14 - almost black overlay
-static const SDL_Color COLOR_PANEL_BG = {9, 10, 20, 240};        // #090a14 - almost black
-static const SDL_Color COLOR_HEADER_BG = {37, 58, 94, 255};      // #253a5e - dark navy blue
-static const SDL_Color COLOR_HEADER_BORDER = {60, 94, 139, 255}; // #3c5e8b - medium blue
-static const SDL_Color COLOR_HEADER_TEXT = {231, 213, 179, 255}; // #e7d5b3 - cream
-static const SDL_Color COLOR_EVENT_INFO_TEXT = {168, 181, 178, 255}; // #a8b5b2 - light gray (matches RewardModal)
-static const SDL_Color COLOR_CHOICE_BG = {37, 58, 94, 255};      // #253a5e - dark navy (same as header)
-static const SDL_Color COLOR_CHOICE_HOVER = {60, 94, 139, 255};  // #3c5e8b - medium blue (same as border)
-static const SDL_Color COLOR_CHOICE_LOCKED = {20, 20, 25, 255};  // Very dark gray (locked choice)
-static const SDL_Color COLOR_LOCKED_TEXT = {100, 100, 110, 255}; // Dim gray (locked choice text)
+static const aColor_t COLOR_OVERLAY = {9, 10, 20, 180};         // #090a14 - almost black overlay
+static const aColor_t COLOR_PANEL_BG = {9, 10, 20, 240};        // #090a14 - almost black
+static const aColor_t COLOR_HEADER_BG = {37, 58, 94, 255};      // #253a5e - dark navy blue
+static const aColor_t COLOR_HEADER_BORDER = {60, 94, 139, 255}; // #3c5e8b - medium blue
+static const aColor_t COLOR_HEADER_TEXT = {231, 213, 179, 255}; // #e7d5b3 - cream
+static const aColor_t COLOR_EVENT_INFO_TEXT = {168, 181, 178, 255}; // #a8b5b2 - light gray (matches RewardModal)
+static const aColor_t COLOR_CHOICE_BG = {37, 58, 94, 255};      // #253a5e - dark navy (same as header)
+static const aColor_t COLOR_CHOICE_HOVER = {60, 94, 139, 255};  // #3c5e8b - medium blue (same as border)
+static const aColor_t COLOR_CHOICE_LOCKED = {20, 20, 25, 255};  // Very dark gray (locked choice)
+static const aColor_t COLOR_LOCKED_TEXT = {100, 100, 110, 255}; // Dim gray (locked choice text)
 
 // Tooltip line sentiment colors (from palette)
-static const SDL_Color COLOR_TOOLTIP_POSITIVE = {117, 167, 67, 255};  // #75a743 - green (upside)
-static const SDL_Color COLOR_TOOLTIP_NEGATIVE = {165, 48, 48, 255};   // #a53030 - red (downside)
-static const SDL_Color COLOR_TOOLTIP_NEUTRAL = {232, 193, 112, 255};  // #e8c170 - yellow (neutral)
+static const aColor_t COLOR_TOOLTIP_POSITIVE = {117, 167, 67, 255};  // #75a743 - green (upside)
+static const aColor_t COLOR_TOOLTIP_NEGATIVE = {165, 48, 48, 255};   // #a53030 - red (downside)
+static const aColor_t COLOR_TOOLTIP_NEUTRAL = {232, 193, 112, 255};  // #e8c170 - yellow (neutral)
 
 // Tooltip line data structure
 #define MAX_TOOLTIP_LINES 8
@@ -555,7 +555,7 @@ static void RenderEventResult(const EventModal_t* modal, int modal_x, int modal_
     int line_spacing = 8;
 
     for (int i = 0; i < line_count; i++) {
-        SDL_Color line_color;
+        aColor_t line_color;
         switch (lines[i].sentiment) {
             case TOOLTIP_LINE_POSITIVE:
                 line_color = COLOR_TOOLTIP_POSITIVE;
@@ -724,7 +724,7 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
             bool is_locked = !IsChoiceRequirementMet(&choice->requirement, player);
 
             // Background (gray if locked, highlight if hovered, normal otherwise)
-            SDL_Color bg_color = COLOR_CHOICE_BG;
+            aColor_t bg_color = COLOR_CHOICE_BG;
             if (is_locked) {
                 bg_color = COLOR_CHOICE_LOCKED;
             } else if (modal->hovered_choice == i) {
@@ -765,7 +765,7 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
 
             // Choice text (left-aligned, shifted right to make room for number)
             int text_padding = 75;  // Shifted right for number space
-            SDL_Color text_color = is_locked ? COLOR_LOCKED_TEXT : (SDL_Color){255, 255, 255, 255};
+            aColor_t text_color = is_locked ? COLOR_LOCKED_TEXT : (aColor_t){255, 255, 255, 255};
             aTextStyle_t choice_text_config = {
                 .type = FONT_ENTER_COMMAND,
                 .fg = {text_color.r, text_color.g, text_color.b, choices_alpha_scaled},
@@ -862,7 +862,7 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
                     // Draw each line with its sentiment color
                     int current_y = tooltip_y + tooltip_padding;
                     for (int i = 0; i < line_count; i++) {
-                        SDL_Color line_color;
+                        aColor_t line_color;
                         switch (lines[i].sentiment) {
                             case TOOLTIP_LINE_POSITIVE:
                                 line_color = COLOR_TOOLTIP_POSITIVE;

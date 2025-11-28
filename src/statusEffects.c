@@ -522,7 +522,7 @@ void RenderStatusEffects(const StatusEffectManager_t* manager, int x, int y) {
                             (aColor_t){255, 0, 0, flash});
         }
 
-        // Draw effect icon (custom 2-letter abbreviation)
+        // Draw effect icon (custom 2-letter abbreviation) - moved up to make room
         const char* icon_text = GetStatusEffectAbbreviation(effect->type);
 
         aTextStyle_t icon_config = {
@@ -536,48 +536,53 @@ void RenderStatusEffects(const StatusEffectManager_t* manager, int x, int y) {
         };
         a_DrawText(icon_text,
                         shake_x + ICON_SIZE/2,
-                        shake_y + ICON_SIZE/2 - 8,
+                        shake_y + 10,  // Moved up from center
                         icon_config);
 
-        // Draw duration counter (bottom right)
-        dString_t* duration_str = d_StringInit();
-        d_StringFormat(duration_str, "%d", effect->duration);
+        // Draw dark background bar at bottom for stats
+        const int STAT_BAR_HEIGHT = 22;
+        a_DrawFilledRect((aRectf_t){shake_x, shake_y + ICON_SIZE - STAT_BAR_HEIGHT, ICON_SIZE, STAT_BAR_HEIGHT},
+                        (aColor_t){20, 20, 30, 230});
 
-        aTextStyle_t duration_config = {
-            .type = FONT_GAME,
-            .fg = {255, 255, 0, 255},  // Yellow
-            .bg = {0, 0, 0, 0},
-            .align = TEXT_ALIGN_CENTER,
-            .wrap_width = 0,
-            .scale = 1.0f,
-            .padding = 0
-        };
-        a_DrawText((char*)d_StringPeek(duration_str),
-                        shake_x + ICON_SIZE - 10,
-                        shake_y + ICON_SIZE - 12,
-                        duration_config);
-        d_StringDestroy(duration_str);
-
-        // Draw value if applicable (e.g., "10" for chip drain)
+        // Draw value if applicable (left side of stat bar)
         if (effect->value > 0) {
             dString_t* value_str = d_StringInit();
             d_StringFormat(value_str, "%d", effect->value);
 
             aTextStyle_t value_config = {
                 .type = FONT_GAME,
-                .fg = {255, 150, 150, 255},
+                .fg = {255, 100, 100, 255},  // Bright red - readable on dark background
                 .bg = {0, 0, 0, 0},
                 .align = TEXT_ALIGN_LEFT,
                 .wrap_width = 0,
-                .scale = 0.8f,
+                .scale = 0.9f,
                 .padding = 0
             };
             a_DrawText((char*)d_StringPeek(value_str),
                             shake_x + 4,
-                            shake_y + 4,
+                            shake_y + ICON_SIZE - 13,
                             value_config);
             d_StringDestroy(value_str);
         }
+
+        // Draw duration counter (right side of stat bar)
+        dString_t* duration_str = d_StringInit();
+        d_StringFormat(duration_str, "%d", effect->duration);
+
+        aTextStyle_t duration_config = {
+            .type = FONT_GAME,
+            .fg = {255, 220, 100, 255},  // Bright yellow - readable on dark background
+            .bg = {0, 0, 0, 0},
+            .align = TEXT_ALIGN_RIGHT,
+            .wrap_width = 0,
+            .scale = 0.9f,
+            .padding = 0
+        };
+        a_DrawText((char*)d_StringPeek(duration_str),
+                        shake_x + ICON_SIZE - 4,
+                        shake_y + ICON_SIZE - 13,
+                        duration_config);
+        d_StringDestroy(duration_str);
 
         current_x += ICON_SIZE + ICON_SPACING;
         count++;
