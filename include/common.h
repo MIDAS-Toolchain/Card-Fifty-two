@@ -49,10 +49,6 @@ extern dTable_t* g_portraits;
 // Card back surface
 extern SDL_Surface* g_card_back_texture;
 
-// Sound effects
-extern aAudioClip_t g_push_chips_sound;
-extern aAudioClip_t g_victory_sound;
-
 // Ability icon textures: Key = int (EnemyAbility_t), Value = SDL_Texture*
 // Falls back to text abbreviations if texture is NULL
 extern dTable_t* g_ability_icons;
@@ -60,6 +56,19 @@ extern dTable_t* g_ability_icons;
 // Enemy database: Parsed DUF file containing all enemy definitions
 // Loaded at startup, used to create enemies by key (e.g., "didact", "daemon")
 extern dDUFValue_t* g_enemies_db;
+
+// Global settings: Loaded at startup, persisted to settings.duf
+// Accessible by all systems (audio, visual effects, UI, etc.)
+// Forward declaration (full definition in settings.h)
+struct Settings_t;
+extern struct Settings_t* g_settings;
+
+// ============================================================================
+// GLOBAL UI SOUND EFFECTS (defined in main.c)
+// ============================================================================
+
+extern aAudioClip_t g_ui_hover_sound;   // Button hover sound
+extern aAudioClip_t g_ui_click_sound;   // Button click sound
 
 // ============================================================================
 // GLOBAL FONT STYLES (defined in main.c)

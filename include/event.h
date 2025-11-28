@@ -145,8 +145,8 @@ typedef struct EventChoice {
     // Enemy combat modifiers (applied when transitioning to combat after event)
     float enemy_hp_multiplier;           // HP multiplier for next enemy (1.0 = normal, 0.75 = 75% HP, 1.5 = 150% HP)
 
-    // Trinket reward system
-    int trinket_reward_id;               // Trinket ID to grant to player (-1 = none)
+    // Trinket reward system (DUF-based)
+    char trinket_reward_key[64];         // Trinket key from DUF (e.g., "elite_membership", "stack_trace", "" = none)
 } EventChoice_t;
 
 /**
@@ -276,14 +276,14 @@ void SetChoiceRequirement(EventEncounter_t* event, int choice_index, ChoiceRequi
  *
  * @param event - Event containing choice
  * @param choice_index - Index of choice to modify
- * @param trinket_id - Trinket ID to grant (from trinket registry)
+ * @param trinket_key - Trinket key from DUF (e.g., "elite_membership", "stack_trace")
  *
  * When player selects this choice, the specified trinket will be equipped
  * to the first empty trinket slot. If all slots full, reward is lost.
  *
- * Example: SetChoiceTrinketReward(event, 0, 1);  // Grant Elite Membership (ID 1)
+ * Example: SetChoiceTrinketReward(event, 0, "elite_membership");
  */
-void SetChoiceTrinketReward(EventEncounter_t* event, int choice_index, int trinket_id);
+void SetChoiceTrinketReward(EventEncounter_t* event, int choice_index, const char* trinket_key);
 
 /**
  * SetChoiceEnemyHPMultiplier - Set enemy HP multiplier for a choice

@@ -229,10 +229,6 @@ bool Game_ProcessBettingInput(GameContext_t* game, Player_t* player, int bet_amo
 
     // Execute bet
     if (PlaceBet(player, bet_amount)) {
-        // Play chip sound effect
-        d_LogInfo("Playing push_chips sound effect");
-        a_AudioPlayEffect(&g_push_chips_sound);
-
         d_LogInfoF("Player bet %d chips", bet_amount);
         // State machine will handle transition to DEALING
         return true;
@@ -539,6 +535,15 @@ void Game_ResolveRound(GameContext_t* game) {
         if (player->hand.is_bust) {
             LoseBet(player);
 
+            // Check for game over (0 chips = defeat)
+            if (player->chips <= 0) {
+                d_LogWarning("Player reached 0 chips - GAME OVER!");
+                game->player_defeated = true;
+                player->state = PLAYER_STATE_LOST;
+                State_Transition(game, STATE_GAME_OVER);
+                return;  // Skip remaining loss processing and damage calculation
+            }
+
             // Apply status effect loss modifiers (TILT doubles losses)
             if (player->status_effects) {
                 int additional_loss = ModifyLosses(player->status_effects, bet_amount);
@@ -668,6 +673,15 @@ void Game_ResolveRound(GameContext_t* game) {
         } else if (player->hand.total_value < dealer_value) {
             LoseBet(player);
 
+            // Check for game over (0 chips = defeat)
+            if (player->chips <= 0) {
+                d_LogWarning("Player reached 0 chips - GAME OVER!");
+                game->player_defeated = true;
+                player->state = PLAYER_STATE_LOST;
+                State_Transition(game, STATE_GAME_OVER);
+                return;  // Skip remaining loss processing
+            }
+
             // ✅ NEW: Apply status effect loss modifiers (TILT doubles losses)
             if (player->status_effects) {
                 int additional_loss = ModifyLosses(player->status_effects, bet_amount);
@@ -790,9 +804,7 @@ void Game_ResolveRound(GameContext_t* game) {
         }
 
         // Tick trinket cooldowns at END of round (after win/loss/push resolved)
-        if (player->trinket_slots) {
-            TickTrinketCooldowns(player);
-        }
+        TickTrinketCooldowns(player);
     }
 
     // ✅ NEW: Fire round end event (after all outcomes resolved)

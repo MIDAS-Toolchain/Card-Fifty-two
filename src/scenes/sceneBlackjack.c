@@ -22,8 +22,10 @@
 #include "../../include/scenes/components/combatPreviewModal.h"
 #include "../../include/scenes/components/introNarrativeModal.h"
 #include "../../include/scenes/components/eventModal.h"
+#include "../../include/scenes/components/trinketDropModal.h"
 #include "../../include/scenes/components/resultScreen.h"
 #include "../../include/scenes/components/victoryOverlay.h"
+#include "../../include/scenes/components/gameOverOverlay.h"
 #include "../../include/scenes/components/trinketUI.h"
 #include "../../include/scenes/components/visualEffects.h"
 #include "../../include/scenes/components/enemyPortraitRenderer.h"
@@ -46,6 +48,8 @@
 #include "../../include/random.h"
 #include "../../include/event.h"
 #include "../../include/trinket.h"
+#include "../../include/trinketDrop.h"
+#include "../../include/loaders/trinketLoader.h"
 #include "../../include/stats.h"
 #include "../../include/sanityThreshold.h"
 #include <math.h>
@@ -93,8 +97,10 @@ static EventPreviewModal_t* g_event_preview_modal = NULL;
 static CombatPreviewModal_t* g_combat_preview_modal = NULL;
 static IntroNarrativeModal_t* g_intro_narrative_modal = NULL;
 EventModal_t* g_event_modal = NULL;  // Non-static for terminal command access
+static TrinketDropModal_t* g_trinket_drop_modal = NULL;
 static ResultScreen_t* g_result_screen = NULL;
 static VictoryOverlay_t* g_victory_overlay = NULL;
+static GameOverOverlay_t* g_game_over_overlay = NULL;
 
 // Event system
 EventEncounter_t* g_current_event = NULL;  // Non-static for terminal command access
@@ -259,6 +265,9 @@ static void InitializeLayout(void) {
     // Create event modal
     g_event_modal = CreateEventModal();
 
+    // Create trinket drop modal
+    g_trinket_drop_modal = CreateTrinketDropModal();
+
     // Create event preview modal (created once, content updated on use)
     g_event_preview_modal = CreateEventPreviewModal(&g_game, "Loading...");
 
@@ -276,6 +285,9 @@ static void InitializeLayout(void) {
 
     // Create victory overlay component
     g_victory_overlay = CreateVictoryOverlay();
+
+    // Create game-over overlay component
+    g_game_over_overlay = CreateGameOverOverlay();
 
     // Create trinket UI component
     g_trinket_ui = CreateTrinketUI();
@@ -346,12 +358,18 @@ static void CleanupLayout(void) {
     if (g_event_modal) {
         DestroyEventModal(&g_event_modal);
     }
+    if (g_trinket_drop_modal) {
+        DestroyTrinketDropModal(&g_trinket_drop_modal);
+    }
     if (g_result_screen) {
         SetGlobalResultScreen(NULL);  // Unregister before destroying
         DestroyResultScreen(&g_result_screen);
     }
     if (g_victory_overlay) {
         DestroyVictoryOverlay(&g_victory_overlay);
+    }
+    if (g_game_over_overlay) {
+        DestroyGameOverOverlay(&g_game_over_overlay);
     }
     if (g_trinket_ui) {
         DestroyTrinketUI(&g_trinket_ui);
@@ -953,6 +971,13 @@ static void BlackjackLogic(float dt) {
         d_LogInfoF("💰 ENTERING DEALER_TURN: Captured chips=%d, reset status drain", result_old_chips);
     }
 
+    // Show game-over overlay when entering STATE_GAME_OVER (player defeated)
+    if (previous_state != STATE_GAME_OVER && g_game.current_state == STATE_GAME_OVER) {
+        if (g_game_over_overlay) {
+            ShowGameOverOverlay(g_game_over_overlay);
+        }
+    }
+
     // Show result screen when entering ROUND_END or COMBAT_VICTORY (AFTER payouts)
     if ((previous_state != STATE_ROUND_END && g_game.current_state == STATE_ROUND_END) ||
         (previous_state != STATE_COMBAT_VICTORY && g_game.current_state == STATE_COMBAT_VICTORY)) {
@@ -980,20 +1005,166 @@ static void BlackjackLogic(float dt) {
         UpdateResultScreen(g_result_screen, dt, &g_tween_manager);
     }
 
-    // Show reward modal when entering STATE_REWARD_SCREEN
-    if (previous_state != STATE_REWARD_SCREEN && g_game.current_state == STATE_REWARD_SCREEN) {
+    // Update game-over overlay animation (during game-over state)
+    if (g_game.current_state == STATE_GAME_OVER && g_game_over_overlay) {
+        UpdateGameOverOverlay(g_game_over_overlay, dt);
+    }
+
+    // Show trinket drop modal when entering STATE_TRINKET_DROP
+    if (previous_state != STATE_TRINKET_DROP && g_game.current_state == STATE_TRINKET_DROP) {
         // Hide victory overlay (transitioning away from victory state)
         if (g_victory_overlay) {
             HideVictoryOverlay(g_victory_overlay);
         }
 
+        // Generate trinket drop
+        TrinketInstance_t trinket_drop;
+        memset(&trinket_drop, 0, sizeof(TrinketInstance_t));
+
+        // TODO: Get proper tier and pity from player/act
+        int tier = 1;  // Act 1 for now
+        bool is_elite = false;  // Normal enemy for now
+        int pity_counter = 0;  // No pity for now
+
+        if (GenerateTrinketDrop(tier, is_elite, &pity_counter, &trinket_drop, g_human_player)) {
+            const TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(trinket_drop.base_trinket_key));
+            if (template) {
+                ShowTrinketDropModal(g_trinket_drop_modal, &trinket_drop, template);
+                d_LogInfoF("Showing trinket drop: %s", d_StringPeek(template->name));
+            } else {
+                d_LogError("Failed to get trinket template!");
+                // Skip trinket drop, go to reward screen
+                State_Transition(&g_game, STATE_REWARD_SCREEN);
+            }
+        } else {
+            d_LogError("Failed to generate trinket drop!");
+            // Skip trinket drop, go to reward screen
+            State_Transition(&g_game, STATE_REWARD_SCREEN);
+        }
+    }
+
+    // Handle trinket drop modal input
+    if (g_game.current_state == STATE_TRINKET_DROP && g_trinket_drop_modal && IsTrinketDropModalVisible(g_trinket_drop_modal)) {
+        // Check if modal wants to equip trinket NOW (during animation) for seamless UI
+        if (g_trinket_drop_modal->should_equip_now && WasTrinketEquipped(g_trinket_drop_modal)) {
+            int slot = GetEquippedSlot(g_trinket_drop_modal);
+            d_LogInfoF("Equipping trinket during animation to slot %d", slot);
+
+            if (slot >= 0 && slot < 6) {
+                // Clean up old trinket if slot was occupied (same as below)
+                if (g_human_player->trinket_slot_occupied[slot]) {
+                    TrinketInstance_t* old_instance = &g_human_player->trinket_slots[slot];
+                    if (old_instance->base_trinket_key) {
+                        d_StringDestroy(old_instance->base_trinket_key);
+                        old_instance->base_trinket_key = NULL;
+                    }
+                    if (old_instance->trinket_stack_stat) {
+                        d_StringDestroy(old_instance->trinket_stack_stat);
+                        old_instance->trinket_stack_stat = NULL;
+                    }
+                    for (int i = 0; i < old_instance->affix_count; i++) {
+                        if (old_instance->affixes[i].stat_key) {
+                            d_StringDestroy(old_instance->affixes[i].stat_key);
+                            old_instance->affixes[i].stat_key = NULL;
+                        }
+                    }
+                }
+
+                // Deep copy new trinket
+                TrinketInstance_t* dest = &g_human_player->trinket_slots[slot];
+                const TrinketInstance_t* src = &g_trinket_drop_modal->trinket_drop;
+
+                dest->rarity = src->rarity;
+                dest->tier = src->tier;
+                dest->sell_value = src->sell_value;
+                dest->affix_count = src->affix_count;
+                dest->trinket_stacks = src->trinket_stacks;
+                dest->trinket_stack_max = src->trinket_stack_max;
+                dest->trinket_stack_value = src->trinket_stack_value;
+                dest->buffed_tag = src->buffed_tag;
+                dest->tag_buff_value = src->tag_buff_value;
+                dest->total_damage_dealt = src->total_damage_dealt;
+                dest->total_bonus_chips = src->total_bonus_chips;
+                dest->total_refunded_chips = src->total_refunded_chips;
+                dest->shake_offset_x = src->shake_offset_x;
+                dest->shake_offset_y = src->shake_offset_y;
+                dest->flash_alpha = src->flash_alpha;
+
+                dest->base_trinket_key = d_StringInit();
+                d_StringSet(dest->base_trinket_key, d_StringPeek(src->base_trinket_key), 0);
+
+                if (src->trinket_stack_stat) {
+                    dest->trinket_stack_stat = d_StringInit();
+                    d_StringSet(dest->trinket_stack_stat, d_StringPeek(src->trinket_stack_stat), 0);
+                } else {
+                    dest->trinket_stack_stat = NULL;
+                }
+
+                for (int i = 0; i < src->affix_count; i++) {
+                    dest->affixes[i].stat_key = d_StringInit();
+                    d_StringSet(dest->affixes[i].stat_key, d_StringPeek(src->affixes[i].stat_key), 0);
+                    dest->affixes[i].rolled_value = src->affixes[i].rolled_value;
+                }
+
+                g_human_player->trinket_slot_occupied[slot] = true;
+                g_human_player->combat_stats_dirty = true;
+
+                // Clear flag so we don't equip again
+                g_trinket_drop_modal->should_equip_now = false;
+
+                d_LogInfo("Trinket equipped during animation");
+            }
+        }
+
+        if (HandleTrinketDropModalInput(g_trinket_drop_modal, g_human_player, dt)) {
+            // Player made choice (equip or sell) - modal is closing
+            if (WasTrinketEquipped(g_trinket_drop_modal)) {
+                // Equip already happened during animation (should_equip_now flag)
+                int slot = GetEquippedSlot(g_trinket_drop_modal);
+                d_LogInfoF("Trinket equip animation complete for slot %d", slot);
+            } else {
+                // Sell trinket for chips
+                int chips = GetChipsGained(g_trinket_drop_modal);
+                g_human_player->chips += chips;
+                d_LogInfoF("Trinket sold for %d chips (total: %d)", chips, g_human_player->chips);
+            }
+
+            // Hide modal
+            HideTrinketDropModal(g_trinket_drop_modal);
+
+            // Transition to reward screen (card tag rewards)
+            State_Transition(&g_game, STATE_REWARD_SCREEN);
+        }
+    }
+
+    // Show reward modal when entering STATE_REWARD_SCREEN
+    if (previous_state != STATE_REWARD_SCREEN && g_game.current_state == STATE_REWARD_SCREEN) {
+        d_LogInfoF("Entering STATE_REWARD_SCREEN from %s", State_ToString(previous_state));
+
+        // WAIT if trinket modal is still animating (don't show reward modal yet)
+        if (g_trinket_drop_modal && IsTrinketDropModalVisible(g_trinket_drop_modal)) {
+            // Trinket animation still playing, skip showing reward modal this frame
+            d_LogWarning("Trinket modal still visible, skipping reward modal this frame");
+            return;
+        }
+
+        // Hide victory overlay (transitioning away from victory state) - only if not coming from trinket drop
+        if (g_victory_overlay && previous_state != STATE_TRINKET_DROP) {
+            HideVictoryOverlay(g_victory_overlay);
+        }
+
         if (g_reward_modal) {
+            d_LogInfo("Attempting to show reward modal...");
             if (!ShowRewardModal(g_reward_modal)) {
                 // No untagged cards - skip reward
                 d_LogInfo("No untagged cards, skipping reward");
                 Game_StartNewRound(&g_game);
                 State_Transition(&g_game, STATE_BETTING);
+            } else {
+                d_LogInfo("Reward modal shown successfully");
             }
+        } else {
+            d_LogError("g_reward_modal is NULL!");
         }
     }
 
@@ -1272,9 +1443,8 @@ static void BlackjackLogic(float dt) {
         const char* encounter_type = (encounter->type == ENCOUNTER_ELITE) ? "Elite Combat" :
                                       (encounter->type == ENCOUNTER_BOSS) ? "Boss Fight" : "Combat";
 
-        // Create temporary enemy to get name (will be destroyed and recreated on continue)
-        Enemy_t* temp_enemy = LoadEnemyFromDUF(g_enemies_db, encounter->enemy_key);
-        const char* enemy_name = temp_enemy ? GetEnemyName(temp_enemy) : "Unknown";
+        // Get enemy name without loading full enemy (lightweight lookup)
+        const char* enemy_name = GetEnemyNameFromDUF(g_enemies_db, encounter->enemy_key);
 
         // Initialize preview state
         g_game.combat_preview_timer = 3.0f;  // 3 second countdown
@@ -1282,18 +1452,12 @@ static void BlackjackLogic(float dt) {
         // Update modal content
         if (!g_combat_preview_modal) {
             d_LogError("Combat preview modal not initialized - skipping preview");
-            if (temp_enemy) DestroyEnemy(&temp_enemy);
             StartNextEncounter();
             return;
         }
 
         UpdateCombatPreviewContent(g_combat_preview_modal, enemy_name, encounter_type);
         ShowCombatPreviewModal(g_combat_preview_modal);
-
-        // Cleanup temp enemy
-        if (temp_enemy) {
-            DestroyEnemy(&temp_enemy);
-        }
 
         d_LogInfoF("Combat preview started: '%s - %s' (3.0s timer)", encounter_type, enemy_name);
     }
@@ -1345,7 +1509,7 @@ static void BlackjackLogic(float dt) {
 
     // Update trinket hover state ALWAYS (before state-specific input handling)
     // This allows tooltips to appear at any time, while clicks are gated by STATE_PLAYER_TURN
-    if (g_trinket_ui && g_human_player && g_human_player->trinket_slots) {
+    if (g_trinket_ui && g_human_player) {
         UpdateTrinketUIHover(g_trinket_ui, g_human_player);
     }
 
@@ -1362,6 +1526,19 @@ static void BlackjackLogic(float dt) {
 
             case STATE_TARGETING:
                 HandleTargetingInput();
+                break;
+
+            case STATE_GAME_OVER:
+                // Handle game-over overlay input (SPACE to quit)
+                if (g_game_over_overlay) {
+                    if (HandleGameOverOverlayInput(g_game_over_overlay)) {
+                        // Player pressed SPACE - quit to menu
+                        d_LogInfo("Game over: Player pressed SPACE - returning to menu");
+                        CleanupBlackjackScene();
+                        InitMenuScene();
+                        return;
+                    }
+                }
                 break;
 
             default:
@@ -1783,7 +1960,7 @@ static void HandlePlayerTurnInput(void) {
     if (!g_human_player) return;
 
     // Handle trinket clicks (hover state already updated in main logic loop)
-    if (g_trinket_ui && g_human_player->trinket_slots) {
+    if (g_trinket_ui) {
         HandleTrinketUIInput(g_trinket_ui, g_human_player, &g_game);
     }
 
@@ -2043,10 +2220,19 @@ static void BlackjackDraw(float dt) {
         int button_y = a_FlexGetItemY(g_main_layout, 1);  // Buttons now index 1
         int player_y = a_FlexGetItemY(g_main_layout, 2);  // Player now index 2
 
-        // Pass current enemy to dealer section (NULL if not in combat)
-        Enemy_t* current_enemy = g_game.is_combat_mode ? g_game.current_enemy : NULL;
-        RenderDealerSection(g_dealer_section, g_dealer, current_enemy, dealer_y);
-        RenderPlayerSection(g_player_section, g_human_player, player_y);
+        // Only render hands during active gameplay (not during rewards/events)
+        bool should_render_hands = (g_game.current_state != STATE_REWARD_SCREEN &&
+                                    g_game.current_state != STATE_TRINKET_DROP &&
+                                    g_game.current_state != STATE_EVENT_PREVIEW &&
+                                    g_game.current_state != STATE_EVENT &&
+                                    g_game.current_state != STATE_COMBAT_PREVIEW);
+
+        if (should_render_hands) {
+            // Pass current enemy to dealer section (NULL if not in combat)
+            Enemy_t* current_enemy = g_game.is_combat_mode ? g_game.current_enemy : NULL;
+            RenderDealerSection(g_dealer_section, g_dealer, current_enemy, dealer_y);
+            RenderPlayerSection(g_player_section, g_human_player, player_y);
+        }
 
         // State-specific panels
         switch (g_game.current_state) {
@@ -2089,12 +2275,19 @@ static void BlackjackDraw(float dt) {
         RenderTrinketTooltips(g_trinket_ui, g_human_player);
     }
 
-    // Render card tooltips AFTER trinket UI for proper z-ordering
-    if (g_dealer_section) {
-        RenderDealerSectionTooltip(g_dealer_section);
-    }
-    if (g_player_section) {
-        RenderPlayerSectionTooltip(g_player_section);
+    // Render card tooltips AFTER trinket UI for proper z-ordering (only during active gameplay)
+    bool render_tooltips = (g_game.current_state != STATE_REWARD_SCREEN &&
+                            g_game.current_state != STATE_TRINKET_DROP &&
+                            g_game.current_state != STATE_EVENT_PREVIEW &&
+                            g_game.current_state != STATE_EVENT &&
+                            g_game.current_state != STATE_COMBAT_PREVIEW);
+    if (render_tooltips) {
+        if (g_dealer_section) {
+            RenderDealerSectionTooltip(g_dealer_section);
+        }
+        if (g_player_section) {
+            RenderPlayerSectionTooltip(g_player_section);
+        }
     }
 
     // Render targeting arrow (if in targeting mode)
@@ -2104,6 +2297,11 @@ static void BlackjackDraw(float dt) {
     if (g_victory_overlay && IsVictoryOverlayVisible(g_victory_overlay)) {
         RenderVictoryOverlay(g_victory_overlay);
         // FlexBox result screen shows winnings + "Cleansed!" message (rendered by resultScreen.c)
+    }
+
+    // Render game-over overlay component (if visible)
+    if (g_game_over_overlay && IsGameOverOverlayVisible(g_game_over_overlay)) {
+        RenderGameOverOverlay(g_game_over_overlay);
     }
 
     // Render reward modal (if visible) - BEFORE pause menu
@@ -2143,6 +2341,11 @@ static void BlackjackDraw(float dt) {
     // Render event modal (if visible) - matches RewardModal pattern
     if (g_event_modal) {
         RenderEventModal(g_event_modal, g_human_player);
+    }
+
+    // Render trinket drop modal (if visible)
+    if (g_trinket_drop_modal && IsTrinketDropModalVisible(g_trinket_drop_modal)) {
+        RenderTrinketDropModal(g_trinket_drop_modal, g_human_player);
     }
 
     // Render tutorial if active - skip during intro narrative

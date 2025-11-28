@@ -1,0 +1,87 @@
+# Combat Affixes - Stat bonuses that roll on trinket drops
+# Weight determines drop frequency (100 = common, 50 = medium, 25 = rare)
+# Trinket rarity adds bonus weight (+5 uncommon, +10 rare, +15 legendary)
+
+# =============================================================================
+# HIGH-WEIGHT AFFIXES (Common drops)
+# =============================================================================
+
+@damage_bonus_percent {
+    name: "Violent"
+    description: "+{value}% damage dealt"
+    min_value: 5
+    max_value: 20
+    weight: 100
+}
+
+@crit_chance {
+    name: "Precise"
+    description: "+{value}% critical hit chance"
+    min_value: 3
+    max_value: 9
+    weight: 100
+}
+
+@crit_bonus {
+    name: "Deadly"
+    description: "+{value}% critical hit damage"
+    min_value: 10
+    max_value: 25
+    weight: 90
+}
+
+@flat_damage {
+    name: "Brutal"
+    description: "+{value} flat damage"
+    min_value: 5
+    max_value: 20
+    weight: 80
+}
+
+# =============================================================================
+# MEDIUM-WEIGHT AFFIXES
+# =============================================================================
+
+@bust_save_chance {
+    name: "Savior"
+    description: "{value}% chance to discard highest card on bust"
+    min_value: 3
+    max_value: 9
+    weight: 60
+}
+
+@lost_chips_refund_percent {
+    name: "Insured"
+    description: "Refund {value}% chips on loss"
+    min_value: 10
+    max_value: 30
+    weight: 50
+}
+
+@won_chips_bonus_percent {
+    name: "Greedy"
+    description: "+{value}% chips on win"
+    min_value: 10
+    max_value: 30
+    weight: 50
+}
+
+# =============================================================================
+# LOW-WEIGHT AFFIXES (Rare drops)
+# =============================================================================
+
+@flat_chips_on_loss {
+    name: "Cushioned"
+    description: "+{value} chips on loss"
+    min_value: 2
+    max_value: 6
+    weight: 30
+}
+
+@flat_chips_on_win {
+    name: "Prosperous"
+    description: "+{value} chips on win"
+    min_value: 3
+    max_value: 9
+    weight: 25
+}

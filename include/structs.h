@@ -112,11 +112,12 @@ typedef struct Act Act_t;
  * TrinketRarity_t - Trinket rarity tiers
  */
 typedef enum {
-    TRINKET_RARITY_COMMON,      // Common (white)
-    TRINKET_RARITY_UNCOMMON,    // Uncommon (green)
-    TRINKET_RARITY_RARE,        // Rare (blue)
-    TRINKET_RARITY_LEGENDARY,   // Legendary (gold)
-    TRINKET_RARITY_CLASS,       // Class trinket (purple - unique to character class)
+    TRINKET_RARITY_COMMON,      // Common (white #C8C8C8)
+    TRINKET_RARITY_UNCOMMON,    // Uncommon (green #64FF64)
+    TRINKET_RARITY_RARE,        // Rare (blue #6496FF)
+    TRINKET_RARITY_LEGENDARY,   // Legendary (gold #FFD700)
+    TRINKET_RARITY_EVENT,       // Event (teal #64FFFF - event-only, not combat drops)
+    TRINKET_RARITY_CLASS,       // Class trinket (purple #B464FF - hardcoded, cannot sell)
 } TrinketRarity_t;
 
 /**
@@ -175,6 +176,138 @@ typedef struct Trinket {
 } Trinket_t;
 
 // ============================================================================
+// TRINKET DUF SYSTEM (Affix-based loot drops)
+// ============================================================================
+
+/**
+ * TrinketEffectType_t - Types of effects trinkets can have
+ *
+ * Used for data-driven trinkets loaded from DUF files.
+ * Each effect type has specific execution logic in ExecuteTrinketEffect().
+ */
+typedef enum {
+    TRINKET_EFFECT_NONE,
+    TRINKET_EFFECT_ADD_CHIPS,              // Flat chip gain (value = amount)
+    TRINKET_EFFECT_LOSE_CHIPS,             // Flat chip loss (value = amount)
+    TRINKET_EFFECT_APPLY_STATUS,           // Apply status effect (status_key, stacks)
+    TRINKET_EFFECT_CLEAR_STATUS,           // Remove status effect (status_key)
+    TRINKET_EFFECT_TRINKET_STACK,          // Increment trinket's internal stack counter
+    TRINKET_EFFECT_REFUND_CHIPS_PERCENT,   // Refund % of bet on loss (value = percent)
+    TRINKET_EFFECT_ADD_DAMAGE_FLAT,        // Add flat damage this combat (value = amount)
+    TRINKET_EFFECT_DAMAGE_MULTIPLIER,      // Multiply damage (value = percent, e.g., 200 = 2x)
+    TRINKET_EFFECT_ADD_TAG_TO_CARDS,       // Add card tag to N random cards (on equip)
+    TRINKET_EFFECT_BUFF_TAG_DAMAGE,        // Increase damage from tagged cards (value = bonus)
+    TRINKET_EFFECT_PUSH_DAMAGE_PERCENT,    // Deal damage on push (value = percent of normal)
+} TrinketEffectType_t;
+
+/**
+ * TrinketAffix_t - Single affix on a trinket instance
+ *
+ * Affixes are stat bonuses rolled from affix pool based on trinket rarity/act.
+ * Each trinket can have 1-3 affixes (act 1/2/3).
+ */
+typedef struct {
+    dString_t* stat_key;     // "damage_bonus_percent", "crit_chance", etc
+    int rolled_value;        // Rolled value within affix min/max range
+} TrinketAffix_t;
+
+/**
+ * AffixTemplate_t - Affix definition from DUF
+ *
+ * Loaded from data/affixes/combat_affixes.duf
+ * Describes possible stat bonuses that can roll on trinkets.
+ */
+typedef struct {
+    dString_t* stat_key;      // Nametag from DUF (@damage_bonus_percent)
+    dString_t* name;          // Display name ("Violent")
+    dString_t* description;   // Template with {value} placeholder
+    int min_value;            // Minimum roll
+    int max_value;            // Maximum roll
+    int weight;               // Weighted selection (higher = more common)
+} AffixTemplate_t;
+
+/**
+ * TrinketTemplate_t - Base trinket archetype from DUF
+ *
+ * Loaded from data/trinkets/combat_trinkets.duf
+ * Defines trinket behavior without random affixes.
+ */
+typedef struct {
+    dString_t* trinket_key;           // Nametag from DUF (@lucky_chip)
+    dString_t* name;                  // Display name ("Lucky Chip")
+    dString_t* flavor;                // Flavor text
+    TrinketRarity_t rarity;           // Base rarity tier
+    int base_value;                   // Base sell value (before rarity/tier scaling)
+
+    // Primary passive effect
+    GameEvent_t passive_trigger;      // When does it trigger?
+    TrinketEffectType_t passive_effect_type;  // What does it do?
+    int passive_effect_value;         // Numeric value (if applicable)
+    dString_t* passive_status_key;    // Status effect key (for APPLY_STATUS/CLEAR_STATUS)
+    int passive_status_stacks;        // Status stacks to apply
+
+    // Trinket stack system (Broken Watch, Iron Knuckles)
+    dString_t* passive_stack_stat;    // Stat affected by stacks ("damage_bonus_percent")
+    int passive_stack_value;          // Value per stack (+2% per stack)
+    int passive_stack_max;            // Max stacks (12 stacks = 24% max)
+
+    // Tag system (Cursed Skull)
+    dString_t* passive_tag;           // Tag to add ("CURSED")
+    int passive_tag_count;            // Number of cards to tag (4)
+    int passive_tag_buff_value;       // Damage buff to tagged cards (+5)
+
+    // Secondary passive (optional - for dual-trigger trinkets like Lucky Chip)
+    GameEvent_t passive_trigger_2;
+    TrinketEffectType_t passive_effect_type_2;
+    int passive_effect_value_2;
+    dString_t* passive_status_key_2;
+    int passive_status_stacks_2;
+    dString_t* passive_tag_2;
+
+    // Optional condition
+    int passive_condition_bet_gte;    // Only trigger if bet >= this (0 = no condition)
+} TrinketTemplate_t;
+
+/**
+ * TrinketInstance_t - Runtime trinket with rolled affixes
+ *
+ * Generated when trinket drops from combat.
+ * Combines base template + random affixes + persistent state.
+ *
+ * Constitutional pattern: VALUE TYPE stored in Player_t.trinket_slots[6]
+ */
+typedef struct {
+    dString_t* base_trinket_key;  // Reference to template (@lucky_chip)
+    TrinketRarity_t rarity;       // Rolled rarity (may upgrade from base via pity)
+    int tier;                     // Act number when dropped (1/2/3)
+    int sell_value;               // Calculated sell value
+
+    // Affixes (1-3 based on tier)
+    TrinketAffix_t affixes[3];
+    int affix_count;
+
+    // Trinket-specific stacks (persists across combats)
+    int trinket_stacks;              // Current stacks (Broken Watch: 0-12)
+    int trinket_stack_max;           // Max stacks
+    dString_t* trinket_stack_stat;   // Stat affected by stacks
+    int trinket_stack_value;         // Value per stack
+
+    // Tag buff tracking (Cursed Skull)
+    int buffed_tag;                  // Which tag is buffed (CardTag_t stored as int)
+    int tag_buff_value;              // Damage bonus for buffed tag (+5)
+
+    // Stats tracking
+    int total_damage_dealt;          // Combat stat
+    int total_bonus_chips;           // Lifetime chips gained
+    int total_refunded_chips;        // Lifetime chips refunded
+
+    // Animation state (shake/flash on trigger)
+    float shake_offset_x;
+    float shake_offset_y;
+    float flash_alpha;
+} TrinketInstance_t;
+
+// ============================================================================
 // PLAYER STRUCTURE
 // ============================================================================
 
@@ -207,9 +340,12 @@ typedef struct Player {
 
     // Class system
     PlayerClass_t class;           // Character class (Degenerate, Dealer, Detective, Dreamer)
-    Trinket_t class_trinket;       // Class-specific trinket (VALUE - own copy of template)
+    Trinket_t class_trinket;       // Class-specific trinket (VALUE - hardcoded in C, has active ability)
     bool has_class_trinket;        // true if class trinket is equipped
-    dArray_t* trinket_slots;       // Array of Trinket_t VALUES (6 slots max, each is own copy)
+
+    // Trinket system (DUF-based loot drops with affixes)
+    TrinketInstance_t trinket_slots[6];  // VALUE ARRAY (6 slots, each is own copy)
+    bool trinket_slot_occupied[6];       // Track which slots have trinkets
 
     // Combat stats (calculated from tags/trinkets) - ADR-09: Dirty-flag aggregation
     int damage_flat;               // Flat damage bonus (added to base damage)
@@ -271,6 +407,13 @@ typedef struct GameContext {
 
     // Combat preview system (elite/boss warning)
     float combat_preview_timer;     // 3.0 → 0.0 countdown (auto-proceed when 0)
+
+    // Trinket loot system (pity counters for rarity upgrades)
+    int normal_enemy_pity;          // Kills since last uncommon drop (5 = force uncommon)
+    int elite_enemy_pity;           // Kills since last legendary drop (5 = force legendary)
+
+    // Game over system
+    bool player_defeated;           // true = player reached 0 chips (triggers STATE_GAME_OVER)
 } GameContext_t;
 
 #endif // STRUCTS_H

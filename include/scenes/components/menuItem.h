@@ -18,6 +18,7 @@ typedef struct MenuItem {
     bool is_hovered;       // Mouse is over this item (read-only, set by IsMenuItemHovered)
     bool enabled;          // Can be selected
     bool was_clicked;      // Click state tracking
+    bool prev_hovered;     // Previous frame hover state (for hover sound detection)
     void* user_data;       // Custom data (optional)
 } MenuItem_t;
 

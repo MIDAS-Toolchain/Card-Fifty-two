@@ -1,18 +1,20 @@
 /*
  * Card Fifty-Two - Settings Scene
+ * FlexBox-based beautiful settings UI with keyboard navigation
  */
 
 #include "../../include/common.h"
 #include "../../include/scenes/sceneSettings.h"
 #include "../../include/scenes/sceneMenu.h"
-#include "../../include/stats.h"
+#include "../../include/settings.h"
+#include "../../include/scenes/sections/settingsMenuSection.h"
 
 // Forward declarations
 static void SettingsLogic(float dt);
 static void SettingsDraw(float dt);
 
-// Settings state
-static bool show_stats = false;
+// Settings section (local to this scene - uses global g_settings)
+static SettingsMenuSection_t* g_settings_section = NULL;
 
 // ============================================================================
 // SCENE INITIALIZATION
@@ -25,8 +27,18 @@ void InitSettingsScene(void) {
     app.delegate.logic = SettingsLogic;
     app.delegate.draw = SettingsDraw;
 
-    // Reset stats view
-    show_stats = false;
+    // Use global g_settings (already initialized in main.c)
+    if (!g_settings) {
+        d_LogError("Global g_settings is NULL! Should be initialized in main.c");
+        return;
+    }
+
+    // Create settings menu section (references global g_settings)
+    g_settings_section = CreateSettingsMenuSection(g_settings);
+    if (!g_settings_section) {
+        d_LogError("Failed to create SettingsMenuSection!");
+        return;
+    }
 
     d_LogInfo("Settings scene ready");
 }
@@ -40,25 +52,27 @@ static void SettingsLogic(float dt) {
 
     a_DoInput();
 
-    // ESC - Return to menu (or back to settings if viewing stats)
+    // ESC - Return to menu
     if (app.keyboard[SDL_SCANCODE_ESCAPE]) {
         app.keyboard[SDL_SCANCODE_ESCAPE] = 0;
-        if (show_stats) {
-            // Back to settings menu
-            show_stats = false;
-        } else {
-            // Back to main menu
-            d_LogInfo("Returning to menu from settings");
-            InitMenuScene();
+
+        // Cleanup section
+        if (g_settings_section) {
+            DestroySettingsMenuSection(&g_settings_section);
         }
+
+        // Save global settings before exiting (but don't destroy - main.c owns it)
+        if (g_settings) {
+            Settings_Save(g_settings);
+        }
+
+        InitMenuScene();
         return;
     }
 
-    // S - Toggle stats view
-    if (app.keyboard[SDL_SCANCODE_S]) {
-        app.keyboard[SDL_SCANCODE_S] = 0;
-        show_stats = !show_stats;
-        d_LogInfoF("Stats view: %s", show_stats ? "ON" : "OFF");
+    // Handle settings input (navigation, adjustments)
+    if (g_settings_section) {
+        HandleSettingsInput(g_settings_section);
     }
 }
 
@@ -70,90 +84,10 @@ static void SettingsDraw(float dt) {
     (void)dt;
 
     // Dark background
-    app.background = (aColor_t){30, 30, 50, 255};
+    app.background = (aColor_t){9, 10, 20, 255};
 
-    if (show_stats) {
-        // ========================================================================
-        // STATS VIEW
-        // ========================================================================
-        const GlobalStats_t* stats = Stats_GetCurrent();
-
-        // Title
-        a_DrawText("STATISTICS", SCREEN_WIDTH / 2, 100,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
-
-        // Cards drawn
-        dString_t* text = d_StringInit();
-        d_StringFormat(text, "Cards Drawn: %llu", stats->cards_drawn);
-        a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, 200,
-                   (aTextStyle_t){.type=FONT_GAME, .fg={200,255,200,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
-
-        // Total damage
-        d_StringFormat(text, "Total Damage: %llu", stats->damage_dealt_total);
-        a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, 260,
-                   (aTextStyle_t){.type=FONT_GAME, .fg={255,200,100,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
-
-        // Damage breakdown header
-        a_DrawText("Damage by Source:", SCREEN_WIDTH / 2, 320,
-                   (aTextStyle_t){.type=FONT_GAME, .fg={180,180,180,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
-
-        // Damage by source breakdown
-        int y_offset = 370;
-        for (int i = 0; i < DAMAGE_SOURCE_MAX; i++) {
-            const char* source_name = Stats_GetDamageSourceName((DamageSource_t)i);
-            uint64_t damage = stats->damage_by_source[i];
-
-            // Calculate percentage
-            float percentage = 0.0f;
-            if (stats->damage_dealt_total > 0) {
-                percentage = (float)damage / (float)stats->damage_dealt_total * 100.0f;
-            }
-
-            d_StringFormat(text, "%s: %llu (%.1f%%)", source_name, damage, percentage);
-
-            // Color based on amount
-            int r = 150 + (damage > 0 ? 100 : 0);
-            int g = 150;
-            int b = 150;
-
-            a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y_offset,
-                       (aTextStyle_t){.type=FONT_GAME, .fg={r,g,b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
-            y_offset += 45;
-        }
-
-        d_StringDestroy(text);
-
-        // Instructions
-        a_DrawText("[ESC] to return to settings",
-                   SCREEN_WIDTH / 2, SCREEN_HEIGHT - 50,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={150,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
-
-    } else {
-        // ========================================================================
-        // SETTINGS MENU
-        // ========================================================================
-
-        // Title
-        a_DrawText("SETTINGS", SCREEN_WIDTH / 2, 150,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
-
-        // Stats option (now functional!)
-        a_DrawText("[S] View Statistics", SCREEN_WIDTH / 2, 300,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={100,255,100,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
-
-        // Placeholder settings
-        a_DrawText("Coming Soon:", SCREEN_WIDTH / 2, 380,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={200,200,200,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
-
-        a_DrawText("- Sound Volume", SCREEN_WIDTH / 2, 430,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={180,180,180,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
-
-        a_DrawText("- Music Volume", SCREEN_WIDTH / 2, 480,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={180,180,180,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
-
-        // Instructions
-        a_DrawText("[ESC] to return to menu",
-                   SCREEN_WIDTH / 2, SCREEN_HEIGHT - 50,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={150,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+    // Render settings menu section
+    if (g_settings_section) {
+        RenderSettingsMenuSection(g_settings_section);
     }
 }

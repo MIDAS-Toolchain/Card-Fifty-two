@@ -93,10 +93,10 @@ void HideVictoryOverlay(VictoryOverlay_t* overlay);
  * RenderVictoryOverlay - Draw victory celebration overlay
  *
  * Renders (if visible):
- * - Dark fullscreen overlay (0,0,0,200)
- * - "VICTORY!" title (gold, centered, scale 1.5f)
+ * - "VICTORY!" title (gold, centered horizontally, 128px above center)
  * - "You defeated [Enemy]!" message (off-white, centered)
  *
+ * Note: No dark overlay - leaves screen visible for center content.
  * Does NOT render result screen effects (that's resultScreen.c's job).
  *
  * @param overlay - Overlay to render

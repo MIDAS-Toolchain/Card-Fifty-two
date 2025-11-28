@@ -164,7 +164,8 @@ void DestroyAbility(Ability_t** ability);
  * @param ability - Ability to modify
  * @param effect - Effect to add (copied by value)
  *
- * NOTE: effect.message ownership is transferred - do not free after calling
+ * OWNERSHIP: This function TAKES OWNERSHIP of effect->message (if non-NULL).
+ * Do NOT free effect.message after calling - DestroyAbility() will free it.
  */
 void AddEffect(Ability_t* ability, const AbilityEffect_t* effect);
 

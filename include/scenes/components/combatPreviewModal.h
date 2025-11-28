@@ -32,6 +32,7 @@
  */
 typedef struct CombatPreviewModal {
     bool is_visible;              // true = shown, false = hidden
+    char header_title[64];        // Random header (e.g., "COMBAT AHEAD")
     char enemy_name[64];          // Enemy name (e.g., "The Daemon")
     char encounter_type[32];      // "Elite Combat", "Boss Fight", "Normal Combat"
     float title_alpha;            // 0.0 → 1.0 fade animation

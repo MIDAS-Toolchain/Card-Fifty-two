@@ -5,7 +5,22 @@
 
 #include "../../../include/scenes/components/eventPreviewModal.h"
 #include "../../../include/scenes/sceneBlackjack.h"
+#include "../../../include/random.h"
 #include <stdio.h>
+
+// ============================================================================
+// RANDOM HEADER TITLES
+// ============================================================================
+
+static const char* EVENT_HEADERS[] = {
+    "DECISION TIME",
+    "OPPORTUNITY KNOCKS",
+    "RISK AND REWARD",
+    "THE CHOICE IS YOURS",
+    "WHAT WILL YOU DO?"
+};
+
+#define EVENT_HEADER_COUNT 5
 
 // ============================================================================
 // LIFECYCLE
@@ -85,7 +100,13 @@ void ShowEventPreviewModal(EventPreviewModal_t* modal) {
     if (!modal) return;
     modal->is_visible = true;
     modal->title_alpha = 0.0f;  // Start fade animation
-    d_LogInfo("EventPreviewModal shown");
+
+    // Randomly select header title
+    int header_index = GetRandomInt(0, EVENT_HEADER_COUNT - 1);
+    strncpy(modal->header_title, EVENT_HEADERS[header_index], sizeof(modal->header_title) - 1);
+    modal->header_title[sizeof(modal->header_title) - 1] = '\0';
+
+    d_LogInfoF("EventPreviewModal shown with header: '%s'", modal->header_title);
 }
 
 void HideEventPreviewModal(EventPreviewModal_t* modal) {
@@ -151,6 +172,16 @@ void RenderEventPreviewModal(const EventPreviewModal_t* modal, const GameContext
 
     // Draw dark overlay (full screen, 70% opacity)
     a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 178});  // 178 = 0.7 * 255
+
+    // Draw random header title (top, large, dark gray)
+    aTextStyle_t header_config = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = {80, 80, 80, 255},  // Dark gray, full opacity
+        .align = TEXT_ALIGN_CENTER,
+        .wrap_width = 0,
+        .scale = 2.0f  // Larger for emphasis
+    };
+    a_DrawText(modal->header_title, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 216, header_config);
 
     // Draw centered event title with fade
     aTextStyle_t title_config = {

@@ -10,6 +10,7 @@
 #include "enemy.h"
 #include "random.h"
 #include "trinket.h"
+#include "trinketDrop.h"
 #include "cardTags.h"
 #include "hand.h"
 #include "stats.h"
@@ -63,6 +64,9 @@ void State_InitContext(GameContext_t* game, Deck_t* deck) {
     game->event_rerolls_used = 0;       // Reroll counter
     game->event_preview_timer = 0.0f;   // Timer (set to 3.0 when entering STATE_EVENT_PREVIEW)
 
+    // Initialize game-over system
+    game->player_defeated = false;      // Player starts alive
+
     d_LogInfoF("GameContext initialized - event_reroll_base_cost=%d", game->event_reroll_base_cost);
 }
 
@@ -100,10 +104,12 @@ const char* State_ToString(GameState_t state) {
         case STATE_ROUND_END: return "ROUND_END";
         case STATE_COMBAT_VICTORY: return "COMBAT_VICTORY";
         case STATE_REWARD_SCREEN: return "REWARD_SCREEN";
+        case STATE_TRINKET_DROP: return "TRINKET_DROP";
         case STATE_COMBAT_PREVIEW: return "COMBAT_PREVIEW";
         case STATE_EVENT_PREVIEW: return "EVENT_PREVIEW";
         case STATE_EVENT: return "EVENT";
         case STATE_TARGETING: return "TARGETING";
+        case STATE_GAME_OVER: return "GAME_OVER";
         default: return "UNKNOWN";
     }
 }
@@ -182,9 +188,7 @@ void State_Transition(GameContext_t* game, GameState_t new_state) {
             break;
 
         case STATE_COMBAT_VICTORY:
-            // Play victory sound
-            a_AudioPlayEffect(&g_victory_sound);
-            d_LogInfo("Victory sound played!");
+            d_LogInfo("Player achieved victory!");
             break;
 
         case STATE_REWARD_SCREEN:
@@ -238,6 +242,11 @@ void State_UpdateLogic(GameContext_t* game, float dt) {
 
         case STATE_REWARD_SCREEN:
             State_UpdateRewardScreen(game);
+            break;
+
+        case STATE_TRINKET_DROP:
+            // Trinket drop modal handles its own lifecycle in sceneBlackjack.c
+            // This state just waits for the modal to close
             break;
 
         case STATE_EVENT_PREVIEW:
@@ -596,8 +605,9 @@ void State_UpdateRoundEnd(GameContext_t* game) {
 void State_UpdateCombatVictory(GameContext_t* game) {
     // Display victory celebration for 2 seconds
     if (game->state_timer > 2.0f) {
-        // Transition to reward screen
-        State_Transition(game, STATE_REWARD_SCREEN);
+        // Always drop trinket after combat victory (100% drop rate)
+        d_LogInfo("Trinket drop triggered!");
+        State_Transition(game, STATE_TRINKET_DROP);
     }
 }
 

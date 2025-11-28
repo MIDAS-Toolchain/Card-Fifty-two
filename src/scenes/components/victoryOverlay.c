@@ -64,12 +64,9 @@ void HideVictoryOverlay(VictoryOverlay_t* overlay) {
 void RenderVictoryOverlay(const VictoryOverlay_t* overlay) {
     if (!overlay || !overlay->visible) return;
 
-    // Dark fullscreen overlay
-    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 200});
-
-    // Calculate centered positions
+    // Calculate positions (moved up 128px from center to leave room for something else)
     int center_x = SCREEN_WIDTH / 2;
-    int center_y = SCREEN_HEIGHT / 2 - 50;
+    int center_y = SCREEN_HEIGHT / 2 - 128;
 
     // "VICTORY!" title (gold, large, centered)
     aTextStyle_t gold_title = {
@@ -98,6 +95,7 @@ void RenderVictoryOverlay(const VictoryOverlay_t* overlay) {
     // Note: FlexBox result screen effects (Win, Cleansed!) are rendered
     // by resultScreen.c, not here. This component only handles the
     // victory celebration overlay (title + defeat message).
+    // No dark overlay - leave screen visible for center content.
 }
 
 // ============================================================================

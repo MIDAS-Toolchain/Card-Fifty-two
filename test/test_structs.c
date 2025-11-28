@@ -128,17 +128,15 @@ TEST(hand_contains_dArray) {
     ASSERT_NULL(hand.cards);
 }
 
-TEST(player_trinkets_are_dArray) {
-    // Constitutional: Player trinket_slots uses dArray_t*, not raw array
+TEST(player_trinkets_are_value_array) {
+    // ADR-016: Player trinket_slots is value array (not dArray_t*)
     Player_t player;
-    player.trinket_slots = d_ArrayInit(sizeof(Trinket_t*), 6);
-    ASSERT_NOT_NULL(player.trinket_slots);
+    memset(&player, 0, sizeof(Player_t));
 
-    // Verify it's a valid dArray_t (just check it initialized)
-    ASSERT_TRUE(player.trinket_slots->capacity >= 6);
+    // Verify it's a fixed-size array of 6 trinket instances
+    ASSERT_TRUE(sizeof(player.trinket_slots) == 6 * sizeof(TrinketInstance_t));
 
-    d_ArrayDestroy(player.trinket_slots);
-    player.trinket_slots = NULL;
+    // No cleanup needed - value array is stack-allocated
 }
 
 // ============================================================================

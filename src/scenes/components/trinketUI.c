@@ -8,6 +8,7 @@
 #include "../../../include/state.h"
 #include "../../../include/stateStorage.h"
 #include "../../../include/tutorial/tutorialSystem.h"
+#include "../../../include/loaders/trinketLoader.h"
 
 // External references
 extern TutorialSystem_t* g_tutorial_system;
@@ -74,17 +75,10 @@ void HandleTrinketUIInput(TrinketUI_t* ui, Player_t* player, GameContext_t* game
                 return;
             }
 
-            Trinket_t* trinket = GetEquippedTrinket(player, ui->hovered_trinket_slot);
-
-            if (trinket && trinket->active_cooldown_current == 0 && trinket->active_target_type == TRINKET_TARGET_CARD) {
-                // Enter targeting mode (store state in int_values table)
-                StateData_SetInt(&game->state_data, "targeting_trinket_slot", ui->hovered_trinket_slot);
-                StateData_SetInt(&game->state_data, "targeting_player_id", player->player_id);
-                State_Transition(game, STATE_TARGETING);
-
-                d_LogInfoF("Entered targeting mode for trinket slot %d (player ID %d)",
-                          ui->hovered_trinket_slot, player->player_id);
-            }
+            // DUF trinkets are passive-only (no active abilities, no targeting)
+            // Class trinkets (hardcoded) handle their own targeting logic elsewhere
+            // So we don't need to check for trinket clicks here
+            (void)ui;  // Suppress unused warning
         }
     }
 }
@@ -93,7 +87,8 @@ void HandleTrinketUIInput(TrinketUI_t* ui, Player_t* player, GameContext_t* game
 // RENDERING - TOOLTIPS
 // ============================================================================
 
-static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
+// Legacy version for hardcoded class trinkets (Trinket_t)
+static void RenderClassTrinketTooltip(const Trinket_t* trinket, int slot_index) {
     if (!trinket) return;
 
     // Determine if this is a class trinket (slot_index == -1)
@@ -128,18 +123,15 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
     const char* passive_desc = trinket->passive_description ? d_StringPeek(trinket->passive_description) : "No passive";
     const char* active_desc = trinket->active_description ? d_StringPeek(trinket->active_description) : "No active";
 
-    // Get rarity name (with bounds check for safety against old struct layouts)
-    const char* rarity_name = NULL;
-    if (trinket->rarity >= TRINKET_RARITY_COMMON && trinket->rarity <= TRINKET_RARITY_LEGENDARY) {
-        rarity_name = GetTrinketRarityName(trinket->rarity);
-    }
+    // Get rarity color for border
+    int rarity_r, rarity_g, rarity_b;
+    GetTrinketRarityColor(trinket->rarity, &rarity_r, &rarity_g, &rarity_b);
 
     int padding = 16;
     int content_width = tooltip_width - (padding * 2);
 
     // Measure text heights
     int name_height = a_GetWrappedTextHeight((char*)name, FONT_ENTER_COMMAND, content_width);
-    int rarity_height = 18;  // Fixed height for rarity tag
     int desc_height = a_GetWrappedTextHeight((char*)description, FONT_GAME, content_width);
     int passive_height = a_GetWrappedTextHeight((char*)passive_desc, FONT_GAME, content_width);
     int active_height = a_GetWrappedTextHeight((char*)active_desc, FONT_GAME, content_width);
@@ -153,8 +145,7 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
     }
 
     tooltip_height += name_height + 8;
-    tooltip_height += rarity_height + 10;  // Rarity tag
-    tooltip_height += desc_height + 12;
+    tooltip_height += desc_height + 12;  // No rarity text
     tooltip_height += 1 + 12;  // Divider
     tooltip_height += passive_height + 8;
     tooltip_height += active_height + 8;
@@ -189,11 +180,15 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
         tooltip_y = TOP_BAR_HEIGHT + 10;
     }
 
-    // Background
+    // Background (dark panel)
     a_DrawFilledRect((aRectf_t){tooltip_x, tooltip_y, tooltip_width, tooltip_height},
-                    (aColor_t){20, 20, 30, 230});
+                    (aColor_t){9, 10, 20, 240});  // COLOR_PANEL_BG
+
+    // Rarity-colored double border (matches trinket slot and modal)
     a_DrawRect((aRectf_t){tooltip_x, tooltip_y, tooltip_width, tooltip_height},
-              (aColor_t){255, 255, 255, 255});
+              (aColor_t){rarity_r, rarity_g, rarity_b, 255});
+    a_DrawRect((aRectf_t){tooltip_x + 1, tooltip_y + 1, tooltip_width - 2, tooltip_height - 2},
+              (aColor_t){rarity_r, rarity_g, rarity_b, 255});
 
     // Render content
     int content_x = tooltip_x + padding;
@@ -223,21 +218,7 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
     a_DrawText((char*)name, content_x, current_y, title_config);
     current_y += name_height + 8;
 
-    // Rarity tag (colored by rarity)
-    if (rarity_name && rarity_name[0] != '\0') {  // Safety check
-        int rarity_r, rarity_g, rarity_b;
-        GetTrinketRarityColor(trinket->rarity, &rarity_r, &rarity_g, &rarity_b);
-
-        aTextStyle_t rarity_config = {
-            .type = FONT_GAME,
-            .fg = {(uint8_t)rarity_r, (uint8_t)rarity_g, (uint8_t)rarity_b, 255},
-            .align = TEXT_ALIGN_LEFT,
-            .wrap_width = content_width,
-            .scale = 0.85f
-        };
-        a_DrawText((char*)rarity_name, content_x, current_y, rarity_config);
-        current_y += rarity_height + 10;
-    }
+    // Rarity shown by border color, no text needed
 
     // Description
     aTextStyle_t desc_config = {
@@ -345,6 +326,282 @@ static void RenderTrinketTooltip(const Trinket_t* trinket, int slot_index) {
     }
 }
 
+/**
+ * FormatTrinketPassive - Format passive description for display
+ *
+ * @param template - Trinket template
+ * @param instance - Trinket instance (for stack tracking)
+ * @param secondary - true for secondary passive (trigger_2), false for primary
+ * @return dString_t* - Formatted passive string (caller must destroy)
+ */
+static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const TrinketInstance_t* instance, bool secondary) {
+    dString_t* passive_text = d_StringInit();
+    if (!passive_text) return NULL;
+
+    // Select which trigger/effect to format
+    GameEvent_t trigger = secondary ? template->passive_trigger_2 : template->passive_trigger;
+    TrinketEffectType_t effect_type = secondary ? template->passive_effect_type_2 : template->passive_effect_type;
+    int effect_value = secondary ? template->passive_effect_value_2 : template->passive_effect_value;
+
+    // Skip if no trigger set
+    if (trigger == 0 && effect_type == TRINKET_EFFECT_NONE) {
+        d_StringSet(passive_text, "", 0);
+        return passive_text;
+    }
+
+    // 1. Format trigger ("On Win:", "On Blackjack:", etc.)
+    const char* trigger_str = NULL;
+    switch (trigger) {
+        case GAME_EVENT_COMBAT_START:     trigger_str = "On Combat Start"; break;
+        case GAME_EVENT_PLAYER_WIN:       trigger_str = "On Win"; break;
+        case GAME_EVENT_PLAYER_LOSS:      trigger_str = "On Loss"; break;
+        case GAME_EVENT_PLAYER_BUST:      trigger_str = "On Bust"; break;
+        case GAME_EVENT_PLAYER_BLACKJACK: trigger_str = "On Blackjack"; break;
+        case GAME_EVENT_PLAYER_PUSH:      trigger_str = "On Push"; break;
+        case GAME_EVENT_CARD_DRAWN:       trigger_str = "On Card Drawn"; break;
+        case 999:                         trigger_str = "On Equip"; break; // Special ON_EQUIP
+        default:                          trigger_str = "Passive"; break;
+    }
+
+    // 2. Format effect ("Gain 5 chips", "Apply 1 LUCKY_STREAK", etc.)
+    switch (effect_type) {
+        case TRINKET_EFFECT_ADD_CHIPS:
+            d_StringFormat(passive_text, "%s: Gain %d chips", trigger_str, effect_value);
+            break;
+
+        case TRINKET_EFFECT_LOSE_CHIPS:
+            d_StringFormat(passive_text, "%s: Lose %d chips", trigger_str, effect_value);
+            break;
+
+        case TRINKET_EFFECT_REFUND_CHIPS_PERCENT:
+            d_StringFormat(passive_text, "%s: Refund %d%% of bet", trigger_str, effect_value);
+            break;
+
+        case TRINKET_EFFECT_APPLY_STATUS: {
+            const char* status_key = secondary ?
+                (template->passive_status_key_2 ? d_StringPeek(template->passive_status_key_2) : "???") :
+                (template->passive_status_key ? d_StringPeek(template->passive_status_key) : "???");
+            int status_stacks = secondary ? template->passive_status_stacks_2 : template->passive_status_stacks;
+            d_StringFormat(passive_text, "%s: Gain %d %s", trigger_str, status_stacks, status_key);
+            break;
+        }
+
+        case TRINKET_EFFECT_CLEAR_STATUS: {
+            const char* status_key = secondary ?
+                (template->passive_status_key_2 ? d_StringPeek(template->passive_status_key_2) : "???") :
+                (template->passive_status_key ? d_StringPeek(template->passive_status_key) : "???");
+            d_StringFormat(passive_text, "%s: Clear %s", trigger_str, status_key);
+            break;
+        }
+
+        case TRINKET_EFFECT_TRINKET_STACK: {
+            const char* stat = template->passive_stack_stat ? d_StringPeek(template->passive_stack_stat) : "???";
+            // Show current stacks / max stacks if instance exists
+            if (instance && instance->trinket_stacks > 0) {
+                d_StringFormat(passive_text, "%s: +%d%% %s (%d/%d stacks)",
+                              trigger_str, template->passive_stack_value, stat,
+                              instance->trinket_stacks, template->passive_stack_max);
+            } else {
+                d_StringFormat(passive_text, "%s: +%d%% %s (max %d stacks)",
+                              trigger_str, template->passive_stack_value, stat,
+                              template->passive_stack_max);
+            }
+            break;
+        }
+
+        case TRINKET_EFFECT_ADD_DAMAGE_FLAT:
+            d_StringFormat(passive_text, "%s: +%d damage", trigger_str, effect_value);
+            break;
+
+        case TRINKET_EFFECT_DAMAGE_MULTIPLIER:
+            d_StringFormat(passive_text, "%s: ×%d%% damage", trigger_str, effect_value);
+            break;
+
+        case TRINKET_EFFECT_PUSH_DAMAGE_PERCENT:
+            d_StringFormat(passive_text, "%s: Deal %d%% damage", trigger_str, effect_value);
+            break;
+
+        case TRINKET_EFFECT_ADD_TAG_TO_CARDS: {
+            const char* tag = template->passive_tag ? d_StringPeek(template->passive_tag) : "???";
+            d_StringFormat(passive_text, "%s: Add %s tag to %d cards",
+                          trigger_str, tag, template->passive_tag_count);
+            break;
+        }
+
+        case TRINKET_EFFECT_BUFF_TAG_DAMAGE: {
+            const char* tag = template->passive_tag ? d_StringPeek(template->passive_tag) : "???";
+            d_StringFormat(passive_text, "%s: %s cards deal +%d damage",
+                          trigger_str, tag, template->passive_tag_buff_value);
+            break;
+        }
+
+        case TRINKET_EFFECT_NONE:
+        default:
+            d_StringFormat(passive_text, "%s: ???", trigger_str);
+            break;
+    }
+
+    return passive_text;
+}
+
+/**
+ * RenderTrinketTooltip (DUF Version) - Display tooltip for TrinketInstance_t
+ *
+ * Shows:
+ * - Base trinket name, rarity, flavor
+ * - Passive trigger/effect
+ * - All rolled affixes
+ */
+static void RenderTrinketTooltip(const TrinketTemplate_t* template, TrinketInstance_t* instance, int slot_index) {
+    if (!template || !instance) return;
+
+    // Calculate tooltip position
+    int row = slot_index / 3;
+    int col = slot_index % 3;
+    int slot_x = TRINKET_UI_X + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+    int slot_y = TRINKET_UI_Y + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+
+    int tooltip_width = 340;
+    int tooltip_x = slot_x - tooltip_width - 10;  // Left of slot
+    int tooltip_y = slot_y;
+
+    // If too far left, show on right instead
+    if (tooltip_x < 10) {
+        tooltip_x = slot_x + TRINKET_SLOT_SIZE + 10;
+    }
+
+    int padding = 16;
+    int content_width = tooltip_width - (padding * 2);
+
+    // Get text content
+    const char* name = d_StringPeek(template->name);
+    const char* flavor = d_StringPeek(template->flavor);
+
+    // Get rarity color for border
+    int rarity_r, rarity_g, rarity_b;
+    GetTrinketRarityColor(instance->rarity, &rarity_r, &rarity_g, &rarity_b);
+
+    // Measure text heights
+    int name_height = a_GetWrappedTextHeight((char*)name, FONT_ENTER_COMMAND, content_width);
+    int flavor_height = a_GetWrappedTextHeight((char*)flavor, FONT_GAME, content_width);
+
+    // Calculate tooltip height (no rarity text, color shows rarity)
+    int tooltip_height = padding;
+    tooltip_height += name_height + 8;
+    tooltip_height += flavor_height + 12;
+    tooltip_height += 1 + 12;  // Divider
+
+    // Add passive description height
+    tooltip_height += 20;  // "Passive:" label
+    // TODO: Format passive trigger + effect
+
+    // Add affix heights
+    for (int i = 0; i < instance->affix_count; i++) {
+        tooltip_height += 20;  // Each affix line
+    }
+
+    tooltip_height += padding;
+
+    // Clamp to screen
+    if (tooltip_y + tooltip_height > SCREEN_HEIGHT - 10) {
+        tooltip_y = SCREEN_HEIGHT - tooltip_height - 10;
+    }
+    if (tooltip_y < TOP_BAR_HEIGHT + 10) {
+        tooltip_y = TOP_BAR_HEIGHT + 10;
+    }
+
+    // Background (dark panel)
+    a_DrawFilledRect((aRectf_t){tooltip_x, tooltip_y, tooltip_width, tooltip_height},
+                    (aColor_t){9, 10, 20, 240});  // COLOR_PANEL_BG
+
+    // Rarity-colored double border (matches trinket slot and modal)
+    a_DrawRect((aRectf_t){tooltip_x, tooltip_y, tooltip_width, tooltip_height},
+              (aColor_t){rarity_r, rarity_g, rarity_b, 255});
+    a_DrawRect((aRectf_t){tooltip_x + 1, tooltip_y + 1, tooltip_width - 2, tooltip_height - 2},
+              (aColor_t){rarity_r, rarity_g, rarity_b, 255});
+
+    // Render content
+    int content_x = tooltip_x + padding;
+    int current_y = tooltip_y + padding;
+
+    // Title
+    aTextStyle_t title_config = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = {232, 193, 112, 255},
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = content_width,
+        .scale = 1.0f
+    };
+    a_DrawText((char*)name, content_x, current_y, title_config);
+    current_y += name_height + 8;
+
+    // Rarity shown by border color, no text needed
+
+    // Flavor text
+    aTextStyle_t flavor_config = {
+        .type = FONT_GAME,
+        .fg = {150, 150, 150, 255},  // Dimmed italic style
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = content_width,
+        .scale = 0.9f
+    };
+    a_DrawText((char*)flavor, content_x, current_y, flavor_config);
+    current_y += flavor_height + 12;
+
+    // Divider
+    a_DrawFilledRect((aRectf_t){content_x, current_y, content_width, 1}, (aColor_t){100, 100, 100, 200});
+    current_y += 12;
+
+    // Passive description (primary)
+    aTextStyle_t passive_config = {
+        .type = FONT_GAME,
+        .fg = {168, 202, 88, 255},  // Green
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = content_width,
+        .scale = 1.0f
+    };
+
+    dString_t* passive_text = FormatTrinketPassive(template, instance, false);
+    if (passive_text && d_StringGetLength(passive_text) > 0) {
+        a_DrawText((char*)d_StringPeek(passive_text), content_x, current_y, passive_config);
+        current_y += 20;
+    }
+    if (passive_text) d_StringDestroy(passive_text);
+
+    // Passive description (secondary, if exists)
+    if (template->passive_trigger_2 != 0) {
+        dString_t* passive_text_2 = FormatTrinketPassive(template, instance, true);
+        if (passive_text_2 && d_StringGetLength(passive_text_2) > 0) {
+            a_DrawText((char*)d_StringPeek(passive_text_2), content_x, current_y, passive_config);
+            current_y += 20;
+        }
+        if (passive_text_2) d_StringDestroy(passive_text_2);
+    }
+
+    current_y += 8;  // Spacing before affixes
+
+    // Affixes
+    aTextStyle_t affix_config = {
+        .type = FONT_GAME,
+        .fg = {100, 150, 255, 255},  // Blue
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = content_width,
+        .scale = 1.0f
+    };
+
+    for (int i = 0; i < instance->affix_count; i++) {
+        const char* stat_key = d_StringPeek(instance->affixes[i].stat_key);
+        int value = instance->affixes[i].rolled_value;
+
+        dString_t* affix_text = d_StringInit();
+        d_StringFormat(affix_text, "+%d %s", value, stat_key);
+        a_DrawText((char*)d_StringPeek(affix_text), content_x, current_y, affix_config);
+        d_StringDestroy(affix_text);
+
+        current_y += 20;
+    }
+}
+
 void RenderTrinketTooltips(TrinketUI_t* ui, Player_t* player) {
     if (!ui || !player || !player->trinket_slots) return;
 
@@ -358,14 +615,18 @@ void RenderTrinketTooltips(TrinketUI_t* ui, Player_t* player) {
     if (ui->hovered_class_trinket) {
         Trinket_t* trinket = GetClassTrinket(player);
         if (trinket) {
-            RenderTrinketTooltip(trinket, -1);  // -1 = class trinket
+            RenderClassTrinketTooltip(trinket, -1);  // -1 = class trinket
         }
     }
     // Show tooltip for hovered regular trinket
     else if (ui->hovered_trinket_slot >= 0) {
-        Trinket_t* trinket = GetEquippedTrinket(player, ui->hovered_trinket_slot);
-        if (trinket) {
-            RenderTrinketTooltip(trinket, ui->hovered_trinket_slot);
+        // Use new TrinketInstance_t system
+        if (player->trinket_slot_occupied[ui->hovered_trinket_slot]) {
+            TrinketInstance_t* instance = &player->trinket_slots[ui->hovered_trinket_slot];
+            const TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(instance->base_trinket_key));
+            if (template) {
+                RenderTrinketTooltip(template, instance, ui->hovered_trinket_slot);
+            }
         }
     }
 }
@@ -610,84 +871,61 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
         // Use persisted hover state from UpdateTrinketUIHover()
         bool is_hovered = (ui->hovered_trinket_slot == slot_index);
 
-        Trinket_t* trinket = GetEquippedTrinket(player, slot_index);
+        // Use new TrinketInstance_t system
+        bool has_trinket = player->trinket_slot_occupied[slot_index];
 
-        if (trinket) {
-            // Trinket equipped - draw with styling
-            int bg_r = 40, bg_g = 40, bg_b = 50;
-            int border_r = 150, border_g = 150, border_b = 200;
+        if (has_trinket) {
+            TrinketInstance_t* instance = &player->trinket_slots[slot_index];
+            const char* trinket_key = d_StringPeek(instance->base_trinket_key);
+            const TrinketTemplate_t* template = GetTrinketTemplate(trinket_key);
 
-            // Check if on cooldown
-            bool on_cooldown = trinket->active_cooldown_current > 0;
-            bool is_clickable = !on_cooldown && trinket->active_target_type == TRINKET_TARGET_CARD;
-
-            if (on_cooldown) {
-                // Red tint
-                bg_r = 60; bg_g = 20; bg_b = 20;
-                border_r = 255; border_g = 100; border_b = 100;
+            if (!template) {
+                d_LogErrorF("Trinket UI: Failed to load template for key '%s' in slot %d",
+                           trinket_key ? trinket_key : "NULL", slot_index);
             }
 
-            // Hover effect (brighter if ready to use)
-            if (is_hovered && is_clickable) {
-                bg_r += 20; bg_g += 20; bg_b += 20;
-                border_r = 255; border_g = 255; border_b = 100;  // Yellow border
-            }
+            if (template) {
+                // Get rarity colors from palette
+                int rarity_r, rarity_g, rarity_b;
+                GetTrinketRarityColor(instance->rarity, &rarity_r, &rarity_g, &rarity_b);
 
-            // Apply shake offsets (tweened during proc)
-            int shake_x = slot_x + (int)trinket->shake_offset_x;
-            int shake_y = slot_y + (int)trinket->shake_offset_y;
+                // Background: dark panel color
+                int bg_r = 9, bg_g = 10, bg_b = 20;  // COLOR_PANEL_BG
 
-            // Background
-            a_DrawFilledRect((aRectf_t){shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
-                           (aColor_t){bg_r, bg_g, bg_b, 255});
+                // Hover effect - brighten background slightly
+                if (is_hovered) {
+                    bg_r += 20; bg_g += 20; bg_b += 20;
+                }
 
-            // Border
-            a_DrawRect((aRectf_t){shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
-                      (aColor_t){border_r, border_g, border_b, 255});
+                // Background
+                a_DrawFilledRect((aRectf_t){slot_x, slot_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
+                               (aColor_t){bg_r, bg_g, bg_b, 255});
 
-            // Hover glow effect (subtle overlay)
-            if (is_hovered && is_clickable) {
-                a_DrawFilledRect((aRectf_t){shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
-                               (aColor_t){255, 255, 200, 30});  // Subtle yellow glow
-            }
+                // Rarity-colored double border (like modal)
+                a_DrawRect((aRectf_t){slot_x, slot_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
+                          (aColor_t){rarity_r, rarity_g, rarity_b, 255});
+                a_DrawRect((aRectf_t){slot_x + 1, slot_y + 1, TRINKET_SLOT_SIZE - 2, TRINKET_SLOT_SIZE - 2},
+                          (aColor_t){rarity_r, rarity_g, rarity_b, 255});
 
-            // Draw red flash overlay when trinket procs
-            if (trinket->flash_alpha > 0.0f) {
-                Uint8 flash = (Uint8)trinket->flash_alpha;
-                a_DrawFilledRect((aRectf_t){shake_x, shake_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
-                               (aColor_t){255, 0, 0, flash});
-            }
+                // Hover glow effect (subtle overlay in rarity color)
+                if (is_hovered) {
+                    a_DrawFilledRect((aRectf_t){slot_x, slot_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
+                                   (aColor_t){rarity_r, rarity_g, rarity_b, 30});
+                }
 
-            // Draw trinket name (small, wrapped)
-            const char* trinket_name = GetTrinketName(trinket);
-            aTextStyle_t name_config = {
-                .type = FONT_ENTER_COMMAND,
-                .fg = {255, 255, 255, 255},
-                .align = TEXT_ALIGN_CENTER,
-                .wrap_width = TRINKET_SLOT_SIZE - 4,
-                .scale = 0.5f
-            };
-            a_DrawText((char*)trinket_name,
-                           shake_x + TRINKET_SLOT_SIZE / 2,
-                           shake_y + 6,
-                           name_config);
-
-            // Cooldown overlay (centered countdown)
-            if (on_cooldown) {
-                char cd_text[8];
-                snprintf(cd_text, sizeof(cd_text), "%d", trinket->active_cooldown_current);
-
-                aTextStyle_t cd_config = {
+                // Draw trinket name (small, wrapped)
+                const char* trinket_name = d_StringPeek(template->name);
+                aTextStyle_t name_config = {
                     .type = FONT_ENTER_COMMAND,
-                    .fg = {255, 150, 150, 255},
+                    .fg = {255, 255, 255, 255},
                     .align = TEXT_ALIGN_CENTER,
-                    .wrap_width = 0,
-                    .scale = 1.5f
+                    .wrap_width = TRINKET_SLOT_SIZE - 4,
+                    .scale = 0.5f
                 };
-                a_DrawText(cd_text,
-                               shake_x + TRINKET_SLOT_SIZE / 2,
-                               shake_y + TRINKET_SLOT_SIZE / 2 - 8,
-                               cd_config);
+                a_DrawText((char*)trinket_name,
+                               slot_x + TRINKET_SLOT_SIZE / 2,
+                               slot_y + 6,
+                               name_config);
             }
         } else {
             // Empty slot - draw dimmed border

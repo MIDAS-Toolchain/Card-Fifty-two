@@ -153,6 +153,22 @@ spec17 = importlib.util.spec_from_file_location(
 terminal_architecture = importlib.util.module_from_spec(spec17)
 spec17.loader.exec_module(terminal_architecture)
 
+# FF-018: Interactive Button UX
+spec18 = importlib.util.spec_from_file_location(
+    "interactive_button_ux",
+    Path(__file__).parent / "18_interactive_button_ux.py"
+)
+interactive_button_ux = importlib.util.module_from_spec(spec18)
+spec18.loader.exec_module(interactive_button_ux)
+
+# FF-019: DUF Loader Pattern
+spec19 = importlib.util.spec_from_file_location(
+    "duf_loader_pattern",
+    Path(__file__).parent / "19_duf_loader_pattern.py"
+)
+duf_loader_pattern = importlib.util.module_from_spec(spec19)
+spec19.loader.exec_module(duf_loader_pattern)
+
 def run_fitness_functions() -> List[Tuple[str, bool]]:
     """Run all fitness functions and collect results"""
     results = []
@@ -332,6 +348,26 @@ def run_fitness_functions() -> List[Tuple[str, bool]]:
     except Exception as e:
         print(f"❌ FF-017 crashed: {e}")
         results.append(("FF-017: Terminal Architecture", False))
+
+    print()
+
+    # FF-018: Interactive Button UX
+    try:
+        success = interactive_button_ux.verify_button_ux_consistency(project_root)
+        results.append(("FF-018: Interactive Button UX", success))
+    except Exception as e:
+        print(f"❌ FF-018 crashed: {e}")
+        results.append(("FF-018: Interactive Button UX", False))
+
+    print()
+
+    # FF-019: DUF Loader Pattern
+    try:
+        success = duf_loader_pattern.verify_duf_loader_pattern(project_root)
+        results.append(("FF-019: DUF Loader Pattern", success))
+    except Exception as e:
+        print(f"❌ FF-019 crashed: {e}")
+        results.append(("FF-019: DUF Loader Pattern", False))
 
     print()
 

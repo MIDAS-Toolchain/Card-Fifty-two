@@ -59,7 +59,9 @@ typedef enum {
     STATE_COMBAT_PREVIEW,// Combat preview for elite/boss (no reroll)
     STATE_EVENT_PREVIEW, // Event preview with reroll system
     STATE_EVENT,         // Event encounter (dialogue/choices)
-    STATE_TARGETING      // Trinket active targeting (select card target)
+    STATE_TRINKET_DROP,  // Trinket loot drop (keep/sell choice)
+    STATE_TARGETING,     // Trinket active targeting (select card target)
+    STATE_GAME_OVER      // Player defeated (ran out of chips)
 } GameState_t;
 
 // Player states

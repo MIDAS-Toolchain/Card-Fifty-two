@@ -1,0 +1,23 @@
+# Card Fifty-Two Settings
+# Auto-generated - do not edit while game is running
+
+# Audio Settings
+sound_volume=54
+music_volume=50
+sound_enabled=true
+music_enabled=true
+
+# Gameplay Settings
+show_damage_numbers=true
+auto_advance_dialogue=false
+tutorial_hints=2
+
+# UI Settings
+show_fps=false
+screen_shake=true
+ui_scale=0
+
+# Graphics Settings
+fullscreen=false
+vsync=true
+resolution_index=0

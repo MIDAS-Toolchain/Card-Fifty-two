@@ -12,6 +12,8 @@
 #include "../../include/scenes/components/eventModal.h"
 #include "../../include/scenes/sceneBlackjack.h"  // For GetVisualEffects
 #include "../../include/scenes/components/visualEffects.h"
+#include "../../include/trinketDrop.h"  // For RerollTrinketAffixes
+#include "../../include/loaders/trinketLoader.h"  // For GetTrinketTemplate, CleanupTrinketTemplate
 
 // External globals (from sceneBlackjack.c)
 extern Player_t* g_human_player;
@@ -559,6 +561,185 @@ void CMD_TriggerEvent(Terminal_t* terminal, const char* args) {
 }
 
 // ============================================================================
+// TRINKET DROP TESTING
+// ============================================================================
+
+static void CMD_TestDrop(Terminal_t* terminal, const char* args) {
+    if (!g_human_player) {
+        TerminalPrint(terminal, "[Error] No player found");
+        return;
+    }
+
+    // Parse --no-drop flag
+    bool should_equip = true;
+    if (args && strstr(args, "--no-drop")) {
+        should_equip = false;
+    }
+
+    // Generate test drop (Act 1, normal enemy, pity = 0)
+    TrinketInstance_t test_trinket;
+    int pity = 0;
+    bool success = GenerateTrinketDrop(1, false, &pity, &test_trinket, NULL);  // NULL = no filtering for test command
+
+    if (!success) {
+        TerminalPrint(terminal, "[Error] Failed to generate trinket drop");
+        return;
+    }
+
+    // Display details (enemy pattern: GetTrinketTemplate heap-allocates)
+    if (!test_trinket.base_trinket_key) {
+        d_LogError("CMD_TestDrop: test_trinket.base_trinket_key is NULL!");
+        TerminalPrint(terminal, "[Error] Generated trinket has no base_trinket_key");
+        return;
+    }
+
+    const char* trinket_key_str = d_StringPeek(test_trinket.base_trinket_key);
+    d_LogDebugF("CMD_TestDrop: Looking up template for key '%s'", trinket_key_str ? trinket_key_str : "NULL");
+
+    // Enemy pattern: Loader returns NULL on failure, guaranteed valid if non-NULL
+    const TrinketTemplate_t* template = GetTrinketTemplate(trinket_key_str);
+    if (!template) {
+        d_LogErrorF("CMD_TestDrop: Failed to load trinket template '%s'",
+                   trinket_key_str ? trinket_key_str : "NULL");
+        // Cleanup test trinket instance before early return
+        if (test_trinket.base_trinket_key) d_StringDestroy(test_trinket.base_trinket_key);
+        if (test_trinket.trinket_stack_stat) d_StringDestroy(test_trinket.trinket_stack_stat);
+        for (int i = 0; i < test_trinket.affix_count; i++) {
+            if (test_trinket.affixes[i].stat_key) {
+                d_StringDestroy(test_trinket.affixes[i].stat_key);
+            }
+        }
+        return;
+    }
+
+    // Template is guaranteed valid (loader validates critical fields)
+    TerminalPrint(terminal, "[Drop] %s (Rarity %d, Tier %d)",
+                d_StringPeek(template->name), test_trinket.rarity, test_trinket.tier);
+    TerminalPrint(terminal, "[Drop] Affixes: %d | Sell: %d chips",
+                test_trinket.affix_count, test_trinket.sell_value);
+
+    for (int i = 0; i < test_trinket.affix_count; i++) {
+        if (test_trinket.affixes[i].stat_key) {
+            TerminalPrint(terminal, "  + %s: %d",
+                        d_StringPeek(test_trinket.affixes[i].stat_key),
+                        test_trinket.affixes[i].rolled_value);
+        }
+    }
+
+    // Cleanup heap-allocated template (we only needed it for display)
+    CleanupTrinketTemplate((TrinketTemplate_t*)template);
+    free((void*)template);
+
+    // Add to inventory by default (unless --no-drop flag)
+    if (should_equip) {
+        // Find first empty slot
+        int empty_slot = -1;
+        for (int i = 0; i < 6; i++) {
+            if (!g_human_player->trinket_slots[i].base_trinket_key) {
+                empty_slot = i;
+                break;
+            }
+        }
+
+        if (empty_slot == -1) {
+            TerminalPrint(terminal, "[Error] Inventory full (6/6 trinkets equipped)");
+            TerminalPrint(terminal, "[Hint] Use --no-drop flag to just preview drops");
+            // Cleanup since we can't equip
+            if (test_trinket.base_trinket_key) d_StringDestroy(test_trinket.base_trinket_key);
+            if (test_trinket.trinket_stack_stat) d_StringDestroy(test_trinket.trinket_stack_stat);
+            for (int i = 0; i < test_trinket.affix_count; i++) {
+                if (test_trinket.affixes[i].stat_key) {
+                    d_StringDestroy(test_trinket.affixes[i].stat_key);
+                }
+            }
+            return;
+        }
+
+        // Deep copy trinket instance to player slot (value semantics - ADR-016)
+        // The struct copy handles all primitive fields
+        g_human_player->trinket_slots[empty_slot] = test_trinket;
+
+        // Mark slot as occupied (UI checks this flag)
+        g_human_player->trinket_slot_occupied[empty_slot] = true;
+
+        // Player slot now owns the dStrings - DON'T cleanup test_trinket!
+        // (test_trinket.base_trinket_key, etc. are now in player slot)
+
+        TerminalPrint(terminal, "[Success] Equipped to slot %d", empty_slot);
+        d_LogInfoF("CMD_TestDrop: Trinket equipped to player slot %d", empty_slot);
+        return;
+    }
+
+    // If --no-drop, just cleanup (print-only mode)
+    if (test_trinket.base_trinket_key) d_StringDestroy(test_trinket.base_trinket_key);
+    if (test_trinket.trinket_stack_stat) d_StringDestroy(test_trinket.trinket_stack_stat);
+    for (int i = 0; i < test_trinket.affix_count; i++) {
+        if (test_trinket.affixes[i].stat_key) {
+            d_StringDestroy(test_trinket.affixes[i].stat_key);
+        }
+    }
+}
+
+// ============================================================================
+// TRINKET REROLL
+// ============================================================================
+
+static void CMD_RerollTrinket(Terminal_t* terminal, const char* args) {
+    if (!g_human_player) {
+        TerminalPrint(terminal, "[Error] No player found");
+        return;
+    }
+
+    if (!args || strlen(args) == 0) {
+        TerminalPrint(terminal, "[Error] Usage: reroll_trinket <slot_index>");
+        TerminalPrint(terminal, "[Error] slot_index = 0-5 (trinket bar position)");
+        return;
+    }
+
+    int slot_index = atoi(args);
+    if (slot_index < 0 || slot_index >= 6) {
+        TerminalPrint(terminal, "[Error] Invalid slot index (must be 0-5)");
+        return;
+    }
+
+    if (!g_human_player->trinket_slot_occupied[slot_index]) {
+        TerminalPrint(terminal, "[Error] Slot %d is empty", slot_index);
+        return;
+    }
+
+    TrinketInstance_t* trinket = &g_human_player->trinket_slots[slot_index];
+
+    // Store old affixes for comparison
+    int old_affix_count = trinket->affix_count;
+    TerminalPrint(terminal, "[Reroll] Before: %d affixes", old_affix_count);
+    for (int i = 0; i < old_affix_count; i++) {
+        if (trinket->affixes[i].stat_key) {
+            TerminalPrint(terminal, "  - %s: %d",
+                        d_StringPeek(trinket->affixes[i].stat_key),
+                        trinket->affixes[i].rolled_value);
+        }
+    }
+
+    // Reroll affixes
+    RerollTrinketAffixes(trinket);
+
+    // Show new affixes
+    TerminalPrint(terminal, "[Reroll] After: %d affixes", trinket->affix_count);
+    for (int i = 0; i < trinket->affix_count; i++) {
+        if (trinket->affixes[i].stat_key) {
+            TerminalPrint(terminal, "  + %s: %d",
+                        d_StringPeek(trinket->affixes[i].stat_key),
+                        trinket->affixes[i].rolled_value);
+        }
+    }
+
+    TerminalPrint(terminal, "[Reroll] New sell value: %d chips", trinket->sell_value);
+
+    // Mark combat stats dirty to recalculate with new affixes
+    g_human_player->combat_stats_dirty = true;
+}
+
+// ============================================================================
 // COMMAND REGISTRATION
 // ============================================================================
 
@@ -574,4 +755,6 @@ void RegisterBuiltinCommands(Terminal_t* terminal) {
     RegisterCommand(terminal, "add_tag", CMD_AddTag, "Add tag to card(s) by ID or 'all'", NULL);
     RegisterCommand(terminal, "apply_status", CMD_ApplyStatus, "Apply status effect to player", SuggestStatusEffects);
     RegisterCommand(terminal, "trigger_event", CMD_TriggerEvent, "Trigger specific event by name", SuggestEventNames);
+    RegisterCommand(terminal, "test_drop", CMD_TestDrop, "Generate trinket drop, equip to inventory (use --no-drop to preview only)", NULL);
+    RegisterCommand(terminal, "reroll_trinket", CMD_RerollTrinket, "Reroll affixes on equipped trinket (0-5)", NULL);
 }

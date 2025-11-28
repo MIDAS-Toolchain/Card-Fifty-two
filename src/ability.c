@@ -95,6 +95,26 @@ void DestroyAbility(Ability_t** ability) {
     *ability = NULL;
 }
 
+/**
+ * AddEffect - Add effect to ability
+ *
+ * @param ability - Ability to add effect to
+ * @param effect - Effect to add (copied by value into ability->effects array)
+ *
+ * OWNERSHIP: This function TAKES OWNERSHIP of effect->message (if non-NULL).
+ * - effect struct is copied by value into dArray_t
+ * - effect.message pointer is copied (shallow copy), making ability the new owner
+ * - Caller MUST NOT free effect.message after calling this function
+ * - DestroyAbility() will free all effect messages when ability is destroyed
+ *
+ * Example (correct usage):
+ *   AbilityEffect_t effect = {0};
+ *   effect.type = EFFECT_MESSAGE;
+ *   effect.message = d_StringInit();
+ *   d_StringSet(effect.message, "Hello", 0);
+ *   AddEffect(ability, &effect);  // Transfers ownership of effect.message
+ *   // DO NOT: d_StringDestroy(effect.message);  ❌ Double-free!
+ */
 void AddEffect(Ability_t* ability, const AbilityEffect_t* effect) {
     if (!ability || !effect) {
         d_LogError("AddEffect: NULL parameters");

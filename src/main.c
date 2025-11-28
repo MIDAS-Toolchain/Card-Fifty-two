@@ -10,7 +10,11 @@
 #include "cardTags.h"
 #include "trinket.h"
 #include "stats.h"
+#include "settings.h"
 #include "scenes/sceneMenu.h"
+#include "loaders/enemyLoader.h"
+#include "loaders/affixLoader.h"
+#include "loaders/trinketLoader.h"
 
 // ============================================================================
 // GLOBAL VARIABLES
@@ -28,15 +32,18 @@ dTable_t* g_portraits = NULL;
 // Card back surface (defined in common.h, declared here)
 SDL_Surface* g_card_back_texture = NULL;
 
-// Sound effects (defined in common.h, declared here)
-aAudioClip_t g_push_chips_sound;
-aAudioClip_t g_victory_sound;
-
 // Ability icon textures (defined in common.h, declared here)
 dTable_t* g_ability_icons = NULL;
 
 // Enemy database (defined in common.h, declared here)
 dDUFValue_t* g_enemies_db = NULL;
+
+// Global settings (defined in common.h, declared here)
+struct Settings_t* g_settings = NULL;
+
+// UI sound effects (defined in common.h, declared here)
+aAudioClip_t g_ui_hover_sound;
+aAudioClip_t g_ui_click_sound;
 
 // Test deck (for demonstration)
 // Constitutional pattern: Deck_t is value type, not pointer
@@ -147,11 +154,6 @@ void Initialize(void) {
         d_LogInfo("Card back surface loaded");
     }
 
-    // Load sound effects
-    a_LoadSounds("resources/audio/sound_effects/push_chips.wav", &g_push_chips_sound);
-    a_LoadSounds("resources/audio/sound_effects/victory_sound.wav", &g_victory_sound);
-    d_LogInfo("Sound effects loaded");
-
     // Load 52 card face surfaces from PNG files (0.png - 51.png)
     // Card ID mapping: 0-12 Hearts, 13-25 Diamonds, 26-38 Spades, 39-51 Clubs
     for (int card_id = 0; card_id < 52; card_id++) {
@@ -179,16 +181,140 @@ void Initialize(void) {
     // Initialize global stats system
     Stats_Init();
 
+    // Initialize global settings (load from settings.duf or use defaults)
+    g_settings = Settings_Init();
+    Settings_Load(g_settings);
+    Settings_Apply(g_settings);  // Apply audio volume settings
+    d_LogInfo("Global settings initialized and applied");
+
+    // Load UI sound effects
+    a_LoadSounds("resources/audio/effects/ui/hover_button.wav", &g_ui_hover_sound);
+    a_LoadSounds("resources/audio/effects/ui/click_button.wav", &g_ui_click_sound);
+    d_LogInfo("UI sound effects loaded");
+
     // Load enemy database from DUF
     dDUFError_t* err = d_DUFParseFile("data/enemies/tutorial_enemies.duf", &g_enemies_db);
     if (err != NULL) {
         d_LogErrorF("Failed to parse enemy database at %d:%d - %s",
                    err->line, err->column, d_StringPeek(err->message));
+
+        // Show OS error dialog
+        char error_buf[512];
+        snprintf(error_buf, sizeof(error_buf),
+                "DUF Parse Error\n\nFile: data/enemies/tutorial_enemies.duf\nLine %d, Column %d\n\n%s",
+                err->line, err->column, d_StringPeek(err->message));
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", error_buf, NULL);
+
         d_DUFErrorFree(err);
         a_Quit();
         exit(1);
     }
     d_LogInfo("Enemy database loaded successfully");
+
+    // Validate all enemies in database (checks schema, required fields, enums)
+    char validation_error[1024];
+    if (!ValidateEnemyDatabase(g_enemies_db, validation_error, sizeof(validation_error))) {
+        d_LogError("Enemy database validation failed!");
+
+        // Show OS error dialog with validation details
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", validation_error, NULL);
+
+        a_Quit();
+        exit(1);
+    }
+
+    // Load affix database from DUF
+    err = LoadAffixDatabase("data/affixes/combat_affixes.duf", &g_affixes_db);
+    if (err != NULL) {
+        d_LogErrorF("Failed to parse affix database at %d:%d - %s",
+                   err->line, err->column, d_StringPeek(err->message));
+
+        char error_buf[512];
+        snprintf(error_buf, sizeof(error_buf),
+                "Affix DUF Parse Error\n\nFile: combat_affixes.duf\nLine %d, Column %d\n\n%s",
+                err->line, err->column, d_StringPeek(err->message));
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", error_buf, NULL);
+
+        d_DUFErrorFree(err);
+        a_Quit();
+        exit(1);
+    }
+
+    // Validate affix database
+    if (!ValidateAffixDatabase(g_affixes_db, validation_error, sizeof(validation_error))) {
+        d_LogError("Affix database validation failed!");
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", validation_error, NULL);
+        a_Quit();
+        exit(1);
+    }
+
+    // Enemy pattern: Affixes parsed on-demand, no table population needed
+    d_LogInfo("Affix database loaded successfully (will parse on-demand)");
+
+    // Load combat trinket database from DUF
+    dDUFValue_t* combat_trinkets_db = NULL;
+    err = LoadTrinketDatabase("data/trinkets/combat_trinkets.duf", &combat_trinkets_db);
+    if (err != NULL) {
+        d_LogErrorF("Failed to parse combat trinket database at %d:%d - %s",
+                   err->line, err->column, d_StringPeek(err->message));
+
+        char error_buf[512];
+        snprintf(error_buf, sizeof(error_buf),
+                "Trinket DUF Parse Error\n\nFile: combat_trinkets.duf\nLine %d, Column %d\n\n%s",
+                err->line, err->column, d_StringPeek(err->message));
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", error_buf, NULL);
+
+        d_DUFErrorFree(err);
+        a_Quit();
+        exit(1);
+    }
+
+    // Validate combat trinket database
+    if (!ValidateTrinketDatabase(combat_trinkets_db, validation_error, sizeof(validation_error))) {
+        d_LogError("Combat trinket database validation failed!");
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", validation_error, NULL);
+        a_Quit();
+        exit(1);
+    }
+
+    // Load event trinket database from DUF
+    dDUFValue_t* event_trinkets_db = NULL;
+    err = LoadTrinketDatabase("data/trinkets/event_trinkets.duf", &event_trinkets_db);
+    if (err != NULL) {
+        d_LogErrorF("Failed to parse event trinket database at %d:%d - %s",
+                   err->line, err->column, d_StringPeek(err->message));
+
+        char error_buf[512];
+        snprintf(error_buf, sizeof(error_buf),
+                "Trinket DUF Parse Error\n\nFile: event_trinkets.duf\nLine %d, Column %d\n\n%s",
+                err->line, err->column, d_StringPeek(err->message));
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", error_buf, NULL);
+
+        d_DUFErrorFree(err);
+        a_Quit();
+        exit(1);
+    }
+
+    // Validate event trinket database
+    if (!ValidateTrinketDatabase(event_trinkets_db, validation_error, sizeof(validation_error))) {
+        d_LogError("Event trinket database validation failed!");
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", validation_error, NULL);
+        a_Quit();
+        exit(1);
+    }
+
+    // Store combat DUF reference first (needed for on-demand loading)
+    g_trinkets_db = combat_trinkets_db;
+
+    // Merge both trinket databases into key cache
+    if (!MergeTrinketDatabases(combat_trinkets_db, event_trinkets_db)) {
+        d_LogFatal("Failed to populate trinket templates");
+        a_Quit();
+        exit(1);
+    }
+
+    // DUF validation already completed in ValidateTrinketDUF()
+    d_LogInfo("✓ Trinket DUF loading validated successfully");
 
     d_LogInfo("Global tables initialized");
     d_LogInfoF("Screen size: %dx%d", SCREEN_WIDTH, SCREEN_HEIGHT);
@@ -206,6 +332,12 @@ void Cleanup(void) {
         d_TableDestroy(&g_players);
         d_LogInfo("Player registry destroyed");
     }
+
+    // Cleanup trinket loader system (frees g_trinket_key_cache, DUF trees)
+    CleanupTrinketLoaderSystem();
+
+    // Cleanup affix system (frees g_affixes_db DUF tree - enemy pattern)
+    CleanupAffixSystem();
 
     // Free enemy database
     if (g_enemies_db) {
@@ -282,6 +414,13 @@ void Cleanup(void) {
 
     // Cleanup card metadata system (ADR-14: initialized first, destroyed last)
     CleanupCardMetadata();
+
+    // Save and destroy global settings
+    if (g_settings) {
+        Settings_Save(g_settings);
+        Settings_Destroy(&g_settings);
+        d_LogInfo("Settings saved and destroyed");
+    }
 
     // Quit Archimedes
     a_Quit();

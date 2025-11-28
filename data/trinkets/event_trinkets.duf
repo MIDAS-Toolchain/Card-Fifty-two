@@ -1,0 +1,34 @@
+# Event Trinkets - Exclusive to event encounters, not combat drops
+# These trinkets are awarded through events like House Odds, System Maintenance
+
+@elite_membership {
+    name: "Elite Membership"
+    rarity: "event"
+    base_value: 75
+    flavor: "The house always wins... except for you."
+
+    # On win: +20% chip bonus
+    passive_trigger: "PLAYER_WIN"
+    passive_effect_type: "add_chips"
+    passive_effect_value: 20
+
+    # On loss: refund 20% of bet
+    passive_trigger_2: "PLAYER_LOSS"
+    passive_effect_type_2: "refund_chips_percent"
+    passive_effect_value_2: 20
+}
+
+@stack_trace {
+    name: "Stack Trace"
+    rarity: "event"
+    base_value: 75
+    flavor: "Every error makes you stronger."
+
+    # On combat start: +1 stack
+    # Each stack = +3% damage, max 20 stacks (60% total)
+    passive_trigger: "COMBAT_START"
+    passive_effect_type: "trinket_stack"
+    passive_stack_stat: "damage_bonus_percent"
+    passive_stack_value: 3
+    passive_stack_max: 20
+}

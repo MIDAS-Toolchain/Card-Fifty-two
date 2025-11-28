@@ -7,7 +7,10 @@
 #include "player.h"
 #include "deck.h"
 #include "random.h"
-#include "trinket.h"  // For trinket reward system
+#include "trinket.h"  // For old trinket system (deprecated)
+#include "loaders/trinketLoader.h"  // For new DUF trinket system
+#include "trinketDrop.h"  // For RollAffixes()
+#include <string.h>
 
 // ============================================================================
 // INTERNAL HELPERS
@@ -148,8 +151,8 @@ void AddEventChoice(EventEncounter_t* event, const char* text, const char* resul
     // Initialize enemy modifiers to defaults
     choice.enemy_hp_multiplier = 1.0f;  // Normal HP (no modification)
 
-    // Initialize trinket reward to none
-    choice.trinket_reward_id = -1;  // -1 = no trinket reward
+    // Initialize trinket reward to none (empty string = no trinket)
+    choice.trinket_reward_key[0] = '\0';
 
     if (!choice.text || !choice.result_text || !choice.granted_tags ||
         !choice.tag_target_strategies || !choice.removed_tags) {
@@ -210,20 +213,22 @@ void SetChoiceRequirement(EventEncounter_t* event, int choice_index, ChoiceRequi
     d_LogInfoF("Choice %d: Set requirement (type: %d)", choice_index, requirement.type);
 }
 
-void SetChoiceTrinketReward(EventEncounter_t* event, int choice_index, int trinket_id) {
+void SetChoiceTrinketReward(EventEncounter_t* event, int choice_index, const char* trinket_key) {
     if (!event || choice_index < 0 || (size_t)choice_index >= event->choices->count) {
         d_LogError("SetChoiceTrinketReward: Invalid event or choice_index");
         return;
     }
 
-    if (trinket_id < 0) {
-        d_LogWarning("SetChoiceTrinketReward: Negative trinket_id (use -1 for no reward)");
+    if (!trinket_key) {
+        d_LogWarning("SetChoiceTrinketReward: NULL trinket_key (use \"\" for no reward)");
+        trinket_key = "";
     }
 
     EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(event->choices, choice_index);
-    choice->trinket_reward_id = trinket_id;
+    strncpy(choice->trinket_reward_key, trinket_key, sizeof(choice->trinket_reward_key) - 1);
+    choice->trinket_reward_key[sizeof(choice->trinket_reward_key) - 1] = '\0';
 
-    d_LogInfoF("Choice %d: Set trinket reward (ID: %d)", choice_index, trinket_id);
+    d_LogInfoF("Choice %d: Set trinket reward (key: '%s')", choice_index, trinket_key);
 }
 
 void SetChoiceEnemyHPMultiplier(EventEncounter_t* event, int choice_index, float multiplier) {
@@ -279,6 +284,78 @@ int GetChoiceCount(const EventEncounter_t* event) {
 // ============================================================================
 // CONSEQUENCE APPLICATION
 // ============================================================================
+
+/**
+ * EquipEventTrinket - Equip trinket from DUF to player slot
+ *
+ * @param player - Player to equip trinket to
+ * @param trinket_key - Trinket key from DUF (e.g., "elite_membership", "stack_trace")
+ * @param slot_index - Slot index (0-5)
+ * @return bool - true on success, false on failure
+ *
+ * Loads template from DUF, creates TrinketInstance_t reference without affixes (event trinkets are special).
+ * Instance stores trinket_key reference to template, not full template data.
+ */
+static bool EquipEventTrinket(Player_t* player, const char* trinket_key, int slot_index) {
+    if (!player || !trinket_key || slot_index < 0 || slot_index >= 6) {
+        d_LogError("EquipEventTrinket: Invalid parameters");
+        return false;
+    }
+
+    // Verify template exists in DUF (heap-allocated, must free after use)
+    TrinketTemplate_t* template = GetTrinketTemplate(trinket_key);
+    if (!template) {
+        d_LogErrorF("EquipEventTrinket: Trinket key '%s' not found in DUF database", trinket_key);
+        return false;
+    }
+
+    // Get pointer to player's trinket slot (static array of TrinketInstance_t values)
+    TrinketInstance_t* dest = &player->trinket_slots[slot_index];
+
+    // Initialize instance with template reference
+    // TrinketInstance_t only stores key reference, not full template data
+    if (!dest->base_trinket_key) dest->base_trinket_key = d_StringInit();
+    d_StringSet(dest->base_trinket_key, trinket_key, 0);
+
+    dest->rarity = template->rarity;
+    dest->tier = 1;  // Event trinkets default to tier 1
+    dest->sell_value = template->base_value;
+
+    // Roll affixes (tier 1 for tutorial events)
+    RollAffixes(1, template->rarity, dest);
+
+    // Copy trinket stack data (for Stack Trace: passive_stack_stat, passive_stack_value, passive_stack_max)
+    dest->trinket_stack_max = template->passive_stack_max;
+    dest->trinket_stack_value = template->passive_stack_value;
+    if (template->passive_stack_stat) {
+        if (!dest->trinket_stack_stat) dest->trinket_stack_stat = d_StringInit();
+        d_StringSet(dest->trinket_stack_stat, d_StringPeek(template->passive_stack_stat), 0);
+    }
+
+    // Initialize runtime state
+    dest->trinket_stacks = 0;  // Start with 0 stacks (builds over time)
+    dest->total_damage_dealt = 0;
+    dest->total_bonus_chips = 0;
+    dest->total_refunded_chips = 0;
+    dest->buffed_tag = -1;  // No tag buffed
+    dest->tag_buff_value = 0;
+
+    // Animation state
+    dest->shake_offset_x = 0.0f;
+    dest->shake_offset_y = 0.0f;
+    dest->flash_alpha = 0.0f;
+
+    // Mark slot as occupied
+    player->trinket_slot_occupied[slot_index] = true;
+    player->combat_stats_dirty = true;
+
+    // Cleanup template (was heap-allocated)
+    CleanupTrinketTemplate(template);
+    free(template);
+
+    d_LogInfoF("Equipped event trinket '%s' to slot %d", trinket_key, slot_index);
+    return true;
+}
 
 void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* deck) {
     if (!event || !player || !deck) {
@@ -474,20 +551,26 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
         d_LogInfoF("Removed tag %s from all cards", GetCardTagName(*tag));
     }
 
-    // Apply trinket reward
-    if (choice->trinket_reward_id >= 0) {
-        Trinket_t* trinket = GetTrinketByID(choice->trinket_reward_id);
-        if (trinket) {
-            int empty_slot = GetEmptyTrinketSlot(player);
-            if (empty_slot >= 0) {
-                EquipTrinket(player, empty_slot, trinket);
-                d_LogInfoF("Granted trinket: %s (slot %d)", GetTrinketName(trinket), empty_slot);
+    // Apply trinket reward (DUF-based system)
+    if (choice->trinket_reward_key[0] != '\0') {
+        // Find first empty slot
+        int empty_slot = -1;
+        for (int i = 0; i < 6; i++) {
+            if (!player->trinket_slot_occupied[i]) {
+                empty_slot = i;
+                break;
+            }
+        }
+
+        if (empty_slot >= 0) {
+            if (EquipEventTrinket(player, choice->trinket_reward_key, empty_slot)) {
+                d_LogInfoF("Granted event trinket '%s' to slot %d", choice->trinket_reward_key, empty_slot);
             } else {
-                d_LogWarning("No empty trinket slot - trinket reward lost!");
-                // TODO: Show modal to player: "Inventory full - trinket lost"
+                d_LogErrorF("Failed to equip event trinket '%s'", choice->trinket_reward_key);
             }
         } else {
-            d_LogErrorF("Trinket reward ID %d not found in registry", choice->trinket_reward_id);
+            d_LogWarning("No empty trinket slot - trinket reward lost!");
+            // TODO: Show modal to player: "Inventory full - trinket lost"
         }
     }
 
@@ -703,7 +786,7 @@ EventEncounter_t* CreateSystemMaintenanceEvent(void) {
                    "a trace. Now you can read them.",
                    0,    // No chips
                    -10); // -10 sanity
-    SetChoiceTrinketReward(event, 0, 2);  // Grant Stack Trace (trinket_id = 2)
+    SetChoiceTrinketReward(event, 0, "stack_trace");  // Grant Stack Trace from event_trinkets.duf
 
     // Choice B: Walk away (+20 chips, 3 random cards CURSED)
     AddEventChoice(event,
@@ -771,8 +854,8 @@ EventEncounter_t* CreateHouseOddsEvent(void) {
                    "but the Daemon has been enhanced to match.",
                    0,  // No chips (rewards come later via trinket)
                    0); // No sanity change
-    // Grant Elite Membership trinket (ID 1)
-    SetChoiceTrinketReward(event, 0, 1);
+    // Grant Elite Membership trinket from event_trinkets.duf
+    SetChoiceTrinketReward(event, 0, "elite_membership");
     // Set enemy HP multiplier: Daemon starts at 130% HP
     SetChoiceEnemyHPMultiplier(event, 0, 1.3f);
 

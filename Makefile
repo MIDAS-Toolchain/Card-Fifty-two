@@ -3,7 +3,7 @@
 
 # Compiler settings
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -O2
+CFLAGS = -Wall -Wextra -std=c11 -O2 -g
 DEBUG_FLAGS = -g -O0 -DDEBUG
 
 # Directories

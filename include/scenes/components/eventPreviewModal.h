@@ -27,6 +27,7 @@
  */
 typedef struct EventPreviewModal {
     bool is_visible;              // true = shown, false = hidden
+    char header_title[64];        // Random header (e.g., "DECISION TIME")
     char event_title[128];        // Event title text (static buffer)
     float title_alpha;            // 0.0 → 1.0 fade animation
     Button_t* reroll_button;      // "Reroll (50 chips)" button

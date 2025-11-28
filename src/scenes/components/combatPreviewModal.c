@@ -5,7 +5,22 @@
 
 #include "../../../include/scenes/components/combatPreviewModal.h"
 #include "../../../include/scenes/sceneBlackjack.h"
+#include "../../../include/random.h"
 #include <stdio.h>
+
+// ============================================================================
+// RANDOM HEADER TITLES
+// ============================================================================
+
+static const char* COMBAT_HEADERS[] = {
+    "COMBAT AHEAD",
+    "PREPARE FOR BATTLE",
+    "HOSTILE DETECTED",
+    "BRACE YOURSELF",
+    "THREAT APPROACHING"
+};
+
+#define COMBAT_HEADER_COUNT 5
 
 // ============================================================================
 // LIFECYCLE
@@ -73,7 +88,13 @@ void ShowCombatPreviewModal(CombatPreviewModal_t* modal) {
     if (!modal) return;
     modal->is_visible = true;
     modal->title_alpha = 0.0f;  // Start fade animation
-    d_LogInfo("CombatPreviewModal shown");
+
+    // Randomly select header title
+    int header_index = GetRandomInt(0, COMBAT_HEADER_COUNT - 1);
+    strncpy(modal->header_title, COMBAT_HEADERS[header_index], sizeof(modal->header_title) - 1);
+    modal->header_title[sizeof(modal->header_title) - 1] = '\0';
+
+    d_LogInfoF("CombatPreviewModal shown with header: '%s'", modal->header_title);
 }
 
 void HideCombatPreviewModal(CombatPreviewModal_t* modal) {
@@ -133,6 +154,16 @@ void RenderCombatPreviewModal(const CombatPreviewModal_t* modal, const GameConte
     // Draw dark overlay (full screen, 70% opacity)
     a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 178});  // 178 = 0.7 * 255
 
+    // Draw random header title (top, large, dark gray)
+    aTextStyle_t header_config = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = {255, 255, 255, 200},  
+        .align = TEXT_ALIGN_CENTER,
+        .wrap_width = 0,
+        .scale = 2.0f  // Larger for emphasis
+    };
+    a_DrawText(modal->header_title, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 216, header_config);
+
     // Build title string: "{Type} - {Name}" (e.g., "Elite Combat - The Daemon")
     char title[128];
     snprintf(title, sizeof(title), "%s - %s", modal->encounter_type, modal->enemy_name);
@@ -140,7 +171,7 @@ void RenderCombatPreviewModal(const CombatPreviewModal_t* modal, const GameConte
     // Draw centered combat title with fade
     aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
-        .fg = {255, 255, 255, (Uint8)(modal->title_alpha * 255)},  // White with fade
+        .fg = {255, 255, 255, 200}, 
         .align = TEXT_ALIGN_CENTER,
         .wrap_width = 800,  // Wrap long titles
         .scale = 1.5f       // Larger text for emphasis

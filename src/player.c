@@ -5,6 +5,7 @@
 
 #include "player.h"
 #include "trinket.h"
+#include "trinketStats.h"
 #include "statusEffects.h"
 #include "stats.h"
 #include "scenes/sceneBlackjack.h"
@@ -66,24 +67,14 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
     player.has_class_trinket = false;  // No class trinket until class is set
     memset(&player.class_trinket, 0, sizeof(Trinket_t));  // Zero-initialize embedded value
 
-    // Initialize trinket slots (Constitutional: dArray_t* of Trinket_t VALUES, 6 slots)
-    // d_ArrayInit(capacity, element_size) - capacity FIRST!
-    player.trinket_slots = d_ArrayInit(6, sizeof(Trinket_t));  // Array of VALUES (not pointers!)
-    if (!player.trinket_slots) {
-        d_LogError("CreatePlayer: Failed to create trinket slots");
-        d_StringDestroy(player.name);
-        CleanupHand(&player.hand);
-        DestroyStatusEffectManager(&player.status_effects);
-        return false;
-    }
-
-    // Pre-populate with 6 empty trinket values (creates count=6, all slots zeroed)
-    Trinket_t empty_trinket = {0};
+    // Initialize trinket slots (Constitutional: fixed array of TrinketInstance_t, 6 slots)
+    // Zero-initialize all slots and mark as unoccupied
+    memset(player.trinket_slots, 0, sizeof(player.trinket_slots));
     for (int i = 0; i < 6; i++) {
-        d_ArrayAppend(player.trinket_slots, &empty_trinket);
+        player.trinket_slot_occupied[i] = false;
     }
 
-    d_LogInfoF("Initialized %d trinket slots for player", (int)player.trinket_slots->count);
+    d_LogInfo("Initialized 6 trinket instance slots for player");
 
     // Initialize combat stats (ADR-09: Dirty-flag aggregation)
     player.damage_flat = 0;
@@ -153,24 +144,30 @@ void DestroyPlayer(int player_id) {
         player->has_class_trinket = false;
     }
 
-    // Cleanup trinket slots (Constitutional: cleanup each VALUE, then destroy array)
-    // ADR-14: Reverse-order cleanup - free dStrings inside values, then free array
-    d_LogDebug("DestroyPlayer: Cleaning up trinket slots");
-    if (player->trinket_slots) {
-        // Iterate through all slots and cleanup internal dStrings
-        for (size_t i = 0; i < player->trinket_slots->count; i++) {
-            Trinket_t* trinket = (Trinket_t*)d_ArrayGet(player->trinket_slots, i);
-            if (trinket && trinket->trinket_id != 0) {  // Non-empty slot (ID 0 is valid, but empty slots are all-zero)
-                // Check if trinket has allocated dStrings (name != NULL means it's a real trinket)
-                if (trinket->name) {
-                    CleanupTrinketValue(trinket);
+    // Cleanup trinket instance slots (Constitutional: cleanup each instance's dStrings)
+    // TrinketInstance_t contains dString_t* fields that need cleanup
+    d_LogDebug("DestroyPlayer: Cleaning up trinket instance slots");
+    for (int i = 0; i < 6; i++) {
+        if (player->trinket_slot_occupied[i]) {
+            TrinketInstance_t* instance = &player->trinket_slots[i];
+            // Free internal dString_t fields
+            if (instance->base_trinket_key) {
+                d_StringDestroy(instance->base_trinket_key);
+                instance->base_trinket_key = NULL;
+            }
+            if (instance->trinket_stack_stat) {
+                d_StringDestroy(instance->trinket_stack_stat);
+                instance->trinket_stack_stat = NULL;
+            }
+            // Free affix stat keys
+            for (int j = 0; j < instance->affix_count; j++) {
+                if (instance->affixes[j].stat_key) {
+                    d_StringDestroy(instance->affixes[j].stat_key);
+                    instance->affixes[j].stat_key = NULL;
                 }
             }
+            player->trinket_slot_occupied[i] = false;
         }
-
-        // Now destroy the array itself (Daedalus frees the Trinket_t values)
-        d_ArrayDestroy(player->trinket_slots);
-        player->trinket_slots = NULL;
     }
 
     // Remove from global players table (Daedalus frees the Player_t value)
@@ -257,6 +254,13 @@ void LoseBet(Player_t* player) {
 
     // Deduct bet from chips (happens at round resolution, not at bet time)
     player->chips -= player->current_bet;
+
+    // CLAMP TO 0 (prevent negative chips)
+    if (player->chips < 0) {
+        player->chips = 0;
+        d_LogWarning("Player chips clamped to 0 (would have gone negative)");
+    }
+
     Stats_UpdateChipsPeak(player->chips);
 
     d_LogInfoF("%s lost bet: %d (chips remaining: %d)",
@@ -487,15 +491,20 @@ void CalculatePlayerCombatStats(Player_t* player) {
         }
     }
 
-    // Apply bonuses
+    // Apply bonuses from card tags
     player->crit_chance = lucky_count * 10;      // +10% per LUCKY card
     player->damage_percent = brutal_count * 10;  // +10% per BRUTAL card
+
+    d_LogInfoF("Card tag bonuses: damage_percent=%d%%, crit_chance=%d%% (LUCKY=%d, BRUTAL=%d)",
+               player->damage_percent, player->crit_chance, lucky_count, brutal_count);
+
+    // Apply trinket affixes and stack bonuses (additive with card tags)
+    AggregateTrinketStats(player);
 
     // Clear dirty flag
     player->combat_stats_dirty = false;
 
-    d_LogInfoF("Combat stats recalculated: damage_percent=%d%%, crit_chance=%d%% (LUCKY=%d, BRUTAL=%d) [GLOBAL SCAN]",
-               player->damage_percent, player->crit_chance, lucky_count, brutal_count);
+    d_LogInfo("Combat stats recalculation complete");
 }
 
 bool RollForCrit(Player_t* player, int base_damage, int* out_damage) {

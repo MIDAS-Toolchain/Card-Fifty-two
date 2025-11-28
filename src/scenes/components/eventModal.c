@@ -9,6 +9,7 @@
 #include "../../../include/event.h"
 #include "../../../include/player.h"
 #include "../../../include/trinket.h"
+#include "../../../include/loaders/trinketLoader.h"  // For GetTrinketTemplate
 #include "../../../include/tween/tween.h"
 #include <stdio.h>
 #include <string.h>
@@ -175,16 +176,26 @@ static int GenerateChoiceTooltipLines(const EventChoice_t* choice, TooltipLine_t
         count++;
     }
 
-    // Trinket reward
-    if (choice->trinket_reward_id >= 0 && count < max_lines) {
-        Trinket_t* trinket = GetTrinketByID(choice->trinket_reward_id);
-        if (trinket && trinket->name) {
-            snprintf(lines[count].text, sizeof(lines[count].text), "Trinket: %s", d_StringPeek(trinket->name));
+    // Trinket reward (just name - affixes will be shown when we implement pre-rolling)
+    if (choice->trinket_reward_key[0] != '\0' && count < max_lines) {
+        // Load template to get display name
+        TrinketTemplate_t* template = GetTrinketTemplate(choice->trinket_reward_key);
+        if (template && template->name) {
+            snprintf(lines[count].text, sizeof(lines[count].text), "Trinket: %s", d_StringPeek(template->name));
+            lines[count].sentiment = TOOLTIP_LINE_POSITIVE;
+            count++;
+
+            // NOTE: Affixes are rolled when trinket is equipped (not pre-shown in tooltip yet)
+            // TODO: Pre-roll affixes when event modal opens, store in EventChoice_t, display here
+
+            CleanupTrinketTemplate(template);
+            free(template);
         } else {
-            snprintf(lines[count].text, sizeof(lines[count].text), "Trinket (ID: %d)", choice->trinket_reward_id);
+            // Fallback if template not found
+            snprintf(lines[count].text, sizeof(lines[count].text), "Trinket: %s", choice->trinket_reward_key);
+            lines[count].sentiment = TOOLTIP_LINE_POSITIVE;
+            count++;
         }
-        lines[count].sentiment = TOOLTIP_LINE_POSITIVE;
-        count++;
     }
 
     return count;

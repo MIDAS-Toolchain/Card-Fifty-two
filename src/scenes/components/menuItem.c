@@ -37,6 +37,7 @@ MenuItem_t* CreateMenuItem(int x, int y, int w, int h, const char* label) {
     item->is_hovered = false;
     item->enabled = true;
     item->was_clicked = false;
+    item->prev_hovered = false;
     item->user_data = NULL;
 
     // Set label using strncpy
@@ -128,6 +129,12 @@ bool IsMenuItemClicked(MenuItem_t* item) {
 
     bool hovered = IsMenuItemHovered(item);
 
+    // Play hover sound when mouse enters (hover state changes from false to true)
+    if (hovered && !item->prev_hovered) {
+        a_AudioPlayEffect(&g_ui_hover_sound);
+    }
+    item->prev_hovered = hovered;
+
     // Press started
     if (app.mouse.pressed && hovered && !item->was_clicked) {
         item->was_clicked = true;
@@ -137,6 +144,7 @@ bool IsMenuItemClicked(MenuItem_t* item) {
     // Press released (click complete)
     if (!app.mouse.pressed && item->was_clicked && hovered) {
         item->was_clicked = false;
+        a_AudioPlayEffect(&g_ui_click_sound);  // Play click sound
         return true;  // Click completed!
     }
 

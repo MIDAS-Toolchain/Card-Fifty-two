@@ -10,12 +10,17 @@
 #include "../include/trinkets/stackTrace.h"
 #include "../include/scenes/sceneBlackjack.h"  // For GetTweenManager
 #include "../include/tween/tween.h"            // For TweenFloat, TWEEN_EASE_*
+#include "../include/trinketEffects.h"         // For ExecuteTrinketEffect
+#include "../include/loaders/trinketLoader.h"  // For GetTrinketTemplate
+#include "../include/game.h"                   // For GameEventToString
 #include <stdlib.h>
 
 // ============================================================================
-// GLOBAL REGISTRY
+// GLOBAL REGISTRY (OLD system - hardcoded class trinkets)
 // ============================================================================
 
+// OLD Trinket_t system (class trinkets like Degenerate's Gambit)
+// Separate from DUF TrinketTemplate_t system in trinketLoader.c
 dTable_t* g_trinket_templates = NULL;  // trinket_id → Trinket_t (BY VALUE!)
 
 // ============================================================================
@@ -204,143 +209,38 @@ Trinket_t* GetTrinketByID(int trinket_id) {
 // PLAYER TRINKET MANAGEMENT
 // ============================================================================
 
+// TODO Phase 3: Rewrite for TrinketInstance_t system
 bool EquipTrinket(Player_t* player, int slot_index, Trinket_t* trinket_template) {
-    if (!player) {
-        d_LogError("EquipTrinket: NULL player pointer");
-        return false;
-    }
-
-    if (!trinket_template) {
-        d_LogError("EquipTrinket: NULL trinket template pointer");
-        return false;
-    }
-
-    if (!player->trinket_slots) {
-        d_LogError("EquipTrinket: player trinket_slots not initialized");
-        return false;
-    }
-
-    if (slot_index < 0 || slot_index >= 6) {
-        d_LogError("EquipTrinket: Invalid slot_index (must be 0-5)");
-        return false;
-    }
-
-    if ((size_t)slot_index >= player->trinket_slots->count) {
-        d_LogError("EquipTrinket: Slot index out of bounds");
-        return false;
-    }
-
-    // Constitutional pattern: COPY template → slot by VALUE (each player gets own instance!)
-    // Get pointer to slot value in array
-    Trinket_t* slot = (Trinket_t*)d_ArrayGet(player->trinket_slots, slot_index);
-    if (!slot) {
-        d_LogError("EquipTrinket: Failed to access slot");
-        return false;
-    }
-
-    // Cleanup old trinket in slot if it exists
-    if (slot->name) {  // name != NULL means slot was previously occupied
-        CleanupTrinketValue(slot);
-    }
-
-    // Deep copy template → slot (memcpy struct, then deep-copy dStrings)
-    memcpy(slot, trinket_template, sizeof(Trinket_t));
-
-    // Deep-copy dStrings (shallow copy above copied pointers, we need new instances)
-    slot->name = d_StringInit();
-    d_StringSet(slot->name, d_StringPeek(trinket_template->name), 0);
-
-    slot->description = d_StringInit();
-    d_StringSet(slot->description, d_StringPeek(trinket_template->description), 0);
-
-    slot->passive_description = d_StringInit();
-    d_StringSet(slot->passive_description, d_StringPeek(trinket_template->passive_description), 0);
-
-    slot->active_description = d_StringInit();
-    d_StringSet(slot->active_description, d_StringPeek(trinket_template->active_description), 0);
-
-    // Reset per-instance state (each copy starts fresh)
-    slot->passive_damage_bonus = 0;
-    slot->total_damage_dealt = 0;
-    slot->total_bonus_chips = 0;
-    slot->total_refunded_chips = 0;
-    slot->shake_offset_x = 0.0f;
-    slot->shake_offset_y = 0.0f;
-    slot->flash_alpha = 0.0f;
-    slot->active_cooldown_current = 0;  // Ready on equip
-
-    d_LogInfoF("Equipped trinket %s to slot %d (VALUE copy)", GetTrinketName(slot), slot_index);
-
-    return true;
+    (void)player;
+    (void)slot_index;
+    (void)trinket_template;
+    d_LogWarning("EquipTrinket: Old Trinket_t API - will be replaced with TrinketInstance_t in Phase 3");
+    return false;
 }
 
+// TODO Phase 3: Rewrite for TrinketInstance_t system
 void UnequipTrinket(Player_t* player, int slot_index) {
-    if (!player || !player->trinket_slots) {
-        return;
-    }
-
-    if (slot_index < 0 || slot_index >= 6) {
-        d_LogError("UnequipTrinket: Invalid slot_index (must be 0-5)");
-        return;
-    }
-
-    if ((size_t)slot_index >= player->trinket_slots->count) {
-        return;
-    }
-
-    // Get pointer to slot value
-    Trinket_t* slot = (Trinket_t*)d_ArrayGet(player->trinket_slots, slot_index);
-    if (slot) {
-        // Cleanup dStrings inside trinket value
-        if (slot->name) {  // name != NULL means slot was occupied
-            CleanupTrinketValue(slot);
-        }
-        // Zero out slot (mark as empty)
-        memset(slot, 0, sizeof(Trinket_t));
-    }
-
-    d_LogInfoF("Unequipped trinket from slot %d", slot_index);
+    (void)player;
+    (void)slot_index;
+    d_LogWarning("UnequipTrinket: Old Trinket_t API - will be replaced with TrinketInstance_t in Phase 3");
 }
 
+// TODO Phase 3: Rewrite for TrinketInstance_t system
 Trinket_t* GetEquippedTrinket(const Player_t* player, int slot_index) {
-    if (!player || !player->trinket_slots) {
-        return NULL;
-    }
-
-    if (slot_index < 0 || slot_index >= 6) {
-        return NULL;
-    }
-
-    if ((size_t)slot_index >= player->trinket_slots->count) {
-        return NULL;
-    }
-
-    // Constitutional pattern: Return pointer to VALUE in array
-    Trinket_t* trinket = (Trinket_t*)d_ArrayGet(player->trinket_slots, slot_index);
-    if (!trinket) {
-        return NULL;
-    }
-
-    // Empty slot check: if name is NULL, slot is empty
-    if (!trinket->name) {
-        return NULL;
-    }
-
-    return trinket;
+    (void)player;
+    (void)slot_index;
+    d_LogWarning("GetEquippedTrinket: Old Trinket_t API - will be replaced with TrinketInstance_t in Phase 3");
+    return NULL;
 }
 
+// TODO Phase 3: Rewrite for TrinketInstance_t system
 int GetEmptyTrinketSlot(const Player_t* player) {
-    if (!player || !player->trinket_slots) {
+    if (!player) {
         return -1;
     }
 
     for (int i = 0; i < 6; i++) {
-        if ((size_t)i >= player->trinket_slots->count) {
-            break;
-        }
-
-        Trinket_t* trinket = GetEquippedTrinket(player, i);
-        if (!trinket) {
+        if (!player->trinket_slot_occupied[i]) {
             return i;  // Found empty slot
         }
     }
@@ -378,7 +278,7 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
         class_trinket->passive_effect(player, game, class_trinket, 0);
     }
 
-    // Iterate all equipped regular trinkets
+    // Iterate all equipped regular trinkets (OLD SYSTEM - hardcoded Trinket_t*)
     for (int i = 0; i < 6; i++) {
         Trinket_t* trinket = GetEquippedTrinket(player, i);
         if (!trinket) {
@@ -392,6 +292,41 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
 
             // Fire passive effect callback with slot_index for safe tweening
             trinket->passive_effect(player, game, trinket, (size_t)i);
+        }
+    }
+
+    // NEW SYSTEM: Check DUF trinket instances
+    for (int i = 0; i < 6; i++) {
+        // Skip empty slots
+        if (!player->trinket_slot_occupied[i]) {
+            continue;
+        }
+
+        TrinketInstance_t* instance = &player->trinket_slots[i];
+        const TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(instance->base_trinket_key));
+
+        if (!template) {
+            d_LogWarningF("Trinket instance in slot %d has invalid template key: %s",
+                          i, d_StringPeek(instance->base_trinket_key));
+            continue;
+        }
+
+        // Check primary passive trigger
+        if (template->passive_trigger == event) {
+            d_LogInfoF("Triggering DUF trinket passive: %s (event: %s)",
+                       d_StringPeek(template->name),
+                       GameEventToString(event));
+
+            ExecuteTrinketEffect(template, instance, player, game, i, false);
+        }
+
+        // Check secondary passive trigger (if exists)
+        if (template->passive_trigger_2 != 0 && template->passive_trigger_2 == event) {
+            d_LogInfoF("Triggering DUF trinket SECONDARY passive: %s (event: %s)",
+                       d_StringPeek(template->name),
+                       GameEventToString(event));
+
+            ExecuteTrinketEffect(template, instance, player, game, i, true);
         }
     }
 }
@@ -499,24 +434,28 @@ const char* GetTrinketRarityName(TrinketRarity_t rarity) {
 void GetTrinketRarityColor(TrinketRarity_t rarity, int* r, int* g, int* b) {
     if (!r || !g || !b) return;
 
+    // Using color palette colors
     switch (rarity) {
         case TRINKET_RARITY_COMMON:
-            *r = 200; *g = 200; *b = 200;  // Gray/white
+            *r = 231; *g = 213; *b = 179;  // Light beige (#e7d5b3)
             break;
         case TRINKET_RARITY_UNCOMMON:
-            *r = 100; *g = 255; *b = 100;  // Green
+            *r = 168; *g = 202; *b = 88;   // Green (#a8ca58)
             break;
         case TRINKET_RARITY_RARE:
-            *r = 100; *g = 150; *b = 255;  // Blue
+            *r = 79; *g = 143; *b = 186;   // Blue (#4f8fba)
             break;
         case TRINKET_RARITY_LEGENDARY:
-            *r = 255; *g = 215; *b = 0;    // Gold
+            *r = 222; *g = 158; *b = 65;   // Gold/Orange (#de9e41)
             break;
         case TRINKET_RARITY_CLASS:
-            *r = 180; *g = 100; *b = 255;  // Purple (class-specific)
+            *r = 162; *g = 62; *b = 140;   // Purple (#a23e8c)
+            break;
+        case TRINKET_RARITY_EVENT:
+            *r = 115; *g = 190; *b = 211;  // Teal (#73bed3)
             break;
         default:
-            *r = 255; *g = 255; *b = 255;  // White fallback
+            *r = 235; *g = 237; *b = 233;  // White fallback (#ebede9)
             break;
     }
 }
