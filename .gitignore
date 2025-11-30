@@ -31,9 +31,11 @@ card-fifty-two
 *~
 .DS_Store
 
-# Emscripten
+# Emscripten web build artifacts
+index/
 *.wasm
 *.js.mem
+*.data
 
 # Profiling
 gmon.out

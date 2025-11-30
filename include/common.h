@@ -47,7 +47,7 @@ extern dTable_t* g_card_textures;
 extern dTable_t* g_portraits;
 
 // Card back surface
-extern SDL_Surface* g_card_back_texture;
+extern aImage_t* g_card_back_texture;
 
 // Ability icon textures: Key = int (EnemyAbility_t), Value = SDL_Texture*
 // Falls back to text abbreviations if texture is NULL
@@ -60,15 +60,35 @@ extern dDUFValue_t* g_enemies_db;
 // Global settings: Loaded at startup, persisted to settings.duf
 // Accessible by all systems (audio, visual effects, UI, etc.)
 // Forward declaration (full definition in settings.h)
-struct Settings_t;
-extern struct Settings_t* g_settings;
+typedef struct Settings_t Settings_t;
+extern Settings_t* g_settings;
+
+// ============================================================================
+// WINDOW SIZE HELPERS (for resolution-independent UI)
+// ============================================================================
+
+/**
+ * Get current window width (runtime, not compile-time constant)
+ * Use this instead of SCREEN_WIDTH for resolution-independent layouts
+ */
+int GetWindowWidth(void);
+
+/**
+ * Get current window height (runtime, not compile-time constant)
+ * Use this instead of SCREEN_HEIGHT for resolution-independent layouts
+ */
+int GetWindowHeight(void);
 
 // ============================================================================
 // GLOBAL UI SOUND EFFECTS (defined in main.c)
 // ============================================================================
 
-extern aAudioClip_t g_ui_hover_sound;   // Button hover sound
-extern aAudioClip_t g_ui_click_sound;   // Button click sound
+extern aSoundEffect_t g_ui_hover_sound;   // Button hover sound
+extern aSoundEffect_t g_ui_click_sound;   // Button click sound
+
+// Card slide sound effects (8 variants with no-repeat system)
+extern aSoundEffect_t g_card_slide_sounds[CARD_SLIDE_SOUND_COUNT];
+extern int g_last_card_slide_index;  // Track last played sound for no-repeat
 
 // ============================================================================
 // GLOBAL FONT STYLES (defined in main.c)

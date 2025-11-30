@@ -8,23 +8,24 @@
 // ============================================================================
 
 /**
- * UI Audio Debouncing Architecture
+ * UI Audio Channel Architecture (SDL_mixer v2)
  *
- * Uses timestamp-based cooldowns to prevent rapid sound triggering.
- * When a UI sound is requested, it only plays if enough time has passed
- * since the last instance of that sound.
+ * Uses dedicated channels with interrupt flag to prevent sound queuing.
+ * Archimedes v2 uses SDL_mixer for proper channel-based mixing.
  *
- * NOTE: Archimedes uses SDL_QueueAudio (raw audio buffers), not SDL_mixer.
- * We cannot halt/interrupt sounds, so we use cooldown timers instead.
+ * Channel Assignments:
+ * - AUDIO_CHANNEL_UI_HOVER (0) - Reserved for UI hover sounds
+ * - AUDIO_CHANNEL_UI_CLICK (1) - Reserved for UI click sounds
  *
- * This ensures:
- * - No rapid-fire sounds when hovering/clicking quickly
- * - Smooth audio experience (max 20 hovers/sec, 10 clicks/sec)
- * - Clean mixing (sounds don't overlap excessively)
+ * When a UI sound plays with .interrupt = 1, it immediately halts any
+ * previous sound on that channel, preventing queuing when hovering/clicking
+ * rapidly.
  *
- * Cooldowns (tunable in audioHelper.c):
- * - Hover: 50ms cooldown (20 per second max)
- * - Click: 100ms cooldown (10 per second max)
+ * Benefits:
+ * - No sound queuing (instant stop-and-replace)
+ * - No timestamp debouncing needed
+ * - Clean channel isolation (hover won't interrupt click)
+ * - Industry-standard SDL_mixer API
  */
 
 // ============================================================================
@@ -32,11 +33,12 @@
 // ============================================================================
 
 /**
- * InitUIAudioChannels - Initialize UI audio debouncing timers
+ * InitUIAudioChannels - Initialize UI audio system
  *
- * Call this AFTER a_InitAudio() in main.c Init().
+ * Call this AFTER a_InitAudio() and a_AudioReserveChannels(2) in main.c.
  *
- * Resets cooldown timers to allow immediate sound playback on startup.
+ * Note: This function is now a no-op (reserved channels handle everything).
+ * Kept for API compatibility.
  */
 void InitUIAudioChannels(void);
 
@@ -47,7 +49,9 @@ void InitUIAudioChannels(void);
 /**
  * PlayUIHoverSound - Play hover sound effect
  *
- * Stops any currently playing hover sound and immediately starts a new one.
+ * Plays hover sound on AUDIO_CHANNEL_UI_HOVER with interrupt flag.
+ * Automatically stops any previous hover sound (no queuing).
+ *
  * Use for:
  * - Mouse entering buttons/menu items
  * - Keyboard navigation (UP/DOWN arrows)
@@ -57,12 +61,31 @@ void PlayUIHoverSound(void);
 /**
  * PlayUIClickSound - Play click sound effect
  *
- * Stops any currently playing click sound and immediately starts a new one.
+ * Plays click sound on AUDIO_CHANNEL_UI_CLICK with interrupt flag.
+ * Automatically stops any previous click sound (no queuing).
+ *
  * Use for:
  * - Button clicks
  * - Menu activation (ENTER/SPACE)
  * - Toggle switches
  */
 void PlayUIClickSound(void);
+
+// ============================================================================
+// GAME SOUND EFFECTS
+// ============================================================================
+
+/**
+ * PlayCardSlideSound - Play random card slide sound (with no-repeat)
+ *
+ * Plays a random card slide sound (1-8 variants) with no-repeat logic.
+ * Uses auto-allocated channels (2-15) so multiple cards can slide simultaneously.
+ * Controlled by Effect Volume setting (sound_volume).
+ *
+ * Use for:
+ * - Every card draw (player, dealer, initial deal)
+ * - Triggered by GAME_EVENT_CARD_DRAWN
+ */
+void PlayCardSlideSound(void);
 
 #endif // AUDIO_HELPER_H

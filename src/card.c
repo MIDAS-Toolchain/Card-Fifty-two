@@ -120,23 +120,23 @@ void LoadCardTexture(Card_t* card) {
     }
 
     // Constitutional pattern: Use global g_card_textures table
-    SDL_Texture** tex_ptr = (SDL_Texture**)d_TableGet(
+    aImage_t** img_ptr = (aImage_t**)d_TableGet(
         g_card_textures,
         &card->card_id
     );
 
-    if (tex_ptr && *tex_ptr) {
-        card->texture = *tex_ptr;
-        d_LogInfoF("LoadCardTexture: Loaded texture %p for card_id %d (%s of %s)",
+    if (img_ptr && *img_ptr) {
+        card->texture = *img_ptr;
+        d_LogInfoF("LoadCardTexture: Loaded image %p for card_id %d (%s of %s)",
                    (void*)card->texture, card->card_id,
                    GetRankString(card->rank), GetSuitString(card->suit));
     } else {
-        // Texture not in cache - log error
-        d_LogErrorF("LoadCardTexture: No texture for card_id %d (%s of %s) - tex_ptr=%p",
+        // Image not in cache - log error
+        d_LogErrorF("LoadCardTexture: No image for card_id %d (%s of %s) - img_ptr=%p",
                     card->card_id,
                     GetRankString(card->rank),
                     GetSuitString(card->suit),
-                    (void*)tex_ptr);
+                    (void*)img_ptr);
         card->texture = NULL;
     }
 }

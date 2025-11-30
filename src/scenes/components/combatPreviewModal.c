@@ -6,6 +6,7 @@
 #include "../../../include/scenes/components/combatPreviewModal.h"
 #include "../../../include/scenes/sceneBlackjack.h"
 #include "../../../include/random.h"
+#include "../../../include/audioHelper.h"
 #include <stdio.h>
 
 // ============================================================================
@@ -50,8 +51,8 @@ CombatPreviewModal_t* CreateCombatPreviewModal(GameContext_t* game,
 
     // Create continue button (active, bottom button, centered)
     modal->continue_button = CreateButton(
-        SCREEN_WIDTH / 2 - 100,  // Centered
-        SCREEN_HEIGHT / 2 + 150, // Second row (80 + 50 + 20)
+        GetWindowWidth() / 2 - 100,  // Centered
+        GetWindowHeight() / 2 + 150, // Second row (80 + 50 + 20)
         200,
         50,
         "Continue"
@@ -152,7 +153,7 @@ void RenderCombatPreviewModal(const CombatPreviewModal_t* modal, const GameConte
     if (!modal || !modal->is_visible) return;
 
     // Draw dark overlay (full screen, 70% opacity)
-    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 178});  // 178 = 0.7 * 255
+    a_DrawFilledRect((aRectf_t){0, 0, GetWindowWidth(), GetWindowHeight()}, (aColor_t){0, 0, 0, 178});  // 178 = 0.7 * 255
 
     // Draw random header title (top, large, dark gray)
     aTextStyle_t header_config = {
@@ -162,7 +163,7 @@ void RenderCombatPreviewModal(const CombatPreviewModal_t* modal, const GameConte
         .wrap_width = 0,
         .scale = 2.0f  // Larger for emphasis
     };
-    a_DrawText(modal->header_title, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 216, header_config);
+    a_DrawText(modal->header_title, GetWindowWidth() / 2, GetWindowHeight() / 2 - 216, header_config);
 
     // Build title string: "{Type} - {Name}" (e.g., "Elite Combat - The Daemon")
     char title[128];
@@ -176,14 +177,14 @@ void RenderCombatPreviewModal(const CombatPreviewModal_t* modal, const GameConte
         .wrap_width = 800,  // Wrap long titles
         .scale = 1.5f       // Larger text for emphasis
     };
-    a_DrawText(title, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 100, title_config);
+    a_DrawText(title, GetWindowWidth() / 2, GetWindowHeight() / 2 - 100, title_config);
 
     // Draw countdown timer bar (3.0 → 0.0)
     float timer_progress = game->combat_preview_timer / 3.0f;  // 1.0 → 0.0
     int timer_bar_width = 400;
     int timer_bar_height = 10;
-    int timer_bar_x = (SCREEN_WIDTH - timer_bar_width) / 2;
-    int timer_bar_y = SCREEN_HEIGHT / 2 - 40;
+    int timer_bar_x = (GetWindowWidth() - timer_bar_width) / 2;
+    int timer_bar_y = GetWindowHeight() / 2 - 40;
 
     // Background (dark gray)
     a_DrawFilledRect((aRectf_t){timer_bar_x, timer_bar_y, timer_bar_width, timer_bar_height}, (aColor_t){40, 40, 40, 255});
@@ -202,7 +203,7 @@ void RenderCombatPreviewModal(const CombatPreviewModal_t* modal, const GameConte
         .wrap_width = 0,
         .scale = 1.0f
     };
-    a_DrawText(timer_text, SCREEN_WIDTH / 2, timer_bar_y + 20, timer_text_config);
+    a_DrawText(timer_text, GetWindowWidth() / 2, timer_bar_y + 20, timer_text_config);
 
     // Draw "Encounter Inevitable" text (where reroll button used to be)
     aTextStyle_t inevitable_config = {
@@ -212,7 +213,7 @@ void RenderCombatPreviewModal(const CombatPreviewModal_t* modal, const GameConte
         .wrap_width = 0,
         .scale = 1.0f
     };
-    a_DrawText("Encounter Inevitable", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 105, inevitable_config);
+    a_DrawText("Encounter Inevitable", GetWindowWidth() / 2, GetWindowHeight() / 2 + 105, inevitable_config);
 
     // Render continue button
     RenderButton(modal->continue_button);

@@ -9,10 +9,15 @@
 #include "../../../include/cardTags.h"
 #include "../../../include/random.h"
 #include "../../../include/tween/tween.h"
+#include "../../../include/audioHelper.h"
 
 // External globals
 extern dTable_t* g_card_textures;  // Card textures table (from sceneBlackjack.c)
 extern TweenManager_t g_tween_manager;  // Global tween manager (from sceneBlackjack.c)
+
+// Hover sound tracking
+static int last_hovered_reward = -1;
+static bool last_skip_hovered = false;
 
 // Color constants (matching cardGridModal palette)
 #define COLOR_OVERLAY           ((aColor_t){9, 10, 20, 180})     // #090a14 - almost black overlay
@@ -58,9 +63,9 @@ RewardModal_t* CreateRewardModal(void) {
     modal->card_scale = 1.0f;
     modal->tag_badge_alpha = 0.0f;
 
-    // Calculate layout positions (shifted 96px right from center)
-    int modal_x = ((SCREEN_WIDTH - REWARD_MODAL_WIDTH) / 2) + 96;
-    int modal_y = (SCREEN_HEIGHT - REWARD_MODAL_HEIGHT) / 2;
+    // Calculate layout positions (runtime positioning)
+    int modal_x = (GetWindowWidth() - REWARD_MODAL_WIDTH) / 2;
+    int modal_y = (GetWindowHeight() - REWARD_MODAL_HEIGHT) / 2;
     int panel_body_y = modal_y + REWARD_MODAL_HEADER_HEIGHT;
 
     // Create FlexBox for info text (vertical)
@@ -315,9 +320,9 @@ bool HandleRewardModalInput(RewardModal_t* modal, float dt) {
     int mx = app.mouse.x;
     int my = app.mouse.y;
 
-    // Calculate modal positions (shifted 96px right from center)
-    int modal_x = ((SCREEN_WIDTH - REWARD_MODAL_WIDTH) / 2) + 96;
-    int modal_y = (SCREEN_HEIGHT - REWARD_MODAL_HEIGHT) / 2;
+    // Calculate modal positions (runtime positioning)
+    int modal_x = (GetWindowWidth() - REWARD_MODAL_WIDTH) / 2;
+    int modal_y = (GetWindowHeight() - REWARD_MODAL_HEIGHT) / 2;
 
     // Update hovered index based on list item hover OR card hover
     modal->hovered_index = -1;
@@ -356,6 +361,12 @@ bool HandleRewardModalInput(RewardModal_t* modal, float dt) {
         }
     }
 
+    // Play hover sound if hovering a new reward option
+    if (modal->hovered_index != -1 && modal->hovered_index != last_hovered_reward) {
+        PlayUIHoverSound();
+    }
+    last_hovered_reward = modal->hovered_index;
+
     // Handle keyboard hotkeys (1, 2, 3) - hold to preview, release to confirm
     int prev_key_held = modal->key_held_index;
 
@@ -368,6 +379,7 @@ bool HandleRewardModalInput(RewardModal_t* modal, float dt) {
     // Trigger on key release (was held, now not held)
     if (prev_key_held != -1 && modal->key_held_index == -1) {
         int choice = prev_key_held;
+        PlayUIClickSound();
         modal->selected_index = choice;
         AddCardTag(modal->card_ids[choice], modal->tags[choice]);
         modal->reward_taken = true;
@@ -392,6 +404,8 @@ bool HandleRewardModalInput(RewardModal_t* modal, float dt) {
 
             if (mx >= card_x && mx <= card_x + CARD_WIDTH &&
                 my >= card_y && my <= card_y + CARD_HEIGHT) {
+
+                PlayUIClickSound();
 
                 // Selected this card+tag combo
                 modal->selected_index = i;
@@ -428,6 +442,8 @@ bool HandleRewardModalInput(RewardModal_t* modal, float dt) {
             if (mx >= item_x && mx <= item_x + item_w &&
                 my >= item_y && my <= item_y + item_h) {
 
+                PlayUIClickSound();
+
                 // Selected this card+tag combo
                 modal->selected_index = i;
 
@@ -459,14 +475,24 @@ bool HandleRewardModalInput(RewardModal_t* modal, float dt) {
         if (mx >= skip_x && mx <= skip_x + skip_w &&
             my >= skip_y && my <= skip_y + skip_h) {
 
+            PlayUIClickSound();
             d_LogInfo("Player skipped reward");
             return true;  // Close immediately
         }
+
+        // Track skip button hover for hover sound
+        bool skip_hovered = (mx >= skip_x && mx <= skip_x + skip_w &&
+                             my >= skip_y && my <= skip_y + skip_h);
+        if (skip_hovered && !last_skip_hovered) {
+            PlayUIHoverSound();
+        }
+        last_skip_hovered = skip_hovered;
     }
 
     // ESC key closes modal (skip reward)
     if (app.keyboard[SDL_SCANCODE_ESCAPE]) {
         app.keyboard[SDL_SCANCODE_ESCAPE] = 0;  // Clear key
+        PlayUIClickSound();
         d_LogInfo("ESC pressed - skipping reward");
         return true;  // Close immediately
     }
@@ -481,15 +507,47 @@ bool HandleRewardModalInput(RewardModal_t* modal, float dt) {
 void RenderRewardModal(const RewardModal_t* modal) {
     if (!modal || !modal->is_visible) return;
 
-    // Full-screen overlay (matching cardGridModal)
-    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, COLOR_OVERLAY);
+    // Runtime window dimensions
+    int window_w = GetWindowWidth();
+    int window_h = GetWindowHeight();
 
-    // Modal panel (shifted 96px right from center)
-    int modal_x = ((SCREEN_WIDTH - REWARD_MODAL_WIDTH) / 2) + 96;
-    int modal_y = (SCREEN_HEIGHT - REWARD_MODAL_HEIGHT) / 2;
+    // Full-screen overlay (matching cardGridModal)
+    a_DrawFilledRect((aRectf_t){0, 0, window_w, window_h}, COLOR_OVERLAY);
+
+    // Modal panel (centered)
+    int modal_x = (window_w - REWARD_MODAL_WIDTH) / 2;
+    int modal_y = (window_h - REWARD_MODAL_HEIGHT) / 2;
+
+    // Update FlexBox bounds for resolution changes
+    int panel_body_y = modal_y + REWARD_MODAL_HEADER_HEIGHT;
+
+    // Update info layout
+    a_FlexSetBounds(modal->info_layout,
+                    modal_x + REWARD_MODAL_PADDING,
+                    panel_body_y + 20,
+                    REWARD_MODAL_WIDTH - (REWARD_MODAL_PADDING * 2),
+                    60);
+    a_FlexLayout(modal->info_layout);
+
+    // Update card layout
+    int cards_area_y = panel_body_y + 100;
+    a_FlexSetBounds(modal->card_layout,
+                    modal_x + REWARD_MODAL_PADDING,
+                    cards_area_y,
+                    REWARD_MODAL_WIDTH - (REWARD_MODAL_PADDING * 2),
+                    CARD_HEIGHT + 20);
+    a_FlexLayout(modal->card_layout);
+
+    // Update list layout
+    int list_area_y = cards_area_y + CARD_HEIGHT + 40;
+    a_FlexSetBounds(modal->list_layout,
+                    modal_x + REWARD_MODAL_PADDING,
+                    list_area_y,
+                    REWARD_MODAL_WIDTH - (REWARD_MODAL_PADDING * 2),
+                    (REWARD_LIST_ITEM_HEIGHT + REWARD_LIST_ITEM_SPACING) * 3 + REWARD_LIST_ITEM_SPACING);
+    a_FlexLayout(modal->list_layout);
 
     // Draw panel body
-    int panel_body_y = modal_y + REWARD_MODAL_HEADER_HEIGHT;
     int panel_body_height = REWARD_MODAL_HEIGHT - REWARD_MODAL_HEADER_HEIGHT;
     a_DrawFilledRect((aRectf_t){modal_x, panel_body_y, REWARD_MODAL_WIDTH, panel_body_height}, COLOR_PANEL_BG);
 
@@ -535,12 +593,14 @@ void RenderRewardModal(const RewardModal_t* modal) {
             CardRank_t rank;
             IDToCard(modal->card_ids[i], &suit, &rank);
 
-            // Draw card surface (stored as pointer in table)
-            SDL_Surface** surf_ptr = (SDL_Surface**)d_TableGet(g_card_textures, &modal->card_ids[i]);
-            SDL_Surface* card_surface = (surf_ptr && *surf_ptr) ? *surf_ptr : NULL;
+            // Draw card image (stored as pointer in table)
+            aImage_t** img_ptr = (aImage_t**)d_TableGet(g_card_textures, &modal->card_ids[i]);
+            aImage_t* card_image = (img_ptr && *img_ptr) ? *img_ptr : NULL;
 
-            if (card_surface) {
-                a_BlitSurfaceRect(card_surface, (aRectf_t){card_x, card_y, CARD_WIDTH, CARD_HEIGHT}, 1);
+            if (card_image && card_image->surface) {
+                aRectf_t src = {0, 0, card_image->surface->w, card_image->surface->h};
+                aRectf_t dest = {card_x, card_y, CARD_WIDTH, CARD_HEIGHT};
+                a_BlitRect(card_image, &src, &dest, 1.0f);
             } else {
                 // Fallback: gray placeholder
                 a_DrawFilledRect((aRectf_t){card_x, card_y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){50, 50, 50, 255});
@@ -674,15 +734,17 @@ void RenderRewardModal(const RewardModal_t* modal) {
                 int card_x = card_item->calc_x;
                 int card_y = card_item->calc_y;
 
-                // Get card surface (stored as pointer in table)
-                SDL_Surface** surf_ptr = (SDL_Surface**)d_TableGet(g_card_textures, &modal->card_ids[i]);
-                SDL_Surface* card_surface = (surf_ptr && *surf_ptr) ? *surf_ptr : NULL;
-                if (card_surface) {
+                // Get card image (stored as pointer in table)
+                aImage_t** img_ptr = (aImage_t**)d_TableGet(g_card_textures, &modal->card_ids[i]);
+                aImage_t* card_image = (img_ptr && *img_ptr) ? *img_ptr : NULL;
+                if (card_image && card_image->surface) {
                     // Note: Alpha transparency for fade animation not supported with surfaces
                     // TODO: Implement surface-based alpha blending for fade effect
                     // For now, skip rendering unselected cards during fade
                     if (i == selected || modal->fade_out_alpha > 0.1f) {
-                        a_BlitSurfaceRect(card_surface, (aRectf_t){card_x, card_y, CARD_WIDTH, CARD_HEIGHT}, 1);
+                        aRectf_t src = {0, 0, card_image->surface->w, card_image->surface->h};
+                        aRectf_t dest = {card_x, card_y, CARD_WIDTH, CARD_HEIGHT};
+                        a_BlitRect(card_image, &src, &dest, 1.0f);
                     }
                 }
             }
@@ -711,19 +773,21 @@ void RenderRewardModal(const RewardModal_t* modal) {
             modal->anim_stage == ANIM_FADE_IN_TAG ||
             modal->anim_stage == ANIM_COMPLETE) {
 
-            // Get card surface (stored as pointer in table)
-            SDL_Surface** surf_ptr = (SDL_Surface**)d_TableGet(g_card_textures, &modal->card_ids[selected]);
-            SDL_Surface* card_surface = (surf_ptr && *surf_ptr) ? *surf_ptr : NULL;
+            // Get card image (stored as pointer in table)
+            aImage_t** img_ptr = (aImage_t**)d_TableGet(g_card_textures, &modal->card_ids[selected]);
+            aImage_t* card_image = (img_ptr && *img_ptr) ? *img_ptr : NULL;
 
-            if (card_surface) {
-                // Calculate scaled card dimensions (shifted 96px right from center)
+            if (card_image && card_image->surface) {
+                // Calculate scaled card dimensions (centered)
                 int scaled_w = (int)(CARD_WIDTH * modal->card_scale);
                 int scaled_h = (int)(CARD_HEIGHT * modal->card_scale);
-                int centered_x = ((SCREEN_WIDTH - scaled_w) / 2) + 96;
-                int centered_y = (SCREEN_HEIGHT - scaled_h) / 2;
+                int centered_x = (window_w - scaled_w) / 2;
+                int centered_y = (window_h - scaled_h) / 2;
 
-                // Render scaled card using surface blitting
-                a_BlitSurfaceRect(card_surface, (aRectf_t){centered_x, centered_y, scaled_w, scaled_h}, 1);
+                // Render scaled card using image blitting
+                aRectf_t src = {0, 0, card_image->surface->w, card_image->surface->h};
+                aRectf_t dest = {centered_x, centered_y, scaled_w, scaled_h};
+                a_BlitRect(card_image, &src, &dest, 1.0f);
 
                 // Draw tag badge (top-right corner) - only during fade-in stage
                 // Match the style of badges above cards

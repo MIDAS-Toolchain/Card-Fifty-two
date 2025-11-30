@@ -24,11 +24,9 @@
     base_value: 75
     flavor: "Every error makes you stronger."
 
-    # On combat start: +1 stack
-    # Each stack = +3% damage, max 20 stacks (60% total)
-    passive_trigger: "COMBAT_START"
-    passive_effect_type: "trinket_stack"
-    passive_stack_stat: "damage_bonus_percent"
-    passive_stack_value: 3
-    passive_stack_max: 20
+    # On player bust: deal 15 damage to enemy
+    # Turns a bad outcome into partial value - "every crash gives you data"
+    passive_trigger: "PLAYER_BUST"
+    passive_effect_type: "add_damage_flat"
+    passive_effect_value: 15
 }

@@ -18,12 +18,13 @@
  *
  * Persisted to settings.duf in user config directory
  */
-typedef struct {
+typedef struct Settings_t {
     // ========================================================================
     // AUDIO TAB
     // ========================================================================
     int sound_volume;       // 0-100 (default: 50)
     int music_volume;       // 0-100 (default: 50)
+    int ui_volume;          // 0-100 (default: 75) - UI sounds only
     bool sound_enabled;     // Master sound toggle (default: true)
     bool music_enabled;     // Master music toggle (default: true)
 
@@ -44,8 +45,6 @@ typedef struct {
     // ========================================================================
     // GRAPHICS TAB
     // ========================================================================
-    bool fullscreen;        // Fullscreen mode (default: false)
-    bool vsync;             // V-Sync (default: true)
     int resolution_index;   // Index into resolution table (default: 0 = 1280x720)
 } Settings_t;
 
@@ -138,6 +137,16 @@ void Settings_SetSoundVolume(Settings_t* settings, int volume);
 void Settings_SetMusicVolume(Settings_t* settings, int volume);
 
 /**
+ * Settings_SetUIVolume - Set UI volume and apply immediately
+ *
+ * @param settings: Settings structure
+ * @param volume: 0-100 volume level
+ *
+ * Clamps to 0-100, updates UI sound channels immediately
+ */
+void Settings_SetUIVolume(Settings_t* settings, int volume);
+
+/**
  * Settings_SetResolution - Set resolution and apply immediately
  *
  * @param settings: Settings structure
@@ -146,26 +155,6 @@ void Settings_SetMusicVolume(Settings_t* settings, int volume);
  * Clamps to valid range, resizes window immediately (no restart)
  */
 void Settings_SetResolution(Settings_t* settings, int index);
-
-/**
- * Settings_SetFullscreen - Toggle fullscreen and apply immediately
- *
- * @param settings: Settings structure
- * @param enabled: true=fullscreen, false=windowed
- *
- * Updates SDL window mode immediately (no restart)
- */
-void Settings_SetFullscreen(Settings_t* settings, bool enabled);
-
-/**
- * Settings_SetVSync - Toggle V-Sync and apply immediately
- *
- * @param settings: Settings structure
- * @param enabled: true=V-Sync on, false=V-Sync off
- *
- * Updates SDL renderer immediately
- */
-void Settings_SetVSync(Settings_t* settings, bool enabled);
 
 // ============================================================================
 // GETTERS
@@ -178,5 +167,14 @@ void Settings_SetVSync(Settings_t* settings, bool enabled);
  * @return: Resolution_t for current resolution_index
  */
 const Resolution_t* Settings_GetCurrentResolution(const Settings_t* settings);
+
+/**
+ * IsResolutionValidForDisplay - Check if resolution fits on primary display
+ *
+ * @param width: Resolution width
+ * @param height: Resolution height
+ * @return: true if resolution fits safely (prevents window teleportation)
+ */
+bool IsResolutionValidForDisplay(int width, int height);
 
 #endif // SETTINGS_H

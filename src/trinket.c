@@ -258,10 +258,7 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
         return;
     }
 
-    if (!player->trinket_slots) {
-        d_LogDebug("CheckTrinketPassiveTriggers: Player has no trinket_slots");
-        return;
-    }
+    // Note: trinket_slots is a fixed-size array embedded in Player_t, not a pointer
 
     if (!game) {
         d_LogDebug("CheckTrinketPassiveTriggers: NULL game");
@@ -332,9 +329,10 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
 }
 
 void TickTrinketCooldowns(Player_t* player) {
-    if (!player || !player->trinket_slots) {
+    if (!player) {
         return;
     }
+    // Note: trinket_slots is a fixed-size array embedded in Player_t, not a pointer
 
     // Tick class trinket cooldown first
     Trinket_t* class_trinket = GetClassTrinket(player);
@@ -539,9 +537,10 @@ bool EquipClassTrinket(Player_t* player, Trinket_t* trinket_template) {
 // ============================================================================
 
 int ModifyWinningsWithTrinkets(Player_t* player, int base_winnings, int bet_amount) {
-    if (!player || !player->trinket_slots) {
+    if (!player) {
         return base_winnings;
     }
+    // Note: trinket_slots is a fixed-size array embedded in Player_t, not a pointer
 
     int modified = base_winnings;
 
@@ -571,9 +570,10 @@ int ModifyWinningsWithTrinkets(Player_t* player, int base_winnings, int bet_amou
 int ModifyLossesWithTrinkets(Player_t* player, int base_loss, int bet_amount) {
     (void)base_loss;  // Unused, but kept for API consistency with status effects
 
-    if (!player || !player->trinket_slots) {
+    if (!player) {
         return 0;
     }
+    // Note: trinket_slots is a fixed-size array embedded in Player_t, not a pointer
 
     int total_refund = 0;
 

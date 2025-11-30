@@ -121,7 +121,8 @@ void AddEffect(Ability_t* ability, const AbilityEffect_t* effect) {
         return;
     }
 
-    d_ArrayAppend(ability->effects, effect);
+    // Cast away const: d_ArrayAppend memcpy's the data, doesn't modify source
+    d_ArrayAppend(ability->effects, (AbilityEffect_t*)effect);
 }
 
 // ============================================================================

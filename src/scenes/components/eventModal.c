@@ -10,7 +10,9 @@
 #include "../../../include/player.h"
 #include "../../../include/trinket.h"
 #include "../../../include/loaders/trinketLoader.h"  // For GetTrinketTemplate
+#include "../../../include/trinketDrop.h"  // For RollAffixes
 #include "../../../include/tween/tween.h"
+#include "../../../include/audioHelper.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -47,6 +49,14 @@ typedef struct {
     char text[128];
     TooltipLineSentiment_t sentiment;
 } TooltipLine_t;
+
+// Runtime modal width helper (responsive like IntroNarrativeModal)
+static inline int GetEventModalWidth(void) {
+    return GetWindowWidth() - EVENT_MODAL_INSET;
+}
+
+// Hover sound tracking
+static int last_hovered_choice = -1;
 
 // ============================================================================
 // TEXT PREPROCESSING HELPERS
@@ -176,17 +186,26 @@ static int GenerateChoiceTooltipLines(const EventChoice_t* choice, TooltipLine_t
         count++;
     }
 
-    // Trinket reward (just name - affixes will be shown when we implement pre-rolling)
-    if (choice->trinket_reward_key[0] != '\0' && count < max_lines) {
+    // Trinket reward (name + pre-rolled affix)
+    if (choice->has_trinket_reward && count < max_lines) {
         // Load template to get display name
         TrinketTemplate_t* template = GetTrinketTemplate(choice->trinket_reward_key);
         if (template && template->name) {
+            // Line 1: Trinket name
             snprintf(lines[count].text, sizeof(lines[count].text), "Trinket: %s", d_StringPeek(template->name));
             lines[count].sentiment = TOOLTIP_LINE_POSITIVE;
             count++;
 
-            // NOTE: Affixes are rolled when trinket is equipped (not pre-shown in tooltip yet)
-            // TODO: Pre-roll affixes when event modal opens, store in EventChoice_t, display here
+            // Line 2+: Affixes (pre-rolled in ShowEventModal)
+            // Cast away const: We're only reading from this struct
+            TrinketInstance_t* inst = (TrinketInstance_t*)&choice->trinket_reward_instance;
+            for (int i = 0; i < inst->affix_count && count < max_lines; i++) {
+                const char* stat_key = d_StringPeek(inst->affixes[i].stat_key);
+                int value = inst->affixes[i].rolled_value;
+                snprintf(lines[count].text, sizeof(lines[count].text), "  +%d %s", value, stat_key);
+                lines[count].sentiment = TOOLTIP_LINE_NEUTRAL;  // Blue text in rendering
+                count++;
+            }
 
             CleanupTrinketTemplate(template);
             free(template);
@@ -224,8 +243,8 @@ EventModal_t* CreateEventModal(void) {
     modal->result_alpha = 0.0f;
 
     // Calculate modal position (matching RewardModal pattern)
-    int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 132;  // Offset right (past deck UI)
-    int modal_y = (SCREEN_HEIGHT - EVENT_MODAL_HEIGHT) / 2;
+    int modal_x = ((GetWindowWidth() - GetEventModalWidth()) / 2);  // Offset right (past deck UI)
+    int modal_y = (GetWindowHeight() - EVENT_MODAL_HEIGHT) / 2;
     int panel_body_y = modal_y + EVENT_MODAL_HEADER_HEIGHT;
 
     // Create FlexBox for header (vertical layout for description)
@@ -233,7 +252,7 @@ EventModal_t* CreateEventModal(void) {
     modal->header_layout = a_FlexBoxCreate(
         modal_x + EVENT_MODAL_PADDING,
         header_y,
-        EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2),
+        GetEventModalWidth() - (EVENT_MODAL_PADDING * 2),
         100
     );
 
@@ -242,7 +261,7 @@ EventModal_t* CreateEventModal(void) {
     modal->choice_layout = a_FlexBoxCreate(
         modal_x + EVENT_MODAL_PADDING,
         choice_y,
-        EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2),
+        GetEventModalWidth() - (EVENT_MODAL_PADDING * 2),
         400
     );
 
@@ -301,11 +320,101 @@ void ShowEventModal(EventModal_t* modal, EventEncounter_t* event) {
     modal->choices_alpha = 1.0f;  // Choices fully visible
     modal->result_alpha = 0.0f;   // Result hidden
 
+    // Pre-roll trinket affixes for each choice (so players see exact rolls in tooltip)
+    for (size_t i = 0; i < event->choices->count; i++) {
+        EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(event->choices, i);
+        if (!choice) continue;
+
+        if (choice->trinket_reward_key[0] != '\0') {
+            // Load template from DUF
+            TrinketTemplate_t* template = GetTrinketTemplate(choice->trinket_reward_key);
+            if (!template) {
+                d_LogErrorF("ShowEventModal: Trinket key '%s' not found", choice->trinket_reward_key);
+                continue;
+            }
+
+            // Initialize instance with template data
+            TrinketInstance_t* inst = &choice->trinket_reward_instance;
+
+            // Initialize base_trinket_key
+            if (!inst->base_trinket_key) inst->base_trinket_key = d_StringInit();
+            d_StringSet(inst->base_trinket_key, choice->trinket_reward_key, 0);
+
+            inst->rarity = template->rarity;
+            inst->tier = 1;  // Tutorial = Act 1
+            inst->sell_value = template->base_value;
+
+            // Roll affixes (1 for Act 1)
+            RollAffixes(1, template->rarity, inst);
+
+            // Copy trinket stack data (for Stack Trace)
+            inst->trinket_stack_max = template->passive_stack_max;
+            inst->trinket_stack_value = template->passive_stack_value;
+            if (template->passive_stack_stat) {
+                if (!inst->trinket_stack_stat) inst->trinket_stack_stat = d_StringInit();
+                d_StringSet(inst->trinket_stack_stat, d_StringPeek(template->passive_stack_stat), 0);
+            }
+
+            // Initialize runtime state
+            inst->trinket_stacks = 0;
+            inst->total_damage_dealt = 0;
+            inst->total_bonus_chips = 0;
+            inst->total_refunded_chips = 0;
+            inst->buffed_tag = -1;
+            inst->tag_buff_value = 0;
+            inst->shake_offset_x = 0.0f;
+            inst->shake_offset_y = 0.0f;
+            inst->flash_alpha = 0.0f;
+
+            choice->has_trinket_reward = true;
+
+            CleanupTrinketTemplate(template);
+            free(template);
+
+            d_LogInfoF("Pre-rolled trinket '%s' for choice %zu: %d affix(es)",
+                       choice->trinket_reward_key, i, inst->affix_count);
+        }
+    }
+
     d_LogInfoF("EventModal shown: %s", d_StringPeek(event->title));
 }
 
 void HideEventModal(EventModal_t* modal) {
     if (!modal) return;
+
+    // Cleanup pre-rolled trinket instances
+    if (modal->current_event) {
+        for (size_t i = 0; i < modal->current_event->choices->count; i++) {
+            EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(modal->current_event->choices, i);
+            if (choice && choice->has_trinket_reward) {
+                TrinketInstance_t* inst = &choice->trinket_reward_instance;
+
+                // Cleanup base_trinket_key
+                if (inst->base_trinket_key) {
+                    d_StringDestroy(inst->base_trinket_key);
+                    inst->base_trinket_key = NULL;
+                }
+
+                // Cleanup affixes
+                for (int j = 0; j < inst->affix_count; j++) {
+                    if (inst->affixes[j].stat_key) {
+                        d_StringDestroy(inst->affixes[j].stat_key);
+                        inst->affixes[j].stat_key = NULL;
+                    }
+                }
+
+                // Cleanup trinket_stack_stat
+                if (inst->trinket_stack_stat) {
+                    d_StringDestroy(inst->trinket_stack_stat);
+                    inst->trinket_stack_stat = NULL;
+                }
+
+                choice->has_trinket_reward = false;
+                d_LogDebugF("Cleaned up pre-rolled trinket for choice %zu", i);
+            }
+        }
+    }
+
     modal->is_visible = false;
     modal->current_event = NULL;
     d_LogInfo("EventModal hidden");
@@ -355,8 +464,8 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
             }
 
             // Calculate modal bounds
-            int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 128;
-            int modal_y = (SCREEN_HEIGHT - EVENT_MODAL_HEIGHT) / 2;
+            int modal_x = ((GetWindowWidth() - GetEventModalWidth()) / 2);
+            int modal_y = (GetWindowHeight() - EVENT_MODAL_HEIGHT) / 2;
             int content_row_height = 282;
             int choice_start_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + content_row_height + 20;
 
@@ -364,7 +473,7 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
             int mx = app.mouse.x;
             int my = app.mouse.y;
 
-            // Check hover state
+            // Check hover state and play hover sound on change
             modal->hovered_choice = -1;
             for (int i = 0; i < choice_count; i++) {
                 EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(modal->current_event->choices, i);
@@ -372,14 +481,23 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
 
                 int choice_y = choice_start_y + i * (EVENT_CHOICE_HEIGHT + EVENT_CHOICE_SPACING);
                 int choice_x = modal_x + EVENT_MODAL_PADDING;
-                int choice_w = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
+                int choice_w = GetEventModalWidth() - (EVENT_MODAL_PADDING * 2);
 
                 if (mx >= choice_x && mx <= choice_x + choice_w &&
                     my >= choice_y && my <= choice_y + EVENT_CHOICE_HEIGHT) {
-                    modal->hovered_choice = i;
+                    // Only set hovered if unlocked (don't hover over locked choices)
+                    if (IsChoiceRequirementMet(&choice->requirement, player)) {
+                        modal->hovered_choice = i;
+                    }
                     break;
                 }
             }
+
+            // Play hover sound if hovering a new choice
+            if (modal->hovered_choice != -1 && modal->hovered_choice != last_hovered_choice) {
+                PlayUIHoverSound();
+            }
+            last_hovered_choice = modal->hovered_choice;
 
             // Handle keyboard hotkeys (1, 2, 3)
             for (int i = 0; i < choice_count && i < 3; i++) {
@@ -388,6 +506,7 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
                     app.keyboard[key] = 0;
                     EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(modal->current_event->choices, i);
                     if (choice && IsChoiceRequirementMet(&choice->requirement, player)) {
+                        PlayUIClickSound();
                         ConfirmChoice(modal, i);
                         return false;  // Don't close yet - show result first
                     } else {
@@ -400,6 +519,7 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
             if (app.mouse.pressed && modal->hovered_choice != -1) {
                 EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(modal->current_event->choices, modal->hovered_choice);
                 if (choice && IsChoiceRequirementMet(&choice->requirement, player)) {
+                    PlayUIClickSound();
                     ConfirmChoice(modal, modal->hovered_choice);
                     return false;  // Don't close yet - show result first
                 } else {
@@ -427,6 +547,7 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
                 if (app.keyboard[SDL_SCANCODE_RETURN] || app.keyboard[SDL_SCANCODE_KP_ENTER]) {
                     app.keyboard[SDL_SCANCODE_RETURN] = 0;
                     app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+                    PlayUIClickSound();
                     modal->phase = EVENT_PHASE_COMPLETE;
                     d_LogInfo("Result confirmed, completing event");
                     return true;  // NOW signal to close
@@ -434,6 +555,7 @@ bool HandleEventModalInput(EventModal_t* modal, const Player_t* player, float dt
 
                 // Check for mouse click anywhere to continue
                 if (app.mouse.pressed) {
+                    PlayUIClickSound();
                     modal->phase = EVENT_PHASE_COMPLETE;
                     d_LogInfo("Result confirmed via click, completing event");
                     return true;
@@ -519,7 +641,7 @@ static void RenderEventResult(const EventModal_t* modal, int modal_x, int modal_
 
     // Content area for result
     int content_y = modal_y + EVENT_MODAL_HEADER_HEIGHT + EVENT_MODAL_PADDING;
-    int content_w = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
+    int content_w = GetEventModalWidth() - (EVENT_MODAL_PADDING * 2);
     int text_x = modal_x + EVENT_MODAL_PADDING;
     const int BLOCK_SPACING = 30;  // Space between narrative blocks
 
@@ -603,7 +725,7 @@ static void RenderEventResult(const EventModal_t* modal, int modal_x, int modal_
         .scale = 0.9f
     };
     a_DrawText("[ Click or press ENTER to continue ]",
-                     modal_x + EVENT_MODAL_WIDTH / 2, prompt_y, prompt_config);
+                     modal_x + GetEventModalWidth() / 2, prompt_y, prompt_config);
 }
 
 void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
@@ -612,29 +734,33 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
     // Apply fade-in alpha
     Uint8 fade_alpha = (Uint8)(modal->fade_in_alpha * 255);
 
+    // Runtime window dimensions for responsiveness
+    int window_w = GetWindowWidth();
+    int window_h = GetWindowHeight();
+
     // Full-screen overlay
-    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT},
+    a_DrawFilledRect((aRectf_t){0, 0, window_w, window_h},
                      (aColor_t){COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b,
                      (Uint8)(COLOR_OVERLAY.a * modal->fade_in_alpha)});
 
     // Modal panel (shifted right from center, matching RewardModal)
-    int modal_x = ((SCREEN_WIDTH - EVENT_MODAL_WIDTH) / 2) + 132;
-    int modal_y = (SCREEN_HEIGHT - EVENT_MODAL_HEIGHT) / 2;
+    int modal_x = ((window_w - GetEventModalWidth()) / 2);
+    int modal_y = (window_h - EVENT_MODAL_HEIGHT) / 2;
 
     // Draw panel body
     int panel_body_y = modal_y + EVENT_MODAL_HEADER_HEIGHT;
     int panel_body_height = EVENT_MODAL_HEIGHT - EVENT_MODAL_HEADER_HEIGHT;
-    a_DrawFilledRect((aRectf_t){modal_x, panel_body_y, EVENT_MODAL_WIDTH, panel_body_height},
+    a_DrawFilledRect((aRectf_t){modal_x, panel_body_y, GetEventModalWidth(), panel_body_height},
                      (aColor_t){COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, fade_alpha});
 
     // Draw header
-    a_DrawFilledRect((aRectf_t){modal_x, modal_y, EVENT_MODAL_WIDTH, EVENT_MODAL_HEADER_HEIGHT},
+    a_DrawFilledRect((aRectf_t){modal_x, modal_y, GetEventModalWidth(), EVENT_MODAL_HEADER_HEIGHT},
                      (aColor_t){COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, fade_alpha});
-    a_DrawRect((aRectf_t){modal_x, modal_y, EVENT_MODAL_WIDTH, EVENT_MODAL_HEADER_HEIGHT},
+    a_DrawRect((aRectf_t){modal_x, modal_y, GetEventModalWidth(), EVENT_MODAL_HEADER_HEIGHT},
                (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, fade_alpha});
 
     // Draw title in header (centered on modal panel)
-    int title_center_x = modal_x + (EVENT_MODAL_WIDTH / 2);
+    int title_center_x = modal_x + (GetEventModalWidth() / 2);
     aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
         .fg = {COLOR_HEADER_TEXT.r, COLOR_HEADER_TEXT.g, COLOR_HEADER_TEXT.b, fade_alpha},
@@ -653,7 +779,7 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
         Uint8 content_alpha = (Uint8)(modal->choices_alpha * fade_alpha);
 
         int content_row_y = modal_y + EVENT_MODAL_HEADER_HEIGHT;
-        int content_area_width = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
+        int content_area_width = GetEventModalWidth() - (EVENT_MODAL_PADDING * 2);
 
         // Create temporary FlexBox for two-column layout (image left, text right)
         FlexBox_t* content_box = a_FlexBoxCreate(
@@ -711,7 +837,7 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
         // Phase 2: Darken the panel body further for result screen
         int panel_body_y_inner = modal_y + EVENT_MODAL_HEADER_HEIGHT;
         int panel_body_height_inner = EVENT_MODAL_HEIGHT - EVENT_MODAL_HEADER_HEIGHT;
-        a_DrawFilledRect((aRectf_t){modal_x, panel_body_y_inner, EVENT_MODAL_WIDTH, panel_body_height_inner},
+        a_DrawFilledRect((aRectf_t){modal_x, panel_body_y_inner, GetEventModalWidth(), panel_body_height_inner},
                          (aColor_t){0, 0, 0, (Uint8)(150 * modal->result_alpha)});  // Extra dark overlay
     }
 
@@ -729,7 +855,7 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
 
             int choice_y = choice_start_y + i * (EVENT_CHOICE_HEIGHT + EVENT_CHOICE_SPACING);
             int choice_x = modal_x + EVENT_MODAL_PADDING;
-            int choice_w = EVENT_MODAL_WIDTH - (EVENT_MODAL_PADDING * 2);
+            int choice_w = GetEventModalWidth() - (EVENT_MODAL_PADDING * 2);
 
             // Check if choice is locked (requirement not met)
             bool is_locked = !IsChoiceRequirementMet(&choice->requirement, player);
@@ -819,8 +945,8 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
                     int tooltip_x = mx + 15;
                     int tooltip_y = my + 15;
 
-                    if (tooltip_x + tooltip_w > SCREEN_WIDTH) tooltip_x = mx - tooltip_w - 15;
-                    if (tooltip_y + tooltip_h > SCREEN_HEIGHT) tooltip_y = my - tooltip_h - 15;
+                    if (tooltip_x + tooltip_w > GetWindowWidth()) tooltip_x = mx - tooltip_w - 15;
+                    if (tooltip_y + tooltip_h > GetWindowHeight()) tooltip_y = my - tooltip_h - 15;
 
                     a_DrawFilledRect((aRectf_t){tooltip_x, tooltip_y, tooltip_w, tooltip_h},
                                     (aColor_t){COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, 250});
@@ -861,8 +987,8 @@ void RenderEventModal(const EventModal_t* modal, const Player_t* player) {
                     int tooltip_x = mx + 15;
                     int tooltip_y = my + 15;
 
-                    if (tooltip_x + tooltip_w > SCREEN_WIDTH) tooltip_x = mx - tooltip_w - 15;
-                    if (tooltip_y + tooltip_h > SCREEN_HEIGHT) tooltip_y = my - tooltip_h - 15;
+                    if (tooltip_x + tooltip_w > GetWindowWidth()) tooltip_x = mx - tooltip_w - 15;
+                    if (tooltip_y + tooltip_h > GetWindowHeight()) tooltip_y = my - tooltip_h - 15;
 
                     // Draw background
                     a_DrawFilledRect((aRectf_t){tooltip_x, tooltip_y, tooltip_w, tooltip_h},

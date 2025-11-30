@@ -14,7 +14,7 @@
 // External globals
 extern dTable_t* g_players;
 extern dTable_t* g_card_textures;
-extern SDL_Surface* g_card_back_texture;
+extern aImage_t* g_card_back_texture;
 extern GameContext_t g_game;  // For checking targeting state
 
 // ============================================================================
@@ -101,10 +101,10 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                    player->hand.is_bust ? " (BUST)" : "");
 
     int name_y = y + SECTION_PADDING;
-    int center_x = GAME_AREA_X + (GAME_AREA_WIDTH / 2);
+    int player_score_x = GetGameAreaX() + (SIDEBAR_WIDTH / 2);
 
     // Draw main score (yellow)
-    a_DrawText((char*)d_StringPeek(info), center_x, name_y,
+    a_DrawText((char*)d_StringPeek(info), player_score_x, name_y,
                    (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,0,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     d_StringDestroy(info);
@@ -183,10 +183,14 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
             CalculateCardFanPosition(i, hand_size, cards_y, &x, &y);
         }
 
-        if (card->face_up && card->texture) {
-            a_BlitSurfaceRect(card->texture, (aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, 1);
-        } else if (!card->face_up && g_card_back_texture) {
-            a_BlitSurfaceRect(g_card_back_texture, (aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, 1);
+        if (card->face_up && card->texture && card->texture->surface) {
+            aRectf_t src = {0, 0, card->texture->surface->w, card->texture->surface->h};
+            aRectf_t dest = {x, y, CARD_WIDTH, CARD_HEIGHT};
+            a_BlitRect(card->texture, &src, &dest, 1.0f);
+        } else if (!card->face_up && g_card_back_texture && g_card_back_texture->surface) {
+            aRectf_t src = {0, 0, g_card_back_texture->surface->w, g_card_back_texture->surface->h};
+            aRectf_t dest = {x, y, CARD_WIDTH, CARD_HEIGHT};
+            a_BlitRect(g_card_back_texture, &src, &dest, 1.0f);
         } else {
             a_DrawFilledRect((aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){200, 200, 200, 255});
             a_DrawRect((aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){100, 100, 100, 255});
@@ -292,11 +296,15 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
             int scaled_x = x - (scaled_width - CARD_WIDTH) / 2;  // Center scaling
             int scaled_y = y + lift - (scaled_height - CARD_HEIGHT) / 2;
 
-            // Use Archimedes surface blitting
-            if (card->face_up && card->texture) {
-                a_BlitSurfaceRect(card->texture, (aRectf_t){scaled_x, scaled_y, scaled_width, scaled_height}, 1);
-            } else if (!card->face_up && g_card_back_texture) {
-                a_BlitSurfaceRect(g_card_back_texture, (aRectf_t){scaled_x, scaled_y, scaled_width, scaled_height}, 1);
+            // Use Archimedes image blitting
+            if (card->face_up && card->texture && card->texture->surface) {
+                aRectf_t src = {0, 0, card->texture->surface->w, card->texture->surface->h};
+                aRectf_t dest = {scaled_x, scaled_y, scaled_width, scaled_height};
+                a_BlitRect(card->texture, &src, &dest, 1.0f);
+            } else if (!card->face_up && g_card_back_texture && g_card_back_texture->surface) {
+                aRectf_t src = {0, 0, g_card_back_texture->surface->w, g_card_back_texture->surface->h};
+                aRectf_t dest = {scaled_x, scaled_y, scaled_width, scaled_height};
+                a_BlitRect(g_card_back_texture, &src, &dest, 1.0f);
             } else {
                 a_DrawFilledRect((aRectf_t){scaled_x, scaled_y, scaled_width, scaled_height}, (aColor_t){200, 200, 200, 255});
                 a_DrawRect((aRectf_t){scaled_x, scaled_y, scaled_width, scaled_height}, (aColor_t){100, 100, 100, 255});

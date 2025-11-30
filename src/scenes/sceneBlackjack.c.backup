@@ -290,7 +290,7 @@ static void InitializeLayout(void) {
     g_action_panel = CreateActionPanel("Your Turn - Choose Action:", action_buttons, NUM_ACTION_BUTTONS);
 
     // Create targeting panel section (no buttons, just instruction text)
-    g_targeting_panel = CreateActionPanel("Right-click to exit targeting mode", NULL, 0);
+    g_targeting_panel = CreateActionPanel("Right-click to exit targeting", NULL, 0);
 
     // Create deck/discard pile modals
     g_draw_pile_modal = CreateDrawPileModalSection(&g_test_deck);

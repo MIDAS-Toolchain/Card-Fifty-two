@@ -234,6 +234,7 @@ void InitTweenManager(TweenManager_t* manager) {
 
     memset(manager, 0, sizeof(TweenManager_t));
     manager->active_count = 0;
+    manager->highest_active_slot = -1;  // No active tweens initially
 
     // Mark all slots as inactive
     for (int i = 0; i < TWEEN_MAX_ACTIVE; i++) {
@@ -278,7 +279,7 @@ bool TweenFloatWithCallback(TweenManager_t* manager, float* target, float end_va
         return false;  // Pool full
     }
 
-    // Initialize tween (DIRECT target type)
+    // Initialize tween
     Tween_t* tween = &manager->tweens[slot];
     tween->active = true;
     tween->target_type = TWEEN_TARGET_DIRECT;
@@ -295,6 +296,12 @@ bool TweenFloatWithCallback(TweenManager_t* manager, float* target, float end_va
     tween->user_data = user_data;
 
     manager->active_count++;
+
+    // Update highest active slot tracker
+    if (slot > manager->highest_active_slot) {
+        manager->highest_active_slot = slot;
+    }
+
     return true;
 }
 
@@ -378,6 +385,12 @@ bool TweenFloatInArray(TweenManager_t* manager,
     tween->user_data = NULL;
 
     manager->active_count++;
+
+    // Update highest active slot tracker
+    if (slot > manager->highest_active_slot) {
+        manager->highest_active_slot = slot;
+    }
+
     return true;
 }
 
@@ -393,7 +406,11 @@ void UpdateTweens(TweenManager_t* manager, float dt) {
         dt = TWEEN_MAX_DT;
     }
 
-    for (int i = 0; i < TWEEN_MAX_ACTIVE; i++) {
+    // Early exit if no active tweens
+    if (manager->highest_active_slot < 0) return;
+
+    // Only iterate up to highest active slot (skip empty tail slots)
+    for (int i = 0; i <= manager->highest_active_slot; i++) {
         Tween_t* tween = &manager->tweens[i];
 
         if (!tween->active) continue;
@@ -426,6 +443,18 @@ void UpdateTweens(TweenManager_t* manager, float dt) {
             // Deactivate tween
             tween->active = false;
             manager->active_count--;
+
+            // Update highest_active_slot if this was the highest
+            if (i == manager->highest_active_slot) {
+                // Scan backwards to find new highest active slot
+                manager->highest_active_slot = -1;
+                for (int j = i - 1; j >= 0; j--) {
+                    if (manager->tweens[j].active) {
+                        manager->highest_active_slot = j;
+                        break;
+                    }
+                }
+            }
         } else {
             // Apply easing
             float eased_t = ApplyEasing(t, tween->easing);
@@ -455,6 +484,17 @@ int StopTweensForTarget(TweenManager_t* manager, float* target) {
             tween->active = false;
             manager->active_count--;
             stopped++;
+        }
+    }
+
+    // Recalculate highest_active_slot if we stopped any tweens
+    if (stopped > 0) {
+        manager->highest_active_slot = -1;
+        for (int i = TWEEN_MAX_ACTIVE - 1; i >= 0; i--) {
+            if (manager->tweens[i].active) {
+                manager->highest_active_slot = i;
+                break;
+            }
         }
     }
 

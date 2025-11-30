@@ -5,6 +5,7 @@
 
 #include "../include/common.h"
 #include "../include/game.h"
+#include "../include/state.h"
 #include "../include/player.h"
 #include "../include/deck.h"
 #include "../include/hand.h"
@@ -19,6 +20,7 @@
 #include "../include/stateStorage.h"
 #include "../include/statusEffects.h"
 #include "../include/trinket.h"
+#include "../include/audioHelper.h"
 
 // External globals
 extern dTable_t* g_players;
@@ -91,6 +93,9 @@ void Game_ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerActio
                 // Set dirty flag for combat stat recalculation (ADR-09)
                 player->combat_stats_dirty = true;
 
+                // Play card slide sound
+                PlayCardSlideSound();
+
                 // ✅ NEW: Fire event
                 Game_TriggerEvent(game, GAME_EVENT_CARD_DRAWN);
 
@@ -139,6 +144,9 @@ void Game_ExecutePlayerAction(GameContext_t* game, Player_t* player, PlayerActio
 
                 // Set dirty flag for combat stat recalculation (ADR-09)
                 player->combat_stats_dirty = true;
+
+                // Play card slide sound
+                PlayCardSlideSound();
 
                 // ✅ NEW: Fire event (double also draws a card)
                 Game_TriggerEvent(game, GAME_EVENT_CARD_DRAWN);
@@ -315,6 +323,9 @@ void Game_DealerTurn(GameContext_t* game) {
     while (dealer->hand.total_value < 17) {
         Game_DealCardWithAnimation(game->deck, &dealer->hand, dealer, true);
 
+        // Play card slide sound
+        PlayCardSlideSound();
+
         // Set dirty flag for combat stat recalculation (dealer drew card - ADR-09)
         Player_t* human_player = Game_GetPlayerByID(1);
         if (human_player) {
@@ -359,9 +370,18 @@ const Card_t* Game_GetDealerUpcard(const GameContext_t* game) {
 // ============================================================================
 
 // Deck position (center-right of screen, approximate)
-#define DECK_POSITION_X 850.0f
-#define DECK_POSITION_Y 300.0f
-#define CARD_DEAL_DURATION 0.4f  // Seconds for card to slide from deck to hand
+// Deck position is dynamic - cards deal from center of table
+#define CARD_DEAL_DURATION 0.4f
+
+// Calculate deck position at runtime (center of screen, at table height)
+static inline float GetDeckPositionX(void) {
+    return GetWindowWidth() / 2.0f;
+}
+
+static inline float GetDeckPositionY(void) {
+    // Table is at bottom of screen, deck should be slightly above table center
+    return GetWindowHeight() - 300.0f;  // Roughly where table/dealer area is
+}  // Seconds for card to slide from deck to hand
 
 bool Game_DealCardWithAnimation(Deck_t* deck, Hand_t* hand, Player_t* player, bool face_up) {
     if (!deck || !hand || !player) return false;
@@ -382,16 +402,12 @@ bool Game_DealCardWithAnimation(Deck_t* deck, Hand_t* hand, Player_t* player, bo
     size_t card_index = hand->cards->count - 1;
     size_t hand_size = hand->cards->count;
 
-    // Calculate base Y position based on player type
+    // Get actual runtime Y position from FlexBox layout (matches render positions!)
     int base_y;
     if (player->is_dealer) {
-        // Dealer: LAYOUT_TOP_MARGIN + SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP
-        base_y = LAYOUT_TOP_MARGIN + SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP;
+        base_y = GetDealerCardY();  // Runtime Y from FlexBox
     } else {
-        // Player: LAYOUT_TOP_MARGIN + DEALER_AREA_HEIGHT + BUTTON_AREA_HEIGHT +
-        //         SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP
-        base_y = LAYOUT_TOP_MARGIN + DEALER_AREA_HEIGHT + BUTTON_AREA_HEIGHT +
-                 SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP;
+        base_y = GetPlayerCardY();  // Runtime Y from FlexBox
     }
 
     // Calculate final position using shared fan layout
@@ -405,10 +421,10 @@ bool Game_DealCardWithAnimation(Deck_t* deck, Hand_t* hand, Player_t* player, bo
     CardTransitionManager_t* anim_mgr = GetCardTransitionManager();
     TweenManager_t* tween_mgr = GetTweenManager();
 
-    // Start animation from deck to hand
+    // Start animation from deck to hand (using runtime deck position)
     StartCardDealAnimation(anim_mgr, tween_mgr,
                            hand, card_index,
-                           DECK_POSITION_X, DECK_POSITION_Y,
+                           GetDeckPositionX(), GetDeckPositionY(),
                            target_x, target_y,
                            CARD_DEAL_DURATION,
                            face_up);  // Flip face-up halfway if needed
@@ -437,6 +453,9 @@ void Game_DealInitialHands(GameContext_t* game) {
                 d_LogError("Failed to deal card during initial hands!");
                 return;
             }
+
+            // Play card slide sound
+            PlayCardSlideSound();
 
             // Trigger CARD_DRAWN event for ability counters (only for non-dealer)
             if (!player->is_dealer) {

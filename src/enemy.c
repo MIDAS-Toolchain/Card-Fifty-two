@@ -301,10 +301,10 @@ void RefreshEnemyPortraitTexture(Enemy_t* enemy) {
         enemy->portrait_texture = NULL;
     }
 
-    // Create texture directly from original surface
-    enemy->portrait_texture = a_SurfaceToTexture(enemy->portrait_surface);
+    // Create texture directly from original surface (using SDL directly since a_SurfaceToTexture is not implemented)
+    enemy->portrait_texture = SDL_CreateTextureFromSurface(app.renderer, enemy->portrait_surface);
     if (!enemy->portrait_texture) {
-        d_LogError("Failed to create portrait texture");
+        d_LogErrorF("Failed to create portrait texture: %s", SDL_GetError());
         return;
     }
 

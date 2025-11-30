@@ -351,9 +351,9 @@ bool LoadPlayerPortrait(Player_t* player, const char* filename) {
         return false;
     }
 
-    // Load image as surface using Archimedes
-    SDL_Surface* surface = a_ImageLoad(filename);
-    if (!surface) {
+    // Load image using Archimedes (returns aImage_t with both surface and texture)
+    aImage_t* img = a_ImageLoad(filename);
+    if (!img || !img->surface) {
         d_LogError("LoadPlayerPortrait: Failed to load image");
         return false;
     }
@@ -363,19 +363,44 @@ bool LoadPlayerPortrait(Player_t* player, const char* filename) {
         SDL_FreeSurface(player->portrait_surface);
     }
 
-    // Store surface (no texture needed - we use surfaces directly now)
-    player->portrait_surface = surface;
-    player->portrait_dirty = false;  // Mark as clean since we just loaded it
+    // Store surface (make a copy since Archimedes owns the original)
+    player->portrait_surface = SDL_ConvertSurface(img->surface, img->surface->format, 0);
 
+    // Create texture from surface
+    if (player->portrait_texture) {
+        SDL_DestroyTexture(player->portrait_texture);
+        player->portrait_texture = NULL;
+    }
+
+    player->portrait_texture = SDL_CreateTextureFromSurface(app.renderer, player->portrait_surface);
+    if (!player->portrait_texture) {
+        d_LogErrorF("Failed to create portrait texture: %s", SDL_GetError());
+        player->portrait_dirty = false;
+        return false;
+    }
+
+    player->portrait_dirty = false;
     d_LogInfoF("Loaded portrait for %s: %s", d_StringPeek(player->name), filename);
     return true;
 }
 
 void RefreshPlayerPortraitTexture(Player_t* player) {
-    // No-op: We use surfaces directly now, no texture conversion needed
-    if (player) {
-        player->portrait_dirty = false;
+    if (!player || !player->portrait_surface) {
+        return;
     }
+
+    // Recreate texture from surface
+    if (player->portrait_texture) {
+        SDL_DestroyTexture(player->portrait_texture);
+        player->portrait_texture = NULL;
+    }
+
+    player->portrait_texture = SDL_CreateTextureFromSurface(app.renderer, player->portrait_surface);
+    if (!player->portrait_texture) {
+        d_LogErrorF("Failed to create portrait texture: %s", SDL_GetError());
+    }
+
+    player->portrait_dirty = false;
 
     d_LogInfo("Player portrait texture refreshed");
 }

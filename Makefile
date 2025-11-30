@@ -20,6 +20,10 @@ LIBS = -lArchimedes -lDaedalus -lSDL2 -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lcjs
 # Include paths
 INCLUDES = -I/usr/include -I/usr/local/include -I$(INC_DIR)
 
+# Emscripten include paths (NO system headers! Only project + lib headers)
+# lib/ contains Archimedes.h and Daedalus.h for Emscripten builds
+EM_INCLUDES = -I$(INC_DIR) -Ilib
+
 # Source files
 SOURCES = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/scenes/*.c) $(wildcard $(SRC_DIR)/scenes/components/*.c) $(wildcard $(SRC_DIR)/scenes/sections/*.c) $(wildcard $(SRC_DIR)/tutorial/*.c) $(wildcard $(SRC_DIR)/terminal/*.c) $(wildcard $(SRC_DIR)/tween/*.c) $(wildcard $(SRC_DIR)/trinkets/*.c) $(wildcard $(SRC_DIR)/loaders/*.c)
 # Exclude stub files now that real implementations are updated
@@ -60,23 +64,49 @@ run: $(TARGET)
 	@echo "Running $(TARGET)..."
 	@./$(TARGET)
 
-# Emscripten web build (future)
+# ============================================================================
+# EMSCRIPTEN WEB BUILD
+# ============================================================================
+
+# Emscripten compiler
 EMCC = emcc
-EM_FLAGS = -s USE_SDL=2 -s USE_SDL_IMAGE=2 -s USE_SDL_TTF=2 -s USE_SDL_MIXER=2
+INDEX_DIR = index
+
+# Emscripten flags (based on Archimedes template)
+# -O3: Aggressive optimization (inlining, loop unrolling, dead code elimination)
+EM_FLAGS = -O3 -s USE_SDL=2 -s USE_SDL_IMAGE=2 -s SDL2_IMAGE_FORMATS='["png"]'
+EM_FLAGS += -s USE_SDL_MIXER=2 -s USE_SDL_TTF=2
 EM_FLAGS += -s ALLOW_MEMORY_GROWTH=1 -s ASYNCIFY
+EM_FLAGS += -s ASSERTIONS=0
+EM_FLAGS += -s WASM=1
+EM_FLAGS += --shell-file htmlTemplate/template.html
+EM_FLAGS += --preload-file resources/
+EM_FLAGS += --preload-file data/
 
+# Web build target - compiles all sources directly with emcc
+# Links against prebuilt Emscripten-compiled libraries in lib/
+# NOTE: Uses EM_INCLUDES (project headers only, no system /usr/include!)
 web: $(SOURCES)
-	@mkdir -p $(BIN_DIR)
+	@mkdir -p $(INDEX_DIR)
 	@echo "Building for web with Emscripten..."
-	@$(EMCC) $(SOURCES) $(EM_FLAGS) $(INCLUDES) \
-		-L lib/ -lDaedalus -lArchimedes \
-		-o $(BIN_DIR)/index.html
-	@echo "Web build complete: $(BIN_DIR)/index.html"
+	@echo "Linking lib/libArchimedes.a and lib/libDaedalus.a"
+	@$(EMCC) $(SOURCES) $(EM_FLAGS) $(EM_INCLUDES) \
+		lib/libArchimedes.a lib/libDaedalus.a \
+		-o $(INDEX_DIR)/index.html
+	@echo "Web build complete: $(INDEX_DIR)/index.html"
+	@echo "Run 'make serve' to test in browser"
 
-# Serve web build
+# Serve web build (must cd to index/ for correct resource paths)
 serve:
 	@echo "Starting local server on http://localhost:8000"
-	@python3 -m http.server 8000
+	@echo "Open http://localhost:8000/index.html in your browser"
+	@cd $(INDEX_DIR) && python3 -m http.server 8000
+
+# Clean web build artifacts
+clean-web:
+	@echo "Cleaning web build artifacts..."
+	@rm -rf $(INDEX_DIR)
+	@echo "Web artifacts cleaned"
 
 # Memory leak check with Valgrind
 valgrind: $(TARGET)
@@ -156,10 +186,11 @@ help:
 	@echo "  make verify   - Run architecture fitness functions"
 	@echo "  make debug    - Build with debug symbols"
 	@echo "  make clean    - Remove build artifacts"
-	@echo "  make web      - Build for web (Emscripten)"
-	@echo "  make serve    - Start local web server"
+	@echo "  make web      - Build for web (Emscripten) -> index/index.html"
+	@echo "  make serve    - Start local web server (http://localhost:8000)"
+	@echo "  make clean-web - Clean web build artifacts (index/)"
 	@echo "  make valgrind - Run with memory leak detection"
 	@echo "  make asan     - Build with Address Sanitizer"
 	@echo "  make help     - Show this help message"
 
-.PHONY: all debug clean run test verify fitness web serve valgrind asan help
+.PHONY: all debug clean run test verify fitness web serve clean-web valgrind asan help

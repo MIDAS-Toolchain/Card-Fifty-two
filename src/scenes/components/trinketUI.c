@@ -41,7 +41,8 @@ void DestroyTrinketUI(TrinketUI_t** ui) {
 // ============================================================================
 
 void HandleTrinketUIInput(TrinketUI_t* ui, Player_t* player, GameContext_t* game) {
-    if (!ui || !player || !game || !player->trinket_slots) return;
+    if (!ui || !player || !game) return;
+    // Note: trinket_slots is a fixed-size array embedded in Player_t, not a pointer
 
     // Only allow trinket use during player turn
     if (game->current_state != STATE_PLAYER_TURN) return;
@@ -97,14 +98,14 @@ static void RenderClassTrinketTooltip(const Trinket_t* trinket, int slot_index) 
     // Calculate tooltip position
     int slot_x, slot_y, slot_size;
     if (is_class_trinket) {
-        slot_x = CLASS_TRINKET_X;
-        slot_y = CLASS_TRINKET_Y;
+        slot_x = GetClassTrinketX();
+        slot_y = GetClassTrinketY();
         slot_size = CLASS_TRINKET_SIZE;
     } else {
         int row = slot_index / 3;
         int col = slot_index % 3;
-        slot_x = TRINKET_UI_X + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
-        slot_y = TRINKET_UI_Y + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        slot_x = GetTrinketUIX() + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        slot_y = GetTrinketUIY() + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
         slot_size = TRINKET_SLOT_SIZE;
     }
 
@@ -350,8 +351,9 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
     }
 
     // 1. Format trigger ("On Win:", "On Blackjack:", etc.)
+    // Cast to int to allow non-enum value 999 (special ON_EQUIP trigger)
     const char* trigger_str = NULL;
-    switch (trigger) {
+    switch ((int)trigger) {
         case GAME_EVENT_COMBAT_START:     trigger_str = "On Combat Start"; break;
         case GAME_EVENT_PLAYER_WIN:       trigger_str = "On Win"; break;
         case GAME_EVENT_PLAYER_LOSS:      trigger_str = "On Loss"; break;
@@ -410,7 +412,7 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
         }
 
         case TRINKET_EFFECT_ADD_DAMAGE_FLAT:
-            d_StringFormat(passive_text, "%s: +%d damage", trigger_str, effect_value);
+            d_StringFormat(passive_text, "%s: Deal %d damage", trigger_str, effect_value);
             break;
 
         case TRINKET_EFFECT_DAMAGE_MULTIPLIER:
@@ -458,8 +460,8 @@ static void RenderTrinketTooltip(const TrinketTemplate_t* template, TrinketInsta
     // Calculate tooltip position
     int row = slot_index / 3;
     int col = slot_index % 3;
-    int slot_x = TRINKET_UI_X + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
-    int slot_y = TRINKET_UI_Y + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+    int slot_x = GetTrinketUIX() + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+    int slot_y = GetTrinketUIY() + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
 
     int tooltip_width = 340;
     int tooltip_x = slot_x - tooltip_width - 10;  // Left of slot
@@ -498,6 +500,11 @@ static void RenderTrinketTooltip(const TrinketTemplate_t* template, TrinketInsta
     // Add affix heights
     for (int i = 0; i < instance->affix_count; i++) {
         tooltip_height += 20;  // Each affix line
+    }
+
+    // Show damage counter (if any)
+    if (instance->total_damage_dealt > 0) {
+        tooltip_height += 20;
     }
 
     tooltip_height += padding;
@@ -600,10 +607,28 @@ static void RenderTrinketTooltip(const TrinketTemplate_t* template, TrinketInsta
 
         current_y += 20;
     }
+
+    // Total damage dealt (if any)
+    if (instance->total_damage_dealt > 0) {
+        dString_t* dmg_text = d_StringInit();
+        d_StringFormat(dmg_text, "Total Damage Dealt: %d", instance->total_damage_dealt);
+
+        aTextStyle_t dmg_config = {
+            .type = FONT_GAME,
+            .fg = {255, 255, 255, 255},  // White text
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.0f
+        };
+        a_DrawText((char*)d_StringPeek(dmg_text), content_x, current_y, dmg_config);
+        d_StringDestroy(dmg_text);
+        current_y += 20;
+    }
 }
 
 void RenderTrinketTooltips(TrinketUI_t* ui, Player_t* player) {
-    if (!ui || !player || !player->trinket_slots) return;
+    if (!ui || !player) return;
+    // Note: trinket_slots is a fixed-size array embedded in Player_t, not a pointer
 
     // Don't show tooltips while in targeting mode (tooltip would block card selection)
     extern GameContext_t g_game;
@@ -655,10 +680,10 @@ void UpdateTrinketUIHover(TrinketUI_t* ui, Player_t* player) {
     int mouse_y = app.mouse.y;
 
     // Check class trinket hover
-    bool class_hovered = (mouse_x >= CLASS_TRINKET_X &&
-                          mouse_x < CLASS_TRINKET_X + CLASS_TRINKET_SIZE &&
-                          mouse_y >= CLASS_TRINKET_Y &&
-                          mouse_y < CLASS_TRINKET_Y + CLASS_TRINKET_SIZE);
+    bool class_hovered = (mouse_x >= GetClassTrinketX() &&
+                          mouse_x < GetClassTrinketX() + CLASS_TRINKET_SIZE &&
+                          mouse_y >= GetClassTrinketY() &&
+                          mouse_y < GetClassTrinketY() + CLASS_TRINKET_SIZE);
     if (class_hovered) {
         ui->hovered_class_trinket = true;
         return;  // Early exit if class trinket hovered
@@ -668,8 +693,8 @@ void UpdateTrinketUIHover(TrinketUI_t* ui, Player_t* player) {
     for (int slot_index = 0; slot_index < 6; slot_index++) {
         int row = slot_index / 3;
         int col = slot_index % 3;
-        int slot_x = TRINKET_UI_X + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
-        int slot_y = TRINKET_UI_Y + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        int slot_x = GetTrinketUIX() + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        int slot_y = GetTrinketUIY() + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
 
         bool slot_hovered = (mouse_x >= slot_x &&
                             mouse_x < slot_x + TRINKET_SLOT_SIZE &&
@@ -688,9 +713,10 @@ void UpdateTrinketUIHover(TrinketUI_t* ui, Player_t* player) {
 // ============================================================================
 
 void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
-    if (!ui || !player || !player->trinket_slots) {
+    if (!ui || !player) {
         return;
     }
+    // Note: trinket_slots is a fixed-size array embedded in Player_t, not a pointer
 
     // Hover state is now updated by UpdateTrinketUIHover() before input handling
     // (no longer reset or calculated here to avoid timing bug)
@@ -725,8 +751,8 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
         }
 
         // Apply shake offsets (tweened during proc)
-        int shake_x = CLASS_TRINKET_X + (int)class_trinket->shake_offset_x;
-        int shake_y = CLASS_TRINKET_Y + (int)class_trinket->shake_offset_y;
+        int shake_x = GetClassTrinketX() + (int)class_trinket->shake_offset_x;
+        int shake_y = GetClassTrinketY() + (int)class_trinket->shake_offset_y;
 
         // Background
         a_DrawFilledRect((aRectf_t){shake_x, shake_y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE},
@@ -784,9 +810,9 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
         const int indicator_gap = 6;
         const int indicator_y_offset = 6;  // Gap between trinket and indicators
 
-        int indicators_y = CLASS_TRINKET_Y + CLASS_TRINKET_SIZE + indicator_y_offset;
-        int left_indicator_x = CLASS_TRINKET_X + (CLASS_TRINKET_SIZE / 2) - indicator_width - (indicator_gap / 2);
-        int right_indicator_x = CLASS_TRINKET_X + (CLASS_TRINKET_SIZE / 2) + (indicator_gap / 2);
+        int indicators_y = GetClassTrinketY() + CLASS_TRINKET_SIZE + indicator_y_offset;
+        int left_indicator_x = GetClassTrinketX() + (CLASS_TRINKET_SIZE / 2) - indicator_width - (indicator_gap / 2);
+        int right_indicator_x = GetClassTrinketX() + (CLASS_TRINKET_SIZE / 2) + (indicator_gap / 2);
 
         // Left indicator: Cooldown
         if (on_cooldown) {
@@ -853,7 +879,7 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
                        bonus_config);
     } else {
         // Empty class trinket slot - draw dimmed gold outline
-        a_DrawRect((aRectf_t){CLASS_TRINKET_X, CLASS_TRINKET_Y, CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE},
+        a_DrawRect((aRectf_t){GetClassTrinketX(), GetClassTrinketY(), CLASS_TRINKET_SIZE, CLASS_TRINKET_SIZE},
                   (aColor_t){100, 90, 25, 128});  // Dimmed gold
     }
 
@@ -865,8 +891,8 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
         int row = slot_index / 3;  // 0 or 1
         int col = slot_index % 3;  // 0, 1, or 2
 
-        int slot_x = TRINKET_UI_X + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
-        int slot_y = TRINKET_UI_Y + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        int slot_x = GetTrinketUIX() + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        int slot_y = GetTrinketUIY() + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
 
         // Use persisted hover state from UpdateTrinketUIHover()
         bool is_hovered = (ui->hovered_trinket_slot == slot_index);

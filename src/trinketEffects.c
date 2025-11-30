@@ -7,8 +7,13 @@
 
 #include "../include/trinketEffects.h"
 #include "../include/player.h"
+#include "../include/enemy.h"                  // For Enemy_t, TriggerEnemyDamageEffect
 #include "../include/statusEffects.h"
 #include "../include/loaders/trinketLoader.h"
+#include "../include/stats.h"                  // For Stats_RecordDamage
+#include "../include/scenes/sceneBlackjack.h"  // For TweenEnemyHP, GetTweenManager, GetVisualEffects
+#include "../include/scenes/components/visualEffects.h"
+#include "../include/tween/tween.h"            // For TweenFloat, TWEEN_EASE_*
 
 // ============================================================================
 // EFFECT EXECUTORS (Internal)
@@ -119,6 +124,60 @@ static void ExecuteRefundChipsPercent(Player_t* player, GameContext_t* game, int
     player->chips += refund;
     d_LogInfoF("Trinket effect: Refund %d%% of bet = +%d chips (total: %d)",
                percent, refund, player->chips);
+}
+
+/**
+ * ExecuteAddDamageFlat - Deal flat damage to enemy immediately
+ *
+ * Example: Stack Trace (deal 15 damage on bust)
+ */
+static void ExecuteAddDamageFlat(Player_t* player, GameContext_t* game, TrinketInstance_t* instance, int damage) {
+    if (!player || !game || !instance || damage <= 0) return;
+
+    // Only trigger in combat
+    if (!game->is_combat_mode || !game->current_enemy) {
+        d_LogDebug("ExecuteAddDamageFlat: Not in combat mode, skipping");
+        return;
+    }
+
+    int old_hp = game->current_enemy->current_hp;
+
+    // Apply damage to enemy
+    game->current_enemy->current_hp -= damage;
+    if (game->current_enemy->current_hp < 0) {
+        game->current_enemy->current_hp = 0;
+    }
+
+    // Track total damage for trinket stats
+    instance->total_damage_dealt += damage;
+
+    // Record for stats system
+    Stats_RecordDamage(damage, DAMAGE_SOURCE_TRINKET_PASSIVE);
+
+    // Trigger visual feedback
+    TweenEnemyHP(game->current_enemy);  // Smooth HP bar drain animation
+
+    TweenManager_t* tween_mgr = GetTweenManager();
+    if (tween_mgr) {
+        TriggerEnemyDamageEffect(game->current_enemy, tween_mgr);  // Shake + red flash on enemy
+
+        // TODO: Trigger trinket icon shake + flash animation
+        // Requires TweenFloatInArray support for TrinketInstance_t in Player_t.trinket_slots[]
+        // For now, just set flash alpha directly
+        instance->flash_alpha = 255.0f;
+    }
+
+    // Spawn damage number via visual effects component
+    VisualEffects_t* vfx = GetVisualEffects();
+    if (vfx) {
+        VFX_SpawnDamageNumber(vfx, damage,
+                             SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
+                             ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                             false, false, false);  // Not healing, not crit, not rake
+    }
+
+    d_LogInfoF("📊 Trinket effect: Deal %d flat damage to enemy (HP: %d → %d)",
+               damage, old_hp, game->current_enemy->current_hp);
 }
 
 /**
@@ -254,6 +313,9 @@ void ExecuteTrinketEffect(
             break;
 
         case TRINKET_EFFECT_ADD_DAMAGE_FLAT:
+            ExecuteAddDamageFlat(player, game, instance, effect_value);
+            break;
+
         case TRINKET_EFFECT_DAMAGE_MULTIPLIER:
         case TRINKET_EFFECT_PUSH_DAMAGE_PERCENT:
             // These will be handled by stat aggregation system (Phase 6)

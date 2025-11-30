@@ -143,8 +143,8 @@ void ApplyScreenShakeViewport(VisualEffects_t* vfx) {
         SDL_Rect viewport = {
             (int)vfx->shake_offset_x,
             (int)vfx->shake_offset_y,
-            SCREEN_WIDTH,
-            SCREEN_HEIGHT
+            GetWindowWidth(),   // Use actual window dimensions, not hardcoded SCREEN_WIDTH
+            GetWindowHeight()   // Use actual window dimensions, not hardcoded SCREEN_HEIGHT
         };
         SDL_RenderSetViewport(app.renderer, &viewport);
     }

@@ -309,9 +309,9 @@ void CMD_DealDamage(Terminal_t* terminal, const char* args) {
     // Spawn visual damage number
     VisualEffects_t* vfx = GetVisualEffects();
     if (vfx) {
-        // Enemy portrait position (center of game area + offsets)
-        float enemy_x = GAME_AREA_X + (GAME_AREA_WIDTH / 2) + ENEMY_PORTRAIT_X_OFFSET;
-        float enemy_y = (SCREEN_HEIGHT / 2) + ENEMY_PORTRAIT_Y_OFFSET;
+        // Enemy portrait position (center of game area + offsets) - runtime
+        float enemy_x = GetGameAreaX() + (GetGameAreaWidth() / 2) + ENEMY_PORTRAIT_X_OFFSET;
+        float enemy_y = (GetWindowHeight() / 2) + ENEMY_PORTRAIT_Y_OFFSET;
         VFX_SpawnDamageNumber(vfx, modified_damage, enemy_x, enemy_y, false, is_crit, false);
     }
 

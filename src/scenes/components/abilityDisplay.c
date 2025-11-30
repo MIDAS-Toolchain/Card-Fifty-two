@@ -195,10 +195,14 @@ void RenderAbilityDisplay(AbilityDisplay_t* display) {
     int mouse_y = app.mouse.y;
     display->hovered_index = -1;
 
-    int base_x = display->x;
+    // Right-align cards within the ability column (280px width from sceneBlackjack.h)
+    // Cards are 80px wide, so offset by 200px to align to right edge
+    #define ABILITY_COLUMN_WIDTH 280
+    int card_offset_x = ABILITY_COLUMN_WIDTH - ABILITY_CARD_WIDTH;
+    int base_x = display->x + card_offset_x;
     int base_y = display->y;
 
-    // Render each ability (VERTICAL layout)
+    // Render each ability (VERTICAL layout, right-aligned within column)
     for (size_t i = 0; i < enemy->abilities->count; i++) {
         Ability_t** ability_ptr = (Ability_t**)d_ArrayGet(enemy->abilities, i);
         if (!ability_ptr || !*ability_ptr) continue;
@@ -340,10 +344,12 @@ bool GetHoveredAbilityPosition(const AbilityDisplay_t* display, int* out_x, int*
         return false;
     }
 
-    // Calculate position of hovered card
+    // Calculate position of hovered card (with right-align offset)
+    int card_offset_x = 280 - ABILITY_CARD_WIDTH;  // Same offset as render
+    int card_x = display->x + card_offset_x;
     int card_y = display->y + (display->hovered_index * (ABILITY_CARD_HEIGHT + ABILITY_CARD_SPACING));
 
-    if (out_x) *out_x = display->x;
+    if (out_x) *out_x = card_x;
     if (out_y) *out_y = card_y;
     return true;
 }

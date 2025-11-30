@@ -11,12 +11,17 @@
 #include "../../../include/loaders/affixLoader.h"
 #include "../../../include/common.h"
 #include "../../../include/tween/tween.h"
+#include "../../../include/audioHelper.h"
 #include <stdlib.h>
 #include <math.h>
 
 // External globals (defined in common.h/defs.h)
 // app is already declared in common.h, no need to extern
 extern TweenManager_t g_tween_manager;  // Tween manager for animations
+
+// Hover sound tracking
+static bool last_equip_hovered = false;
+static bool last_sell_hovered = false;
 
 // ============================================================================
 // COLOR PALETTE (ADR-008: Modal Design Consistency)
@@ -146,8 +151,9 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
     }
 
     // 1. Format trigger ("On Win:", "On Blackjack:", etc.)
+    // Cast to int to allow non-enum value 999 (special ON_EQUIP trigger)
     const char* trigger_str = NULL;
-    switch (trigger) {
+    switch ((int)trigger) {
         case GAME_EVENT_COMBAT_START:     trigger_str = "On Combat Start"; break;
         case GAME_EVENT_PLAYER_WIN:       trigger_str = "On Win"; break;
         case GAME_EVENT_PLAYER_LOSS:      trigger_str = "On Loss"; break;
@@ -206,7 +212,7 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
         }
 
         case TRINKET_EFFECT_ADD_DAMAGE_FLAT:
-            d_StringFormat(passive_text, "%s: +%d damage", trigger_str, effect_value);
+            d_StringFormat(passive_text, "%s: Deal %d damage", trigger_str, effect_value);
             break;
 
         case TRINKET_EFFECT_DAMAGE_MULTIPLIER:
@@ -417,16 +423,16 @@ bool HandleTrinketDropModalInput(TrinketDropModal_t* modal, Player_t* player, fl
                         modal->anim_stage = TRINKET_ANIM_FLY_TO_SLOT;
 
                         // Start position: center screen
-                        modal->trinket_pos_x = SCREEN_WIDTH / 2.0f;
-                        modal->trinket_pos_y = SCREEN_HEIGHT / 2.0f;
+                        modal->trinket_pos_x = GetWindowWidth() / 2.0f;
+                        modal->trinket_pos_y = GetWindowHeight() / 2.0f;
                         modal->trinket_scale = 2.0f;  // Start big
 
                         // End position: target slot
                         int slot = modal->equipped_slot;
                         int col = slot % 3;
                         int row = slot / 3;
-                        float target_x = TRINKET_UI_X + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP) + TRINKET_SLOT_SIZE / 2.0f;
-                        float target_y = TRINKET_UI_Y + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP) + TRINKET_SLOT_SIZE / 2.0f;
+                        float target_x = GetTrinketUIX() + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP) + TRINKET_SLOT_SIZE / 2.0f;
+                        float target_y = GetTrinketUIY() + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP) + TRINKET_SLOT_SIZE / 2.0f;
 
                         // Tween to target (0.6s)
                         TweenFloat(&g_tween_manager, &modal->trinket_pos_x, target_x, 0.6f, TWEEN_EASE_OUT_CUBIC);
@@ -439,8 +445,8 @@ bool HandleTrinketDropModalInput(TrinketDropModal_t* modal, Player_t* player, fl
                         modal->anim_stage = TRINKET_ANIM_FLY_TO_CHIPS;
 
                         // Start position: center screen
-                        modal->trinket_pos_x = SCREEN_WIDTH / 2.0f;
-                        modal->trinket_pos_y = SCREEN_HEIGHT / 2.0f;
+                        modal->trinket_pos_x = GetWindowWidth() / 2.0f;
+                        modal->trinket_pos_y = GetWindowHeight() / 2.0f;
                         modal->trinket_scale = 2.0f;  // Start big
 
                         // End position: chips display (top-left, estimated position)
@@ -501,18 +507,19 @@ bool HandleTrinketDropModalInput(TrinketDropModal_t* modal, Player_t* player, fl
                         CoinParticle_t* p = &modal->particles[i];
 
                         // Random velocity (burst outward)
-                        float angle = ((float)rand() / RAND_MAX) * 2.0f * 3.14159f;  // Random angle
-                        float speed = 100.0f + ((float)rand() / RAND_MAX) * 150.0f;  // 100-250 px/s
+                        // Note: rand() returns [0, RAND_MAX], normalize to [0.0, 1.0]
+                        float angle = ((float)rand() / (float)RAND_MAX) * 2.0f * 3.14159f;  // Random angle
+                        float speed = 100.0f + ((float)rand() / (float)RAND_MAX) * 150.0f;  // 100-250 px/s
 
                         p->x = spawn_x;
                         p->y = spawn_y;
                         p->vx = cosf(angle) * speed;
                         p->vy = sinf(angle) * speed - 50.0f;  // Bias upward
                         p->lifetime = 0.0f;
-                        p->max_lifetime = 0.5f + ((float)rand() / RAND_MAX) * 0.5f;  // 0.5-1.0s
-                        p->rotation = ((float)rand() / RAND_MAX) * 360.0f;
-                        p->rotation_speed = -200.0f + ((float)rand() / RAND_MAX) * 400.0f;  // -200 to +200 deg/s
-                        p->scale = 0.5f + ((float)rand() / RAND_MAX) * 0.5f;  // 0.5-1.0
+                        p->max_lifetime = 0.5f + ((float)rand() / (float)RAND_MAX) * 0.5f;  // 0.5-1.0s
+                        p->rotation = ((float)rand() / (float)RAND_MAX) * 360.0f;
+                        p->rotation_speed = -200.0f + ((float)rand() / (float)RAND_MAX) * 400.0f;  // -200 to +200 deg/s
+                        p->scale = 0.5f + ((float)rand() / (float)RAND_MAX) * 0.5f;  // 0.5-1.0
                     }
 
                     // Start chip flash text animation immediately (fade in during coin burst)
@@ -590,8 +597,8 @@ bool HandleTrinketDropModalInput(TrinketDropModal_t* modal, Player_t* player, fl
     bool clicked = app.mouse.pressed;
 
     // Calculate modal position (centered)
-    int modal_x = (SCREEN_WIDTH - TRINKET_DROP_MODAL_WIDTH) / 2;
-    int modal_y = (SCREEN_HEIGHT - TRINKET_DROP_MODAL_HEIGHT) / 2;
+    int modal_x = (GetWindowWidth() - TRINKET_DROP_MODAL_WIDTH) / 2;
+    int modal_y = (GetWindowHeight() - TRINKET_DROP_MODAL_HEIGHT) / 2;
 
     // ========================================================================
     // KEYBOARD HOTKEYS (reward modal pattern)
@@ -616,6 +623,7 @@ bool HandleTrinketDropModalInput(TrinketDropModal_t* modal, Player_t* player, fl
             }
 
             if (slot >= 0) {
+                PlayUIClickSound();
                 modal->was_equipped = true;
                 modal->equipped_slot = slot;
                 modal->confirmed = true;
@@ -632,6 +640,7 @@ bool HandleTrinketDropModalInput(TrinketDropModal_t* modal, Player_t* player, fl
                 return false;
             }
         } else if (prev_key_held == 1) {
+            PlayUIClickSound();
             // S released - sell trinket
             modal->was_equipped = false;
             modal->equipped_slot = -1;
@@ -677,6 +686,17 @@ bool HandleTrinketDropModalInput(TrinketDropModal_t* modal, Player_t* player, fl
     else if (sell_hovered) modal->hovered_button = 1;
     else modal->hovered_button = -1;
 
+    // Play hover sounds on button hover change
+    if (equip_hovered && !last_equip_hovered) {
+        PlayUIHoverSound();
+    }
+    last_equip_hovered = equip_hovered;
+
+    if (sell_hovered && !last_sell_hovered) {
+        PlayUIHoverSound();
+    }
+    last_sell_hovered = sell_hovered;
+
     // Update button scale animations (smooth transitions)
     float target_equip_scale = equip_hovered ? 1.05f : 1.0f;
     float target_sell_scale = sell_hovered ? 1.05f : 1.0f;
@@ -689,6 +709,7 @@ bool HandleTrinketDropModalInput(TrinketDropModal_t* modal, Player_t* player, fl
     // Handle mouse clicks
     if (clicked) {
         if (equip_hovered) {
+            PlayUIClickSound();
             // Equip to first available slot
             int slot = -1;
             for (int i = 0; i < 6; i++) {
@@ -707,15 +728,15 @@ bool HandleTrinketDropModalInput(TrinketDropModal_t* modal, Player_t* player, fl
                 modal->anim_stage = TRINKET_ANIM_FLY_TO_SLOT;
 
                 // Start position: center screen
-                modal->trinket_pos_x = SCREEN_WIDTH / 2.0f;
-                modal->trinket_pos_y = SCREEN_HEIGHT / 2.0f;
+                modal->trinket_pos_x = GetWindowWidth() / 2.0f;
+                modal->trinket_pos_y = GetWindowHeight() / 2.0f;
                 modal->trinket_scale = 2.5f;  // Start bigger for visibility
 
-                // End position: target slot
+                // End position: target slot (runtime)
                 int col = slot % 3;
                 int row = slot / 3;
-                float target_x = TRINKET_UI_X + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP) + TRINKET_SLOT_SIZE / 2.0f;
-                float target_y = TRINKET_UI_Y + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP) + TRINKET_SLOT_SIZE / 2.0f;
+                float target_x = GetTrinketUIX() + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP) + TRINKET_SLOT_SIZE / 2.0f;
+                float target_y = GetTrinketUIY() + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP) + TRINKET_SLOT_SIZE / 2.0f;
 
                 // Tween to target (1.0s - slow enough to see clearly)
                 TweenFloat(&g_tween_manager, &modal->trinket_pos_x, target_x, 1.0f, TWEEN_EASE_IN_OUT_CUBIC);
@@ -729,6 +750,7 @@ bool HandleTrinketDropModalInput(TrinketDropModal_t* modal, Player_t* player, fl
                 return false;
             }
         } else if (sell_hovered) {
+            PlayUIClickSound();
             // Sell trinket for chips
             modal->was_equipped = false;
             modal->equipped_slot = -1;
@@ -756,15 +778,15 @@ void RenderTrinketDropModal(const TrinketDropModal_t* modal, const Player_t* pla
     if (!modal || !modal->is_visible || !modal->template) return;
 
     // Calculate modal position (centered)
-    int modal_x = (SCREEN_WIDTH - TRINKET_DROP_MODAL_WIDTH) / 2;
-    int modal_y = (SCREEN_HEIGHT - TRINKET_DROP_MODAL_HEIGHT) / 2;
+    int modal_x = (GetWindowWidth() - TRINKET_DROP_MODAL_WIDTH) / 2;
+    int modal_y = (GetWindowHeight() - TRINKET_DROP_MODAL_HEIGHT) / 2;
 
     // ========================================================================
     // ANIMATION CHECK - Complete stage shows overlay only
     // ========================================================================
     if (modal->anim_stage == TRINKET_ANIM_COMPLETE) {
         // Animation complete, still show dark overlay but skip modal
-        a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, COLOR_OVERLAY);
+        a_DrawFilledRect((aRectf_t){0, 0, GetWindowWidth(), GetWindowHeight()}, COLOR_OVERLAY);
         return;
     }
 
@@ -790,7 +812,7 @@ void RenderTrinketDropModal(const TrinketDropModal_t* modal, const Player_t* pla
         // Dark overlay (ADR-008 color palette) - apply fade alpha
         aColor_t overlay_color = COLOR_OVERLAY;
         overlay_color.a = (uint8_t)((overlay_color.a / 255.0f) * alpha);
-        a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, overlay_color);
+        a_DrawFilledRect((aRectf_t){0, 0, GetWindowWidth(), GetWindowHeight()}, overlay_color);
 
         // Modal background (ADR-008 color palette) - apply fade alpha
         aColor_t bg_color = COLOR_PANEL_BG;
@@ -1152,6 +1174,25 @@ void RenderTrinketDropModal(const TrinketDropModal_t* modal, const Player_t* pla
         content_y += 5;
     }
 
+    // Total damage dealt (if any)
+    if (modal->trinket_drop.total_damage_dealt > 0) {
+        content_y += 8;  // Spacing before damage counter
+
+        dString_t* dmg_text = d_StringInit();
+        d_StringFormat(dmg_text, "Total Damage Dealt: %d", modal->trinket_drop.total_damage_dealt);
+
+        aTextStyle_t dmg_config = {
+            .type = FONT_GAME,
+            .fg = {255, 255, 255, 255},  // White text
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = 0,
+            .scale = 1.0f
+        };
+        a_DrawText((char*)d_StringPeek(dmg_text), content_x, content_y, dmg_config);
+        d_StringDestroy(dmg_text);
+        content_y += 20;
+    }
+
     // ========================================================================
     // EQUIP/SELL BUTTONS (with labels above)
     // ========================================================================
@@ -1294,8 +1335,8 @@ void RenderTrinketDropModal(const TrinketDropModal_t* modal, const Player_t* pla
         int slot = modal->equipped_slot;
         int col = slot % 3;
         int row = slot / 3;
-        int slot_x = TRINKET_UI_X + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
-        int slot_y = TRINKET_UI_Y + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        int slot_x = GetTrinketUIX() + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        int slot_y = GetTrinketUIY() + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
 
         // Get rarity color for flash
         aColor_t rarity_color;
@@ -1367,7 +1408,7 @@ void RenderTrinketDropModal(const TrinketDropModal_t* modal, const Player_t* pla
         if (modal->anim_stage == TRINKET_ANIM_COMPLETE) {
             overlay.a = (uint8_t)((overlay.a / 255.0f) * modal->fade_alpha * 255.0f);
         }
-        a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, overlay);
+        a_DrawFilledRect((aRectf_t){0, 0, GetWindowWidth(), GetWindowHeight()}, overlay);
     }
 
     // ========================================================================
@@ -1435,7 +1476,7 @@ void RenderTrinketDropModal(const TrinketDropModal_t* modal, const Player_t* pla
             .wrap_width = 0,
             .scale = 1.5f  // Bigger for visibility
         };
-        a_DrawText((char*)d_StringPeek(chip_text), SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 40, flash_config);
+        a_DrawText((char*)d_StringPeek(chip_text), GetWindowWidth() / 2, GetWindowHeight() / 2 - 40, flash_config);
 
         // "SOLD!" label below
         aTextStyle_t sold_config = {
@@ -1445,7 +1486,7 @@ void RenderTrinketDropModal(const TrinketDropModal_t* modal, const Player_t* pla
             .wrap_width = 0,
             .scale = 1.2f  // Bigger for visibility
         };
-        a_DrawText("SOLD!", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 30, sold_config);
+        a_DrawText("SOLD!", GetWindowWidth() / 2, GetWindowHeight() / 2 + 30, sold_config);
 
         d_StringDestroy(chip_text);
     }

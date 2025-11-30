@@ -16,9 +16,9 @@ TopBarSection_t* CreateTopBarSection(void) {
         return NULL;
     }
 
-    // Create settings button (positioned at far right)
+    // Create settings button (positioned at far right) - runtime positioning
     // Calculate X position: right-align the button's LEFT edge, not its center
-    int button_x = SCREEN_WIDTH - SETTINGS_BUTTON_MARGIN - SETTINGS_BUTTON_WIDTH;
+    int button_x = GetWindowWidth() - SETTINGS_BUTTON_MARGIN - SETTINGS_BUTTON_WIDTH;
     section->settings_button = CreateButton(button_x, 0,
                                              SETTINGS_BUTTON_WIDTH,
                                              SETTINGS_BUTTON_HEIGHT,
@@ -149,8 +149,8 @@ void UpdateTopBarShowcase(TopBarSection_t* section, float dt,
 void RenderTopBarSection(TopBarSection_t* section, const GameContext_t* game, int y) {
     if (!section) return;
 
-    // Draw top bar background
-    a_DrawFilledRect((aRectf_t){0, y, SCREEN_WIDTH, TOP_BAR_HEIGHT},
+    // Draw top bar background (runtime width)
+    a_DrawFilledRect((aRectf_t){0, y, GetWindowWidth(), TOP_BAR_HEIGHT},
                      (aColor_t){TOP_BAR_BG.r, TOP_BAR_BG.g, TOP_BAR_BG.b, TOP_BAR_BG.a});
 
     // Draw combat showcase text (left side)
@@ -164,10 +164,11 @@ void RenderTopBarSection(TopBarSection_t* section, const GameContext_t* game, in
                    FONT_ENTER_COMMAND, .fg={232,193,112,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
     }
 
-    // Update settings button Y position (centered in top bar)
+    // Update settings button position (right-aligned, runtime)
     if (section->settings_button) {
+        int button_x = GetWindowWidth() - SETTINGS_BUTTON_MARGIN - SETTINGS_BUTTON_WIDTH;
         SetButtonPosition(section->settings_button,
-                         section->settings_button->x,
+                         button_x,
                          y + SETTINGS_BUTTON_Y_OFFSET);
         RenderButton(section->settings_button);
     }
@@ -176,6 +177,11 @@ void RenderTopBarSection(TopBarSection_t* section, const GameContext_t* game, in
 // ============================================================================
 // TOP BAR SECTION INTERACTION
 // ============================================================================
+
+bool IsTopBarSettingsHovered(TopBarSection_t* section) {
+    if (!section || !section->settings_button) return false;
+    return IsButtonHovered(section->settings_button);
+}
 
 bool IsTopBarSettingsClicked(TopBarSection_t* section) {
     if (!section || !section->settings_button) return false;

@@ -3,7 +3,16 @@
  */
 
 #include "../../include/tutorial/tutorialSystem.h"
+#include "../../include/scenes/sections/dealerSection.h"
+#include "../../include/scenes/sections/playerSection.h"
+#include "../../include/scenes/components/cardTooltipModal.h"
+#include "../../include/audioHelper.h"
 #include <math.h>
+
+// Hover sound tracking
+static bool last_skip_button_hovered = false;
+static bool last_yes_button_hovered = false;
+static bool last_no_button_hovered = false;
 
 // ============================================================================
 // TUTORIAL SYSTEM LIFECYCLE
@@ -26,6 +35,8 @@ TutorialSystem_t* CreateTutorialSystem(void) {
     system->advance_delay_timer = 0.0f;
     system->waiting_for_betting_state = false;
     system->current_step_number = 0;
+    system->dealer_section = NULL;
+    system->player_section = NULL;
 
     d_LogInfo("TutorialSystem created");
     return system;
@@ -123,11 +134,46 @@ void LinkTutorialSteps(TutorialStep_t* current, TutorialStep_t* next) {
 }
 
 // ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * ClearAllCardTooltips - Hide all card tooltips to prevent stuck tooltips
+ *
+ * @param dealer_section - Dealer section (can be NULL)
+ * @param player_section - Player section (can be NULL)
+ */
+static void ClearAllCardTooltips(void* dealer_section, void* player_section) {
+    // Clear dealer hand card tooltip
+    if (dealer_section) {
+        DealerSection_t* dealer = (DealerSection_t*)dealer_section;
+        if (dealer->card_tooltip) {
+            HideCardTooltipModal(dealer->card_tooltip);
+        }
+    }
+
+    // Clear player hand card tooltip
+    if (player_section) {
+        PlayerSection_t* player = (PlayerSection_t*)player_section;
+        if (player->tooltip) {
+            HideCardTooltipModal(player->tooltip);
+        }
+    }
+}
+
+// ============================================================================
 // TUTORIAL CONTROL
 // ============================================================================
 
-void StartTutorial(TutorialSystem_t* system, TutorialStep_t* first_step) {
+void StartTutorial(TutorialSystem_t* system, TutorialStep_t* first_step, void* dealer_section, void* player_section) {
     if (!system || !first_step) return;
+
+    // Store section pointers for internal use
+    system->dealer_section = dealer_section;
+    system->player_section = player_section;
+
+    // Clear any existing card tooltips to prevent stuck tooltips when dialog spawns
+    ClearAllCardTooltips(dealer_section, player_section);
 
     system->first_step = first_step;
     system->current_step = first_step;
@@ -151,6 +197,9 @@ void StopTutorial(TutorialSystem_t* system) {
 
 void AdvanceTutorial(TutorialSystem_t* system) {
     if (!system || !system->current_step) return;
+
+    // Clear any existing card tooltips to prevent stuck tooltips when new dialog spawns
+    ClearAllCardTooltips(system->dealer_section, system->player_section);
 
     // Move to next step
     system->current_step = system->current_step->next_step;
@@ -312,14 +361,37 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
     if (system->skip_confirmation.visible) {
         int conf_w = 400;
         int conf_h = 200;  // Updated to match RenderSkipConfirmation
-        int conf_x = (SCREEN_WIDTH - conf_w) / 2;
-        int conf_y = (SCREEN_HEIGHT - conf_h) / 2;
+        int conf_x = (GetWindowWidth() - conf_w) / 2;
+        int conf_y = (GetWindowHeight() - conf_h) / 2;
         int body_y = conf_y + TUTORIAL_MODAL_HEADER_HEIGHT;
+
+        // Calculate button positions (must match RenderSkipConfirmation exactly)
+        int yes_x = conf_x + 60;
+        int yes_y = body_y + 60;
+        int no_x = conf_x + 240;
+        int no_y = body_y + 60;
+
+        // Track hover state for UI sounds
+        bool yes_hovered = (app.mouse.x >= yes_x && app.mouse.x <= yes_x + 100 &&
+                           app.mouse.y >= yes_y && app.mouse.y <= yes_y + 40);
+        bool no_hovered = (app.mouse.x >= no_x && app.mouse.x <= no_x + 100 &&
+                          app.mouse.y >= no_y && app.mouse.y <= no_y + 40);
+
+        if (yes_hovered && !last_yes_button_hovered) {
+            PlayUIHoverSound();
+        }
+        last_yes_button_hovered = yes_hovered;
+
+        if (no_hovered && !last_no_button_hovered) {
+            PlayUIHoverSound();
+        }
+        last_no_button_hovered = no_hovered;
 
         // Keyboard shortcuts for confirmation modal
         if (app.keyboard[SDL_SCANCODE_RETURN] || app.keyboard[SDL_SCANCODE_KP_ENTER]) {
             app.keyboard[SDL_SCANCODE_RETURN] = 0;
             app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+            PlayUIClickSound();
             // ENTER confirms skip (YES)
             system->skip_confirmation.skip_confirmed = true;
             system->skip_confirmation.visible = false;
@@ -329,17 +401,16 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
 
         if (app.keyboard[SDL_SCANCODE_ESCAPE]) {
             app.keyboard[SDL_SCANCODE_ESCAPE] = 0;
+            PlayUIClickSound();
             // ESC cancels skip (NO)
             system->skip_confirmation.visible = false;
             return true;
         }
 
         if (app.mouse.pressed) {
-            // YES button (60, 60 relative to body_y, adjusted for header)
-            int yes_x = conf_x + 60;
-            int yes_y = body_y + 60;
-            if (app.mouse.x >= yes_x && app.mouse.x <= yes_x + 100 &&
-                app.mouse.y >= yes_y && app.mouse.y <= yes_y + 40) {
+            // YES button
+            if (yes_hovered) {
+                PlayUIClickSound();
                 // User confirmed skip
                 system->skip_confirmation.skip_confirmed = true;
                 system->skip_confirmation.visible = false;
@@ -347,11 +418,9 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
                 return true;
             }
 
-            // NO button (240, 60 relative to body_y, adjusted for header)
-            int no_x = conf_x + 240;
-            int no_y = body_y + 60;
-            if (app.mouse.x >= no_x && app.mouse.x <= no_x + 100 &&
-                app.mouse.y >= no_y && app.mouse.y <= no_y + 40) {
+            // NO button
+            if (no_hovered) {
+                PlayUIClickSound();
                 // User canceled skip
                 system->skip_confirmation.visible = false;
                 return true;
@@ -363,19 +432,28 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
     // Check for skip/finish button click
     bool button_clicked = false;
 
+    // Calculate button position for hover detection (same as rendering)
+    int dialogue_width = system->current_step->is_final_step ? 800 : TUTORIAL_MODAL_WIDTH;
+    int dialogue_height = TUTORIAL_MODAL_HEIGHT;
+    int button_width = system->current_step->is_final_step ? 120 : 80;
+    int button_height = 30;
+
+    int dialogue_x = ((GetWindowWidth() - dialogue_width) / 2) + system->current_step->dialogue_x_offset;
+    int dialogue_y = system->current_step->dialogue_y_position;
+    int button_x = dialogue_x + dialogue_width - TUTORIAL_BUTTON_MARGIN - button_width;
+    int button_y = dialogue_y + dialogue_height - TUTORIAL_BUTTON_MARGIN - button_height;
+
+    // Track hover state for UI sound
+    bool skip_hovered = (app.mouse.x >= button_x && app.mouse.x <= button_x + button_width &&
+                        app.mouse.y >= button_y && app.mouse.y <= button_y + button_height);
+
+    if (skip_hovered && !last_skip_button_hovered) {
+        PlayUIHoverSound();
+    }
+    last_skip_button_hovered = skip_hovered;
+
     // Mouse click on skip/finish button
     if (app.mouse.pressed) {
-        // Final step gets wider dialogue box
-        int dialogue_width = system->current_step->is_final_step ? 800 : TUTORIAL_MODAL_WIDTH;
-        int dialogue_height = TUTORIAL_MODAL_HEIGHT;
-        int button_width = system->current_step->is_final_step ? 120 : 80;
-        int button_height = 30;
-
-        int dialogue_x = ((SCREEN_WIDTH - dialogue_width) / 2) + system->current_step->dialogue_x_offset;
-        int dialogue_y = system->current_step->dialogue_y_position;
-        int button_x = dialogue_x + dialogue_width - TUTORIAL_BUTTON_MARGIN - button_width;
-        int button_y = dialogue_y + dialogue_height - TUTORIAL_BUTTON_MARGIN - button_height;
-
         // DEBUG: Log click and bounds (rate-limited to once per second)
         d_LogRateLimitedF(D_LOG_RATE_LIMIT_FLAG_HASH_FORMAT_STRING, D_LOG_LEVEL_INFO, 1, 1.0,
                          "🖱️ CLICK at (%d,%d) | Dialogue: (%d,%d)-(%d,%d)",
@@ -383,8 +461,8 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
                          dialogue_x, dialogue_y, dialogue_x + dialogue_width, dialogue_y + dialogue_height);
 
         // Check if click is on skip/finish button
-        if (app.mouse.x >= button_x && app.mouse.x <= button_x + button_width &&
-            app.mouse.y >= button_y && app.mouse.y <= button_y + button_height) {
+        if (skip_hovered) {
+            PlayUIClickSound();
             d_LogInfo("  ➡️ Click on SKIP/FINISH button - consuming");
             button_clicked = true;
             app.mouse.pressed = 0;
@@ -478,7 +556,7 @@ static void RenderDialogue(const TutorialStep_t* step) {
     int dialogue_height = TUTORIAL_MODAL_HEIGHT;
 
     // Dialogue box position (use step-specific X offset and Y position)
-    int dialogue_x = ((SCREEN_WIDTH - dialogue_width) / 2) + step->dialogue_x_offset;
+    int dialogue_x = ((GetWindowWidth() - dialogue_width) / 2) + step->dialogue_x_offset;
     int dialogue_y = step->dialogue_y_position;
 
     // Calculate section positions
@@ -623,11 +701,11 @@ static void RenderDialogue(const TutorialStep_t* step) {
 }
 
 static void RenderSkipConfirmation(void) {
-    // Confirmation modal (modern design with header)
+    // Confirmation modal (modern design with header) - RESPONSIVE
     int conf_w = 400;
     int conf_h = 200;  // Increased from 150 to account for header
-    int conf_x = (SCREEN_WIDTH - conf_w) / 2;
-    int conf_y = (SCREEN_HEIGHT - conf_h) / 2;
+    int conf_x = (GetWindowWidth() - conf_w) / 2;  // FIX: Use GetWindowWidth() to match input detection
+    int conf_y = (GetWindowHeight() - conf_h) / 2;  // FIX: Use GetWindowHeight() to match input detection
 
     // Calculate header and body positions
     int header_y = conf_y;

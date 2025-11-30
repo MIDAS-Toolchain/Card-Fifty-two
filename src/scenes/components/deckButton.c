@@ -6,7 +6,7 @@
 #include "../../../include/scenes/components/deckButton.h"
 
 // External globals
-extern SDL_Surface* g_card_back_texture;
+extern aImage_t* g_card_back_texture;
 
 // Color constants
 #define COLOR_HOVER_BORDER      ((aColor_t){232, 193, 112, 255}) // #e8c170 - gold
@@ -127,11 +127,13 @@ bool IsDeckButtonHovered(const DeckButton_t* button) {
 void RenderDeckButton(const DeckButton_t* button, const char* count_text) {
     if (!button) return;
 
-    // Draw card back texture (face-down card)
-    if (g_card_back_texture) {
-        a_BlitSurfaceRect(g_card_back_texture, (aRectf_t){button->x, button->y, button->w, button->h}, 1);
+    // Draw card back image (face-down card)
+    if (g_card_back_texture && g_card_back_texture->surface) {
+        aRectf_t src = {0, 0, g_card_back_texture->surface->w, g_card_back_texture->surface->h};
+        aRectf_t dest = {button->x, button->y, button->w, button->h};
+        a_BlitRect(g_card_back_texture, &src, &dest, 1.0f);
     } else {
-        // Fallback if texture not loaded
+        // Fallback if image not loaded
         a_DrawFilledRect((aRectf_t){button->x, button->y, button->w, button->h}, (aColor_t){80, 80, 120, 255});
         a_DrawRect((aRectf_t){button->x, button->y, button->w, button->h}, (aColor_t){200, 200, 200, 255});
     }

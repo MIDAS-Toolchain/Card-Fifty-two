@@ -30,7 +30,7 @@ dTable_t* g_card_textures = NULL;
 dTable_t* g_portraits = NULL;
 
 // Card back surface (defined in common.h, declared here)
-SDL_Surface* g_card_back_texture = NULL;
+aImage_t* g_card_back_texture = NULL;
 
 // Ability icon textures (defined in common.h, declared here)
 dTable_t* g_ability_icons = NULL;
@@ -42,8 +42,12 @@ dDUFValue_t* g_enemies_db = NULL;
 struct Settings_t* g_settings = NULL;
 
 // UI sound effects (defined in common.h, declared here)
-aAudioClip_t g_ui_hover_sound;
-aAudioClip_t g_ui_click_sound;
+aSoundEffect_t g_ui_hover_sound;
+aSoundEffect_t g_ui_click_sound;
+
+// Card slide sound effects (8 variants)
+aSoundEffect_t g_card_slide_sounds[CARD_SLIDE_SOUND_COUNT];
+int g_last_card_slide_index = -1;  // Track last played sound for no-repeat
 
 // Test deck (for demonstration)
 // Constitutional pattern: Deck_t is value type, not pointer
@@ -108,6 +112,22 @@ aTextStyle_t FONT_STYLE_DAMAGE = {
 };
 
 // ============================================================================
+// WINDOW SIZE HELPERS (for resolution-independent UI)
+// ============================================================================
+
+int GetWindowWidth(void) {
+    int w = 0;
+    SDL_GetWindowSize(app.window, &w, NULL);
+    return w;
+}
+
+int GetWindowHeight(void) {
+    int h = 0;
+    SDL_GetWindowSize(app.window, NULL, &h);
+    return h;
+}
+
+// ============================================================================
 // INITIALIZATION & CLEANUP
 // ============================================================================
 
@@ -120,11 +140,15 @@ void Initialize(void) {
 
     d_LogInfo("Archimedes initialized successfully");
 
-    // Initialize audio system
+    // Initialize audio system (uses default: 16 channels, 44100 Hz)
     if (a_InitAudio() != 0) {
         d_LogError("Failed to initialize audio system");
     } else {
         d_LogInfo("Audio system initialized");
+
+        // Reserve channels 0-1 for UI sounds (prevents auto-allocation)
+        a_AudioReserveChannels(2);
+        d_LogInfo("Reserved 2 channels for UI audio (HOVER=0, CLICK=1)");
     }
 
     // Initialize global tables (Constitutional: Store Player_t by value, not pointer)
@@ -146,31 +170,31 @@ void Initialize(void) {
         exit(1);
     }
 
-    // Load card back surface
-    g_card_back_texture = IMG_Load("resources/textures/cards/card_back.png");
+    // Load card back image (using Archimedes image cache)
+    g_card_back_texture = a_ImageLoad("resources/textures/cards/card_back.png");
     if (!g_card_back_texture) {
-        d_LogError("Failed to load card back surface");
+        d_LogError("Failed to load card back image");
     } else {
-        d_LogInfo("Card back surface loaded");
+        d_LogInfo("Card back image loaded");
     }
 
-    // Load 52 card face surfaces from PNG files (0.png - 51.png)
+    // Load 52 card face images from PNG files (0.png - 51.png)
     // Card ID mapping: 0-12 Hearts, 13-25 Diamonds, 26-38 Spades, 39-51 Clubs
     for (int card_id = 0; card_id < 52; card_id++) {
         dString_t* path = d_StringInit();
         d_StringFormat(path, "resources/textures/cards/%d.png", card_id);
 
-        SDL_Surface* surf = IMG_Load((char*)d_StringPeek(path));
+        aImage_t* img = a_ImageLoad((char*)d_StringPeek(path));
         d_StringDestroy(path);
 
-        if (surf) {
-            d_TableSet(g_card_textures, &card_id, &surf);
+        if (img) {
+            d_TableSet(g_card_textures, &card_id, &img);
         } else {
-            d_LogErrorF("Failed to load surface for card_id %d", card_id);
+            d_LogErrorF("Failed to load image for card_id %d", card_id);
         }
     }
 
-    d_LogInfoF("Loaded %d card surfaces", (int)g_card_textures->count);
+    d_LogInfoF("Loaded %d card images", (int)g_card_textures->count);
 
     // Initialize card metadata system
     InitCardMetadata();
@@ -187,10 +211,27 @@ void Initialize(void) {
     Settings_Apply(g_settings);  // Apply audio volume settings
     d_LogInfo("Global settings initialized and applied");
 
-    // Load UI sound effects
-    a_LoadSounds("resources/audio/effects/ui/hover_button.wav", &g_ui_hover_sound);
-    a_LoadSounds("resources/audio/effects/ui/click_button.wav", &g_ui_click_sound);
-    d_LogInfo("UI sound effects loaded");
+    // Load UI sound effects (new SDL_mixer API)
+    if (a_AudioLoadSound("resources/audio/effects/ui/hover_button.wav", &g_ui_hover_sound) < 0) {
+        d_LogError("Failed to load UI hover sound");
+    }
+    if (a_AudioLoadSound("resources/audio/effects/ui/click_button.wav", &g_ui_click_sound) < 0) {
+        d_LogError("Failed to load UI click sound");
+    }
+    d_LogInfo("UI sound effects loaded (SDL_mixer)");
+
+    // Load card slide sound effects (8 variants)
+    for (int i = 0; i < CARD_SLIDE_SOUND_COUNT; i++) {
+        dString_t* sound_path = d_StringInit();
+        d_StringFormat(sound_path, "resources/audio/effects/game/card-slide-%d.wav", i + 1);
+
+        if (a_AudioLoadSound((char*)d_StringPeek(sound_path), &g_card_slide_sounds[i]) < 0) {
+            d_LogErrorF("Failed to load card slide sound %d", i + 1);
+        }
+
+        d_StringDestroy(sound_path);
+    }
+    d_LogInfoF("Card slide sound effects loaded (%d variants)", CARD_SLIDE_SOUND_COUNT);
 
     // Load enemy database from DUF
     dDUFError_t* err = d_DUFParseFile("data/enemies/tutorial_enemies.duf", &g_enemies_db);
@@ -346,11 +387,8 @@ void Cleanup(void) {
         d_LogInfo("Enemy database destroyed");
     }
 
-    // Destroy card back surface
-    if (g_card_back_texture) {
-        SDL_FreeSurface(g_card_back_texture);
-        g_card_back_texture = NULL;
-    }
+    // Card back image is managed by Archimedes image cache (auto-cleanup)
+    g_card_back_texture = NULL;
 
     // Free all card surfaces before destroying table
     if (g_card_textures) {
@@ -453,27 +491,18 @@ static void RenderHand(const Hand_t* hand, int start_x, int start_y) {
         int y = start_y;
 
         // Draw card background
-        if (g_card_back_texture) {
-            a_BlitSurfaceRect(g_card_back_texture, (aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, 1);
+        if (g_card_back_texture && g_card_back_texture->surface) {
+            aRectf_t src = {0, 0, g_card_back_texture->surface->w, g_card_back_texture->surface->h};
+            aRectf_t dest = {x, y, CARD_WIDTH, CARD_HEIGHT};
+            a_BlitRect(g_card_back_texture, &src, &dest, 1.0f);
         }
 
         // Draw card face if face up
+        // NOTE: card->texture is SDL_Texture*, but we need aImage_t* for a_BlitRect
+        // This is a temporary workaround - cards should store aImage_t* in the future
         if (card->face_up && card->texture) {
-            // Query actual texture dimensions
-            int tex_w = 0, tex_h = 0;
-            int query_result = SDL_QueryTexture(card->texture, NULL, NULL, &tex_w, &tex_h);
-
-            if (query_result != 0 || tex_w <= 0 || tex_h <= 0) {
-                d_LogErrorF("Invalid texture dimensions: %dx%d (query result: %d)",
-                           tex_w, tex_h, query_result);
-                continue;
-            }
-
-            // Draw card label centered on card (using surface API)
-            int label_x = x + CARD_WIDTH / 2 - tex_w / 2;
-            int label_y = y + CARD_HEIGHT / 2 - tex_h / 2;
-
-            a_BlitSurfaceRect(card->texture, (aRectf_t){label_x, label_y, tex_w, tex_h}, 1);
+            d_LogWarning("Card rendering in main.c needs migration to aImage_t*");
+            // TODO: Migrate card textures to aImage_t* system
         }
     }
 }
@@ -602,7 +631,13 @@ void MainLoop(void) {
 
 int main(void) {
     // Initialize Daedalus Logger (MUST be first!)
+    // Web builds: Use WARNING level to reduce console.log() overhead (WASM→JS boundary expensive)
+    // Native builds: Keep INFO level for detailed debugging
+#ifdef __EMSCRIPTEN__
+    dLogConfig_t config = { .default_level = D_LOG_LEVEL_WARNING };
+#else
     dLogConfig_t config = { .default_level = D_LOG_LEVEL_INFO };
+#endif
     dLogger_t* logger = d_CreateLogger(config);
     d_SetGlobalLogger(logger);
 

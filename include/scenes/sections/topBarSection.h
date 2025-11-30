@@ -92,6 +92,14 @@ void UpdateTopBarShowcase(TopBarSection_t* section, float dt,
 void RenderTopBarSection(TopBarSection_t* section, const GameContext_t* game, int y);
 
 /**
+ * IsTopBarSettingsHovered - Check if settings button is hovered
+ *
+ * @param section - Top bar section component
+ * @return true if settings button is currently hovered
+ */
+bool IsTopBarSettingsHovered(TopBarSection_t* section);
+
+/**
  * IsTopBarSettingsClicked - Check if settings button was clicked
  *
  * @param section - Top bar section component

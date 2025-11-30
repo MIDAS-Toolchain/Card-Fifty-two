@@ -1,62 +1,83 @@
 /*
- * Audio Helper - UI Sound Debouncing
+ * Audio Helper - UI Sound Channel Management
  *
- * Implements timestamp-based debouncing for UI sounds.
- * Prevents rapid sound triggering when hovering/clicking quickly.
+ * Uses dedicated SDL_mixer channels with interrupt flag to prevent queuing.
+ * Archimedes v2 provides proper channel-based audio via SDL_mixer.
  *
- * NOTE: Archimedes uses SDL_QueueAudio (raw audio), not SDL_mixer channels.
- * We cannot use Mix_HaltChannel. Instead, we use a cooldown timer approach.
+ * Channel Assignments:
+ * - AUDIO_CHANNEL_UI_HOVER (0) - UI hover sounds
+ * - AUDIO_CHANNEL_UI_CLICK (1) - UI click sounds
+ *
+ * When .interrupt = 1, the channel is halted before playing new sound.
+ * This eliminates sound queuing without timestamp debouncing.
  */
 
 #include "../include/audioHelper.h"
-#include <SDL2/SDL.h>
-
-// Cooldown timers (milliseconds since last play)
-static Uint32 g_last_hover_time = 0;
-static Uint32 g_last_click_time = 0;
-
-// Cooldown durations (tunable)
-#define HOVER_COOLDOWN_MS  50   // 50ms between hover sounds (20 per second max)
-#define CLICK_COOLDOWN_MS  100  // 100ms between click sounds (10 per second max)
 
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
 
 void InitUIAudioChannels(void) {
-    // Initialize timers
-    g_last_hover_time = 0;
-    g_last_click_time = 0;
-
-    d_LogInfo("UI audio debouncing initialized (Hover: 50ms, Click: 100ms cooldown)");
+    // No-op: Channel reservation happens in main.c via a_AudioReserveChannels(2)
+    // Kept for API compatibility
+    d_LogInfo("UI audio channels initialized (using SDL_mixer channels 0-1)");
 }
 
 // ============================================================================
-// UI SOUND PLAYBACK (Timestamp-Based Debouncing)
+// UI SOUND PLAYBACK (Channel-Based Stop-and-Replace)
 // ============================================================================
 
 void PlayUIHoverSound(void) {
-    Uint32 now = SDL_GetTicks();
+    // Play on AUDIO_CHANNEL_UI_HOVER with interrupt flag
+    // This halts any previous hover sound, preventing queuing
+    aAudioOptions_t opts = {
+        .channel = AUDIO_CHANNEL_UI_HOVER,  // Channel 0
+        .volume = -1,                       // Use sound's default volume
+        .loops = 0,                         // Play once
+        .fade_ms = 0,                       // No fade
+        .interrupt = 1                      // KEY: Stop previous sound
+    };
 
-    // Check if enough time has passed since last hover sound
-    if (now - g_last_hover_time < HOVER_COOLDOWN_MS) {
-        return;  // Too soon, skip this sound
-    }
-
-    // Play sound and update timestamp
-    a_AudioPlayEffect(&g_ui_hover_sound);
-    g_last_hover_time = now;
+    a_AudioPlaySound(&g_ui_hover_sound, &opts);
 }
 
 void PlayUIClickSound(void) {
-    Uint32 now = SDL_GetTicks();
+    // Play on AUDIO_CHANNEL_UI_CLICK with interrupt flag
+    // This halts any previous click sound, preventing queuing
+    aAudioOptions_t opts = {
+        .channel = AUDIO_CHANNEL_UI_CLICK,  // Channel 1
+        .volume = -1,                       // Use sound's default volume
+        .loops = 0,                         // Play once
+        .fade_ms = 0,                       // No fade
+        .interrupt = 1                      // KEY: Stop previous sound
+    };
 
-    // Check if enough time has passed since last click sound
-    if (now - g_last_click_time < CLICK_COOLDOWN_MS) {
-        return;  // Too soon, skip this sound
-    }
+    a_AudioPlaySound(&g_ui_click_sound, &opts);
+}
 
-    // Play sound and update timestamp
-    a_AudioPlayEffect(&g_ui_click_sound);
-    g_last_click_time = now;
+// ============================================================================
+// GAME SOUND EFFECTS
+// ============================================================================
+
+void PlayCardSlideSound(void) {
+    // No-repeat random selection: avoid playing same sound twice in a row
+    int selected_index;
+    do {
+        selected_index = rand() % CARD_SLIDE_SOUND_COUNT;
+    } while (selected_index == g_last_card_slide_index && CARD_SLIDE_SOUND_COUNT > 1);
+
+    g_last_card_slide_index = selected_index;
+
+    // Play on auto-allocated channel (channels 2-15)
+    // This allows multiple card sounds to overlap (simultaneous draws)
+    aAudioOptions_t opts = {
+        .channel = -1,       // Auto-allocate channel
+        .volume = -1,        // Use sound's default volume (controlled by Effect Volume setting)
+        .loops = 0,          // Play once
+        .fade_ms = 0,        // No fade
+        .interrupt = 0       // Allow overlapping sounds
+    };
+
+    a_AudioPlaySound(&g_card_slide_sounds[selected_index], &opts);
 }

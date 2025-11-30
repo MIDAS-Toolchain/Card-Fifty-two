@@ -6,6 +6,7 @@
 #include "../../../include/scenes/components/introNarrativeModal.h"
 #include "../../../include/tween/tween.h"
 #include "../../../include/defs.h"
+#include "../../../include/audioHelper.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -18,11 +19,18 @@ static const aColor_t COLOR_HEADER_TEXT = {231, 213, 179, 255}; // #e7d5b3 - cre
 static const aColor_t COLOR_NARRATIVE_TEXT = {168, 181, 178, 255}; // #a8b5b2 - light gray
 
 // Layout constants (almost full screen, slight inset)
-#define MODAL_WIDTH          (SCREEN_WIDTH - 32)  // Screen width minus 32
+#define MODAL_INSET          64   // Inset from edges for "nearly full screen"
 #define MODAL_HEIGHT         700
 #define HEADER_HEIGHT        50
 #define PADDING              30
-#define MODAL_OFFSET_X       8    // Offset 8px from left
+
+// Runtime modal width helper
+static inline int GetModalWidth(void) {
+    return GetWindowWidth() - MODAL_INSET;
+}
+
+// Hover sound tracking
+static bool last_button_hovered = false;
 
 // ============================================================================
 // LIFECYCLE
@@ -54,16 +62,17 @@ IntroNarrativeModal_t* CreateIntroNarrativeModal(void) {
     }
 
     // Create FlexBox layout for content area (portrait + text)
-    // Content area position: below header
-    int modal_x = (SCREEN_WIDTH - MODAL_WIDTH) / 2 + MODAL_OFFSET_X;
-    int modal_y = (SCREEN_HEIGHT - MODAL_HEIGHT) / 2;
+    // Content area position: below header (runtime positioning)
+    int modal_width = GetModalWidth();
+    int modal_x = (GetWindowWidth() - modal_width) / 2;
+    int modal_y = (GetWindowHeight() - MODAL_HEIGHT) / 2;
     int content_y = modal_y + HEADER_HEIGHT;
     int content_height = MODAL_HEIGHT - HEADER_HEIGHT;
 
     modal->layout = a_FlexBoxCreate(
         modal_x + PADDING,  // x position (inside modal padding)
         content_y + PADDING,  // y position (below header, inside padding)
-        MODAL_WIDTH - (PADDING * 2),  // width (modal width minus left+right padding)
+        modal_width - (PADDING * 2),  // width (modal width minus left+right padding)
         content_height - (PADDING * 2)  // height (content area minus top+bottom padding)
     );
 
@@ -80,17 +89,17 @@ IntroNarrativeModal_t* CreateIntroNarrativeModal(void) {
     a_FlexAddItem(modal->layout, 256, 512, NULL);
 
     // Add text area item (fills remaining space)
-    int remaining_width = (MODAL_WIDTH - (PADDING * 2)) - 256 - 20;  // Total width - portrait - gap
+    int remaining_width = (modal_width - (PADDING * 2)) - 256 - 20;  // Total width - portrait - gap
     a_FlexAddItem(modal->layout, remaining_width, content_height - (PADDING * 2), NULL);
 
     // Calculate layout positions
     a_FlexLayout(modal->layout);
 
-    // Create Continue button (centered at bottom of modal)
+    // Create Continue button (centered at bottom of modal, runtime positioning)
     int button_w = 200;
     int button_h = 50;
-    int button_x = (SCREEN_WIDTH - button_w) / 2;
-    int button_y = (SCREEN_HEIGHT + MODAL_HEIGHT) / 2 - button_h - PADDING;
+    int button_x = (GetWindowWidth() - button_w) / 2;
+    int button_y = (GetWindowHeight() + MODAL_HEIGHT) / 2 - button_h - PADDING;
 
     modal->continue_button = CreateButton(button_x, button_y, button_w, button_h, "Continue");
     if (!modal->continue_button) {
@@ -241,16 +250,25 @@ bool HandleIntroNarrativeModalInput(IntroNarrativeModal_t* modal, float dt) {
 
     // No fade-in animation - alpha stays at 1.0 (immediate display)
 
+    // Track button hover state and play hover sound on change
+    bool is_hovered = IsButtonHovered(modal->continue_button);
+    if (is_hovered && !last_button_hovered) {
+        PlayUIHoverSound();
+    }
+    last_button_hovered = is_hovered;
+
     // Check for ENTER key press
     if (app.keyboard[SDL_SCANCODE_RETURN] || app.keyboard[SDL_SCANCODE_KP_ENTER]) {
         app.keyboard[SDL_SCANCODE_RETURN] = 0;
         app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+        PlayUIClickSound();
         d_LogInfo("IntroNarrativeModal: ENTER pressed");
         return true;  // Signal ready to close
     }
 
     // Check for Continue button click
     if (IsButtonClicked(modal->continue_button)) {
+        PlayUIClickSound();
         d_LogInfo("IntroNarrativeModal: Continue clicked");
         return true;  // Signal ready to close
     }
@@ -267,25 +285,40 @@ void RenderIntroNarrativeModal(const IntroNarrativeModal_t* modal) {
 
     Uint8 fade_alpha = (Uint8)(modal->fade_in_alpha * 255);
 
+    // Runtime window dimensions
+    int window_w = GetWindowWidth();
+    int window_h = GetWindowHeight();
+    int modal_width = GetModalWidth();
+
     // Draw full-screen dark overlay
-    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT},
+    a_DrawFilledRect((aRectf_t){0, 0, window_w, window_h},
                      (aColor_t){COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b,
                      (Uint8)(COLOR_OVERLAY.a * modal->fade_in_alpha / 255.0f)});
 
-    // Calculate modal position (centered, then shifted right)
-    int modal_x = (SCREEN_WIDTH - MODAL_WIDTH) / 2 + MODAL_OFFSET_X;
-    int modal_y = (SCREEN_HEIGHT - MODAL_HEIGHT) / 2;
+    // Calculate modal position (centered)
+    int modal_x = (window_w - modal_width) / 2;
+    int modal_y = (window_h - MODAL_HEIGHT) / 2;
+
+    // Update FlexBox bounds (runtime positioning for resolution changes)
+    int content_y = modal_y + HEADER_HEIGHT;
+    int content_height = MODAL_HEIGHT - HEADER_HEIGHT;
+    a_FlexSetBounds(modal->layout,
+                    modal_x + PADDING,
+                    content_y + PADDING,
+                    modal_width - (PADDING * 2),
+                    content_height - (PADDING * 2));
+    a_FlexLayout(modal->layout);
 
     // Draw main panel background
-    a_DrawFilledRect((aRectf_t){modal_x, modal_y, MODAL_WIDTH, MODAL_HEIGHT},
+    a_DrawFilledRect((aRectf_t){modal_x, modal_y, modal_width, MODAL_HEIGHT},
                      (aColor_t){COLOR_PANEL_BG.r, COLOR_PANEL_BG.g, COLOR_PANEL_BG.b, fade_alpha});
 
     // Draw header background
-    a_DrawFilledRect((aRectf_t){modal_x, modal_y, MODAL_WIDTH, HEADER_HEIGHT},
+    a_DrawFilledRect((aRectf_t){modal_x, modal_y, modal_width, HEADER_HEIGHT},
                      (aColor_t){COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, fade_alpha});
 
     // Draw header border
-    a_DrawRect((aRectf_t){modal_x, modal_y, MODAL_WIDTH, HEADER_HEIGHT},
+    a_DrawRect((aRectf_t){modal_x, modal_y, modal_width, HEADER_HEIGHT},
                (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, fade_alpha});
 
     // Draw title (centered in header, moved up slightly)
@@ -297,7 +330,7 @@ void RenderIntroNarrativeModal(const IntroNarrativeModal_t* modal) {
         .scale = 1.2f
     };
     a_DrawText(modal->title,
-                     modal_x + MODAL_WIDTH / 2,
+                     modal_x + modal_width / 2,
                      modal_y,  // Fixed position from top of header
                      title_config);
 
@@ -345,6 +378,13 @@ void RenderIntroNarrativeModal(const IntroNarrativeModal_t* modal) {
             current_y += block_height + BLOCK_SPACING;
         }
     }
+
+    // Update Continue button position (runtime, centered at bottom of modal)
+    int button_w = 200;
+    int button_h = 50;
+    int button_x = (window_w - button_w) / 2;
+    int button_y = (window_h + MODAL_HEIGHT) / 2 - button_h - PADDING;
+    SetButtonPosition(modal->continue_button, button_x, button_y);
 
     // Render Continue button
     RenderButton(modal->continue_button);

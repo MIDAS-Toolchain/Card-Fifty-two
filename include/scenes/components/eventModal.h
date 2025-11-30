@@ -10,7 +10,8 @@
 // ============================================================================
 
 // Layout constants (matching rewardModal design pattern)
-#define EVENT_MODAL_WIDTH          996
+// NOTE: Width is now responsive (calculated at runtime like IntroNarrativeModal)
+#define EVENT_MODAL_INSET          64   // Inset from screen edges (almost full-screen)
 #define EVENT_MODAL_HEIGHT         700
 #define EVENT_MODAL_HEADER_HEIGHT  50
 #define EVENT_MODAL_PADDING        30

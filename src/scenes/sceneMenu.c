@@ -10,6 +10,7 @@
 #include "../../include/stats.h"
 #include "../../include/scenes/components/menuItem.h"
 #include "../../include/scenes/sections/mainMenuSection.h"
+#include "../../include/audioHelper.h"
 
 // Forward declaration for stats screen
 static void InitStatsScene(void);
@@ -164,9 +165,8 @@ static void MenuLogic(float dt) {
         }
     }
 
-    // W/Up - Move selection up
-    if (app.keyboard[SDL_SCANCODE_W] || app.keyboard[SDL_SCANCODE_UP]) {
-        app.keyboard[SDL_SCANCODE_W] = 0;
+    // Up - Move selection up
+    if (app.keyboard[SDL_SCANCODE_UP]) {
         app.keyboard[SDL_SCANCODE_UP] = 0;
 
         // Deselect current
@@ -178,11 +178,11 @@ static void MenuLogic(float dt) {
 
         // Select new
         SetMenuItemSelected(menu_items[selectedOption], true);
+        PlayUIHoverSound();
     }
 
-    // S/Down - Move selection down
-    if (app.keyboard[SDL_SCANCODE_S] || app.keyboard[SDL_SCANCODE_DOWN]) {
-        app.keyboard[SDL_SCANCODE_S] = 0;
+    // Down - Move selection down
+    if (app.keyboard[SDL_SCANCODE_DOWN]) {
         app.keyboard[SDL_SCANCODE_DOWN] = 0;
 
         // Deselect current
@@ -194,6 +194,7 @@ static void MenuLogic(float dt) {
 
         // Select new
         SetMenuItemSelected(menu_items[selectedOption], true);
+        PlayUIHoverSound();
     }
 
     // ENTER/SPACE/NUMPAD_ENTER - Select option
@@ -204,6 +205,8 @@ static void MenuLogic(float dt) {
         app.keyboard[SDL_SCANCODE_RETURN] = 0;
         app.keyboard[SDL_SCANCODE_SPACE] = 0;
         app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+
+        PlayUIClickSound();
 
         switch (selectedOption) {
             case 0:  // Play (roguelike mode - coming soon!)

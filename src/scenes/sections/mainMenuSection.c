@@ -4,13 +4,13 @@
 
 #include "../../../include/scenes/sections/mainMenuSection.h"
 
-// Layout constants (no magic numbers!)
-#define MENU_TITLE_Y            150
-#define MENU_SUBTITLE_Y         210
-#define MENU_START_Y            350
-#define MENU_ITEM_HEIGHT        25
-#define MENU_ITEM_GAP           35
-#define MENU_INSTRUCTIONS_Y     (SCREEN_HEIGHT - 50)
+// Layout helpers - scaled proportionally to screen height (runtime, resolution-independent)
+static inline int GetMenuTitleY(void)        { return GetWindowHeight() * 0.21f; }   // 21% from top (was 150/720)
+static inline int GetMenuSubtitleY(void)     { return GetWindowHeight() * 0.29f; }   // 29% from top (was 210/720)
+static inline int GetMenuStartY(void)        { return GetWindowHeight() * 0.49f; }   // 49% from top (was 350/720)
+static inline int GetMenuItemHeight(void)    { return GetWindowHeight() * 0.035f; }  // 3.5% of height (was 25/720)
+static inline int GetMenuItemGap(void)       { return GetWindowHeight() * 0.049f; }  // 4.9% of height (was 35/720)
+static inline int GetMenuInstructionsY(void) { return GetWindowHeight() - (GetWindowHeight() * 0.07f); } // 7% from bottom (was 50/720)
 
 // ============================================================================
 // LIFECYCLE
@@ -32,20 +32,20 @@ MainMenuSection_t* CreateMainMenuSection(MenuItem_t** menu_items, int item_count
     section->item_count = item_count;
 
     // Create FlexBox for menu items (vertical layout)
-    section->menu_layout = a_FlexBoxCreate(0, MENU_START_Y,
-                                            SCREEN_WIDTH,
-                                            item_count * (MENU_ITEM_HEIGHT + MENU_ITEM_GAP));
+    section->menu_layout = a_FlexBoxCreate(0, GetMenuStartY(),
+                                            GetWindowWidth(),
+                                            item_count * (GetMenuItemHeight() + GetMenuItemGap()));
     if (!section->menu_layout) {
         free(section);
         d_LogError("Failed to create menu FlexBox");
         return NULL;
     }
 
-    a_FlexConfigure(section->menu_layout, FLEX_DIR_COLUMN, FLEX_JUSTIFY_START, MENU_ITEM_GAP);
+    a_FlexConfigure(section->menu_layout, FLEX_DIR_COLUMN, FLEX_JUSTIFY_START, GetMenuItemGap());
 
     // Add menu items to FlexBox
     for (int i = 0; i < item_count; i++) {
-        a_FlexAddItem(section->menu_layout, SCREEN_WIDTH, MENU_ITEM_HEIGHT, menu_items[i]);
+        a_FlexAddItem(section->menu_layout, GetWindowWidth(), GetMenuItemHeight(), menu_items[i]);
     }
 
     // Set default text using strncpy (safe string copy)
@@ -56,7 +56,7 @@ MainMenuSection_t* CreateMainMenuSection(MenuItem_t** menu_items, int item_count
     section->subtitle[sizeof(section->subtitle) - 1] = '\0';
 
     strncpy(section->instructions,
-            "[W/S] or [UP/DOWN] to navigate | [ENTER] or [SPACE] to select | [ESC] to quit",
+            "[UP/DOWN] to navigate | [ENTER] or [SPACE] to select | [ESC] to quit",
             sizeof(section->instructions) - 1);
     section->instructions[sizeof(section->instructions) - 1] = '\0';
 
@@ -117,7 +117,7 @@ void UpdateMainMenuItemPositions(MainMenuSection_t* section) {
         int y = a_FlexGetItemY(section->menu_layout, i);
 
         // Center X position
-        SetMenuItemPosition(section->menu_items[i], SCREEN_WIDTH / 2, y);
+        SetMenuItemPosition(section->menu_items[i], GetWindowWidth() / 2, y);
     }
 }
 
@@ -129,11 +129,11 @@ void RenderMainMenuSection(MainMenuSection_t* section) {
     if (!section) return;
 
     // Title (cream color #e7d5b3 from palette)
-    a_DrawText(section->title, SCREEN_WIDTH / 2, MENU_TITLE_Y,
+    a_DrawText(section->title, GetWindowWidth() / 2, GetMenuTitleY(),
                    (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={231,213,179,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Subtitle (light cyan #73bed3 from palette)
-    a_DrawText(section->subtitle, SCREEN_WIDTH / 2, MENU_SUBTITLE_Y,
+    a_DrawText(section->subtitle, GetWindowWidth() / 2, GetMenuSubtitleY(),
                    (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={115,190,211,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Update menu item positions from FlexBox
@@ -147,6 +147,6 @@ void RenderMainMenuSection(MainMenuSection_t* section) {
     }
 
     // Instructions (medium gray #394a50 from palette)
-    a_DrawText(section->instructions, SCREEN_WIDTH / 2, MENU_INSTRUCTIONS_Y,
+    a_DrawText(section->instructions, GetWindowWidth() / 2, GetMenuInstructionsY(),
                    (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={57,74,80,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 }

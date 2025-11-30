@@ -4,6 +4,7 @@
 #include "defs.h"
 #include "stateStorage.h"
 #include <SDL2/SDL.h>
+#include <Archimedes.h>  // MUST come before using aImage_t!
 #include <Daedalus.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -42,7 +43,7 @@ typedef struct Deck Deck_t;
  *   29-31: _padding (3 bytes, explicit)
  */
 typedef struct Card {
-    SDL_Surface* texture;  // Cached surface pointer (not owned by card) - MUST be first for alignment
+    aImage_t* texture;     // Cached Archimedes image pointer (not owned by card) - MUST be first for alignment
     int card_id;           // Unique identifier: 0-51 for standard deck
     int x;                 // Screen X coordinate for rendering
     int y;                 // Screen Y coordinate for rendering
@@ -53,7 +54,13 @@ typedef struct Card {
 } Card_t;
 
 // Compile-time verification of struct size
-_Static_assert(sizeof(Card_t) == 32, "Card_t must be exactly 32 bytes");
+// NOTE: Size varies by platform (32 bytes on 64-bit native, 28 bytes on WASM32)
+// This is expected due to pointer size differences (8 bytes vs 4 bytes)
+#ifdef __EMSCRIPTEN__
+_Static_assert(sizeof(Card_t) == 28, "Card_t must be exactly 28 bytes on WASM32");
+#else
+_Static_assert(sizeof(Card_t) == 32, "Card_t must be exactly 32 bytes on native 64-bit");
+#endif
 
 // ============================================================================
 // DECK STRUCTURE

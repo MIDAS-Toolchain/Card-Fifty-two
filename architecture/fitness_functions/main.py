@@ -169,6 +169,14 @@ spec19 = importlib.util.spec_from_file_location(
 duf_loader_pattern = importlib.util.module_from_spec(spec19)
 spec19.loader.exec_module(duf_loader_pattern)
 
+# FF-020: Cross-Compiler Portability
+spec20 = importlib.util.spec_from_file_location(
+    "cross_compiler_portability",
+    Path(__file__).parent / "20_cross_compiler_portability.py"
+)
+cross_compiler_portability = importlib.util.module_from_spec(spec20)
+spec20.loader.exec_module(cross_compiler_portability)
+
 def run_fitness_functions() -> List[Tuple[str, bool]]:
     """Run all fitness functions and collect results"""
     results = []
@@ -368,6 +376,16 @@ def run_fitness_functions() -> List[Tuple[str, bool]]:
     except Exception as e:
         print(f"❌ FF-019 crashed: {e}")
         results.append(("FF-019: DUF Loader Pattern", False))
+
+    print()
+
+    # FF-020: Cross-Compiler Portability
+    try:
+        success = cross_compiler_portability.main()
+        results.append(("FF-020: Cross-Compiler Portability", success == 0))
+    except Exception as e:
+        print(f"❌ FF-020 crashed: {e}")
+        results.append(("FF-020: Cross-Compiler Portability", False))
 
     print()
 

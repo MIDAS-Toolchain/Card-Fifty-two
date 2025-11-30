@@ -12,10 +12,11 @@
 // ============================================================================
 
 TutorialStep_t* CreateBlackjackTutorial(void) {
-    // Calculate actual button area position (using layout constants)
+    // Calculate actual button area position (using layout constants + runtime)
+    // Buttons are now shifted left by 104px (same as in actionPanel.c)
     int button_area_y = LAYOUT_TOP_MARGIN + DEALER_AREA_HEIGHT;
-    int buttons_y = button_area_y + ACTION_PANEL_Y_OFFSET + 95; 
-    int buttons_x = GAME_AREA_X + ACTION_PANEL_LEFT_MARGIN;
+    int buttons_y = button_area_y + ACTION_PANEL_Y_OFFSET + 95;
+    int buttons_x = GetGameAreaX() + ACTION_PANEL_LEFT_MARGIN - 104;  // Match actionPanel.c shift (104px left!)
 
     // Step 1: Betting tutorial (3 bet buttons)
     int bet_buttons_width = (BET_BUTTON_WIDTH * NUM_BET_BUTTONS) + (BUTTON_GAP * (NUM_BET_BUTTONS - 1));
@@ -32,9 +33,9 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     // Arrow pointing from dialogue bottom to bet buttons center
     TutorialArrow_t bet_buttons_arrow = {
         .enabled = true,
-        .from_x = (250 / 2) + 32,  // Center of dialogue width minus 32px offset
+        .from_x = 250, 
         .from_y = 239,      // Slightly higher than bottom edge
-        .to_x = buttons_x + (bet_buttons_width / 2),  // Center of bet buttons
+        .to_x = buttons_x + bet_buttons_width + 32,  // Center of bet buttons + 32px right
         .to_y = buttons_y
     };
 
@@ -44,7 +45,7 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
         bet_listener,
         false,  // Not final step
         32,
-        (SCREEN_HEIGHT - 250) / 2,  // CENTER - vertically center the dialogue
+        (GetWindowHeight() - 250) / 2,  // CENTER - vertically center the dialogue (runtime!)
         STATE_BETTING,  // This step shows during betting
         bet_buttons_arrow,
         false  // Don't advance immediately
@@ -64,9 +65,9 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     // Arrow pointing from dialogue bottom to action buttons center
     TutorialArrow_t action_buttons_arrow = {
         .enabled = true,
-        .from_x = 250 / 2,  // Center of dialogue width
-        .from_y = 238,      // Same as step 1 arrow height
-        .to_x = buttons_x + (action_buttons_width / 2),  // Center of action buttons
+        .from_x = 250,  // Center of dialogue width
+        .from_y = 239,      // Same as step 1 arrow height
+        .to_x = buttons_x + bet_buttons_width + 32,  // Center of action buttons + 32px right
         .to_y = buttons_y
     };
 
@@ -76,7 +77,7 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
         action_listener,
         false,  // Not final step
         0,  // Centered horizontally (where step 1 USED to be)
-        (SCREEN_HEIGHT - 250) / 2,  // CENTER - same position step 1 used to have
+        (GetWindowHeight() - 250) / 2,  // CENTER - same position step 1 used to have (runtime!)
         STATE_PLAYER_TURN,  // This step shows during player turn
         action_buttons_arrow,
         false  // Don't advance immediately
@@ -156,10 +157,15 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     );
 
     // Step 5: Enemy abilities explanation
-    // Calculate enemy ability display position (right of sidebar, vertical column)
-    int abilities_x = 290;  // SIDEBAR_WIDTH (280) + 10px margin
+    // Calculate enemy ability display position (NOW IN TOP-RIGHT CORNER!)
+    // Position matches dealerSection.c: GetWindowWidth() - ABILITY_COLUMN_WIDTH - ABILITY_RIGHT_MARGIN
+    int abilities_x = GetWindowWidth() - ABILITY_COLUMN_WIDTH - ABILITY_RIGHT_MARGIN;
     int abilities_y = 70;   // Below top bar + margin
     int abilities_height = (ABILITY_CARD_HEIGHT * 3) + (ABILITY_CARD_SPACING * 2);  // 3 cards max
+
+    // Calculate right-aligned ability card center (cards are 80px wide, right-aligned in 280px column)
+    int ability_card_x = abilities_x + (ABILITY_COLUMN_WIDTH - ABILITY_CARD_WIDTH);
+    int ability_card_center_x = ability_card_x + (ABILITY_CARD_WIDTH / 2);
 
     // Use specific event data to differentiate ability hover from bet/chips hover
     static int ability_hover_id = 2;
@@ -169,12 +175,12 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
         .triggered = false
     };
 
-    // Arrow pointing from dialogue left edge to abilities icons
+    // Arrow pointing from dialogue TOP edge to abilities icons (on far right of screen)
     TutorialArrow_t abilities_arrow = {
         .enabled = true,
-        .from_x = 0,
-        .from_y = 125,  // Middle of dialogue height
-        .to_x = abilities_x + (ABILITY_CARD_WIDTH / 2),  // Center of ability icons
+        .from_x = 250,  // Right edge of dialogue box (dialogue width = 250px)
+        .from_y = 0,  // Top of dialogue box
+        .to_x = ability_card_center_x,  // Center of right-aligned ability card
         .to_y = abilities_y + (abilities_height / 2)
     };
 
@@ -183,17 +189,17 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
         "The dealer's abilities trigger automatically. Study them. Each one changes how you must play.",  // Body text
         hover_abilities_listener,
         false,  // Not final step
-        290,  
-        ((SCREEN_HEIGHT - 250) / 2) + 200,  // Move down 250px from center
+        32,  // Move to LEFT side of screen (was 290, now near left edge)
+        ((GetWindowHeight() - 250) / 2),  // Vertically centered (runtime!)
         STATE_BETTING,  // Show this step during betting (like steps 3 and 4)
         abilities_arrow,
         false  // Show dialogue immediately on hover (like steps 3 and 4)
     );
 
     // Step 6: Class trinket usage
-    // Calculate class trinket position (bottom-right area)
-    int class_trinket_x = SCREEN_WIDTH - CLASS_TRINKET_SIZE - CLASS_TRINKET_GAP - (3 * TRINKET_SLOT_SIZE) - (2 * TRINKET_SLOT_GAP) - TRINKET_UI_PADDING;
-    int class_trinket_y = SCREEN_HEIGHT - (2 * TRINKET_SLOT_SIZE) - TRINKET_SLOT_GAP - TRINKET_UI_PADDING;
+    // Calculate class trinket position (bottom-right area) - runtime!
+    int class_trinket_x = GetClassTrinketX();  // Use runtime helper
+    int class_trinket_y = GetClassTrinketY();  // Use runtime helper
 
     // Wait for trinket click (FUNCTION_CALL event)
     TutorialListener_t trinket_listener = {
@@ -206,7 +212,7 @@ TutorialStep_t* CreateBlackjackTutorial(void) {
     TutorialArrow_t trinket_arrow = {
         .enabled = true,
         .from_x = 0,  // Center of dialogue
-        .from_y = 125 + 50,  // Add 50px for header offset (middle of body section)
+        .from_y = 200, 
         .to_x = class_trinket_x + (CLASS_TRINKET_SIZE / 2),
         .to_y = class_trinket_y + (CLASS_TRINKET_SIZE / 2)
     };

@@ -151,8 +151,10 @@ void AddEventChoice(EventEncounter_t* event, const char* text, const char* resul
     // Initialize enemy modifiers to defaults
     choice.enemy_hp_multiplier = 1.0f;  // Normal HP (no modification)
 
-    // Initialize trinket reward to none (empty string = no trinket)
+    // Initialize trinket reward to none
     choice.trinket_reward_key[0] = '\0';
+    choice.has_trinket_reward = false;
+    memset(&choice.trinket_reward_instance, 0, sizeof(TrinketInstance_t));
 
     if (!choice.text || !choice.result_text || !choice.granted_tags ||
         !choice.tag_target_strategies || !choice.removed_tags) {
@@ -284,78 +286,6 @@ int GetChoiceCount(const EventEncounter_t* event) {
 // ============================================================================
 // CONSEQUENCE APPLICATION
 // ============================================================================
-
-/**
- * EquipEventTrinket - Equip trinket from DUF to player slot
- *
- * @param player - Player to equip trinket to
- * @param trinket_key - Trinket key from DUF (e.g., "elite_membership", "stack_trace")
- * @param slot_index - Slot index (0-5)
- * @return bool - true on success, false on failure
- *
- * Loads template from DUF, creates TrinketInstance_t reference without affixes (event trinkets are special).
- * Instance stores trinket_key reference to template, not full template data.
- */
-static bool EquipEventTrinket(Player_t* player, const char* trinket_key, int slot_index) {
-    if (!player || !trinket_key || slot_index < 0 || slot_index >= 6) {
-        d_LogError("EquipEventTrinket: Invalid parameters");
-        return false;
-    }
-
-    // Verify template exists in DUF (heap-allocated, must free after use)
-    TrinketTemplate_t* template = GetTrinketTemplate(trinket_key);
-    if (!template) {
-        d_LogErrorF("EquipEventTrinket: Trinket key '%s' not found in DUF database", trinket_key);
-        return false;
-    }
-
-    // Get pointer to player's trinket slot (static array of TrinketInstance_t values)
-    TrinketInstance_t* dest = &player->trinket_slots[slot_index];
-
-    // Initialize instance with template reference
-    // TrinketInstance_t only stores key reference, not full template data
-    if (!dest->base_trinket_key) dest->base_trinket_key = d_StringInit();
-    d_StringSet(dest->base_trinket_key, trinket_key, 0);
-
-    dest->rarity = template->rarity;
-    dest->tier = 1;  // Event trinkets default to tier 1
-    dest->sell_value = template->base_value;
-
-    // Roll affixes (tier 1 for tutorial events)
-    RollAffixes(1, template->rarity, dest);
-
-    // Copy trinket stack data (for Stack Trace: passive_stack_stat, passive_stack_value, passive_stack_max)
-    dest->trinket_stack_max = template->passive_stack_max;
-    dest->trinket_stack_value = template->passive_stack_value;
-    if (template->passive_stack_stat) {
-        if (!dest->trinket_stack_stat) dest->trinket_stack_stat = d_StringInit();
-        d_StringSet(dest->trinket_stack_stat, d_StringPeek(template->passive_stack_stat), 0);
-    }
-
-    // Initialize runtime state
-    dest->trinket_stacks = 0;  // Start with 0 stacks (builds over time)
-    dest->total_damage_dealt = 0;
-    dest->total_bonus_chips = 0;
-    dest->total_refunded_chips = 0;
-    dest->buffed_tag = -1;  // No tag buffed
-    dest->tag_buff_value = 0;
-
-    // Animation state
-    dest->shake_offset_x = 0.0f;
-    dest->shake_offset_y = 0.0f;
-    dest->flash_alpha = 0.0f;
-
-    // Mark slot as occupied
-    player->trinket_slot_occupied[slot_index] = true;
-    player->combat_stats_dirty = true;
-
-    // Cleanup template (was heap-allocated)
-    CleanupTrinketTemplate(template);
-    free(template);
-
-    d_LogInfoF("Equipped event trinket '%s' to slot %d", trinket_key, slot_index);
-    return true;
-}
 
 void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* deck) {
     if (!event || !player || !deck) {
@@ -551,8 +481,8 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
         d_LogInfoF("Removed tag %s from all cards", GetCardTagName(*tag));
     }
 
-    // Apply trinket reward (DUF-based system)
-    if (choice->trinket_reward_key[0] != '\0') {
+    // Apply trinket reward (copy pre-rolled instance from choice)
+    if (choice->has_trinket_reward) {
         // Find first empty slot
         int empty_slot = -1;
         for (int i = 0; i < 6; i++) {
@@ -563,11 +493,53 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
         }
 
         if (empty_slot >= 0) {
-            if (EquipEventTrinket(player, choice->trinket_reward_key, empty_slot)) {
-                d_LogInfoF("Granted event trinket '%s' to slot %d", choice->trinket_reward_key, empty_slot);
-            } else {
-                d_LogErrorF("Failed to equip event trinket '%s'", choice->trinket_reward_key);
+            // Copy pre-rolled instance to player slot
+            // Cast away const: We're copying FROM this struct (read-only operation)
+            TrinketInstance_t* src = (TrinketInstance_t*)&choice->trinket_reward_instance;
+            TrinketInstance_t* dest = &player->trinket_slots[empty_slot];
+
+            // Deep-copy base_trinket_key
+            if (!dest->base_trinket_key) dest->base_trinket_key = d_StringInit();
+            d_StringSet(dest->base_trinket_key, d_StringPeek(src->base_trinket_key), 0);
+
+            // Copy basic fields
+            dest->rarity = src->rarity;
+            dest->tier = src->tier;
+            dest->sell_value = src->sell_value;
+            dest->affix_count = src->affix_count;
+
+            // Deep-copy affixes (pre-rolled!)
+            for (int i = 0; i < src->affix_count; i++) {
+                if (!dest->affixes[i].stat_key) dest->affixes[i].stat_key = d_StringInit();
+                d_StringSet(dest->affixes[i].stat_key, d_StringPeek(src->affixes[i].stat_key), 0);
+                dest->affixes[i].rolled_value = src->affixes[i].rolled_value;
             }
+
+            // Copy trinket stack data
+            dest->trinket_stack_max = src->trinket_stack_max;
+            dest->trinket_stack_value = src->trinket_stack_value;
+            if (src->trinket_stack_stat) {
+                if (!dest->trinket_stack_stat) dest->trinket_stack_stat = d_StringInit();
+                d_StringSet(dest->trinket_stack_stat, d_StringPeek(src->trinket_stack_stat), 0);
+            }
+
+            // Initialize runtime state
+            dest->trinket_stacks = 0;
+            dest->total_damage_dealt = 0;
+            dest->total_bonus_chips = 0;
+            dest->total_refunded_chips = 0;
+            dest->buffed_tag = -1;
+            dest->tag_buff_value = 0;
+            dest->shake_offset_x = 0.0f;
+            dest->shake_offset_y = 0.0f;
+            dest->flash_alpha = 0.0f;
+
+            // Mark slot as occupied
+            player->trinket_slot_occupied[empty_slot] = true;
+            player->combat_stats_dirty = true;
+
+            d_LogInfoF("Granted pre-rolled trinket '%s' to slot %d (%d affix(es))",
+                       choice->trinket_reward_key, empty_slot, dest->affix_count);
         } else {
             d_LogWarning("No empty trinket slot - trinket reward lost!");
             // TODO: Show modal to player: "Inventory full - trinket lost"

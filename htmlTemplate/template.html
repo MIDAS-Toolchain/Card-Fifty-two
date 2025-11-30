@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Card Fifty-Two - Blackjack Roguelike</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+      font-family: 'Courier New', monospace;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      padding-top: 60px;
+    }
+
+    .game-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 20px;
+      padding-bottom: 40px;
+    }
+
+    .title {
+      color: #e94560;
+      font-size: 2.5em;
+      font-weight: bold;
+      margin-bottom: 10px;
+      letter-spacing: 2px;
+    }
+
+    #canvas {
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      background-color: #0a1f1f;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .loading {
+      color: #16213e;
+      font-size: 1.5em;
+      text-align: center;
+      margin-top: 20px;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .powered-by {
+      color: rgba(255, 255, 255, 0.3);
+      font-size: 0.8em;
+      margin-top: 10px;
+    }
+
+    /* Hide Emscripten default UI elements */
+    .emscripten {
+      display: none;
+    }
+
+    #output {
+      display: none;
+    }
+
+    /* Fullscreen button styling */
+    .fullscreen-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      padding: 10px 20px;
+      background: rgba(233, 69, 96, 0.8);
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      transition: background 0.3s ease;
+    }
+
+    .fullscreen-btn:hover {
+      background: rgba(233, 69, 96, 1);
+    }
+  </style>
+</head>
+<body>
+  <button class="fullscreen-btn" onclick="toggleFullscreen()">Fullscreen</button>
+
+  <div class="game-container">
+    <div class="title">CARD FIFTY-TWO</div>
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex=1></canvas>
+
+    <div class="loading" id="status">Downloading game assets...</div>
+
+    <div class="powered-by">
+      Powered by Emscripten, SDL2, Archimedes & Daedalus
+    </div>
+  </div>
+
+  <script type='text/javascript'>
+    var statusElement = document.getElementById('status');
+    var canvas = document.getElementById('canvas');
+
+    var Module = {
+      preRun: [],
+      postRun: [],
+      print: (function() {
+        return function(text) {
+          console.log('[stdout]', text);
+        };
+      })(),
+      printErr: function(text) {
+        console.error('[stderr]', text);
+      },
+      canvas: (function() {
+        // Force canvas backing store to match game resolution (fixes small text on web)
+        canvas.width = 1024;
+        canvas.height = 576;
+        return canvas;
+      })(),
+      setStatus: function(text) {
+        if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+        if (text === Module.setStatus.last.text) return;
+        var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+        var now = Date.now();
+        if (m && now - Module.setStatus.last.time < 30) return; // throttle
+
+        Module.setStatus.last.time = now;
+        Module.setStatus.last.text = text;
+
+        if (m) {
+          text = m[1];
+          var progressPercent = parseInt(m[2]) / parseInt(m[4]) * 100;
+          statusElement.innerHTML = text + ' (' + progressPercent.toFixed(0) + '%)';
+        } else {
+          statusElement.innerHTML = text;
+        }
+
+        if (text === '') {
+          statusElement.style.display = 'none';
+        }
+      },
+      totalDependencies: 0,
+      monitorRunDependencies: function(left) {
+        this.totalDependencies = Math.max(this.totalDependencies, left);
+        Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+      }
+    };
+
+    Module.setStatus('Downloading...');
+
+    window.onerror = function(event) {
+      Module.setStatus('Exception thrown, see JavaScript console');
+      statusElement.style.color = '#e94560';
+      Module.setStatus = function(text) {
+        if (text) statusElement.innerHTML = 'Error: ' + text;
+      };
+    };
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        canvas.requestFullscreen().catch(err => {
+          console.log('Error attempting to enable fullscreen:', err);
+        });
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    // Focus canvas on load
+    window.addEventListener('load', function() {
+      canvas.focus();
+    });
+  </script>
+
+  {{{ SCRIPT }}}
+</body>
+</html>

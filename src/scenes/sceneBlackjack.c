@@ -52,12 +52,13 @@
 #include "../../include/loaders/trinketLoader.h"
 #include "../../include/stats.h"
 #include "../../include/sanityThreshold.h"
+#include "../../include/audioHelper.h"
 #include <math.h>
 
 // External globals from main.c
 extern Deck_t g_test_deck;
 extern dTable_t* g_card_textures;
-extern SDL_Surface* g_card_back_texture;
+extern aImage_t* g_card_back_texture;
 
 // ============================================================================
 // SCENE-LOCAL STATE
@@ -85,9 +86,9 @@ static ActionPanel_t* g_action_panel = NULL;
 static ActionPanel_t* g_targeting_panel = NULL;
 static Terminal_t* g_terminal = NULL;
 
-// Background surfaces
-static SDL_Surface* g_background_texture = NULL;
-static SDL_Surface* g_table_texture = NULL;
+// Background images (Archimedes aImage_t)
+static aImage_t* g_background_texture = NULL;
+static aImage_t* g_table_texture = NULL;
 
 // Modal sections
 static DrawPileModalSection_t* g_draw_pile_modal = NULL;
@@ -140,6 +141,12 @@ static int selected_action_button = 0;  // 0=Hit, 1=Stand, 2=Double
 static int key_held_bet_index = -1;   // -1=none, 0-2=which bet key is held (1/2/3)
 static int key_held_action_index = -1; // -1=none, 0-2=which action key is held (1/2/3)
 
+// Hover sound tracking (for UI audio feedback)
+static int last_hovered_bet_button = -1;    // Track which bet button was last hovered
+static int last_hovered_action_button = -1; // Track which action button was last hovered
+static int last_hovered_sidebar_button = -1; // Track which sidebar button was last hovered
+static bool last_settings_button_hovered = false; // Track settings button hover
+
 // Tutorial system
 TutorialSystem_t* g_tutorial_system = NULL;  // Non-static: accessed by trinketUI.c
 static TutorialStep_t* g_tutorial_steps = NULL;
@@ -178,17 +185,17 @@ static void HandleTargetingInput(void);
 static void InitializeLayout(void) {
     // Create main vertical FlexBox for GAME AREA (right side, after sidebar)
     // Top bar is independent, layout starts at LAYOUT_TOP_MARGIN (35px)
-    // X position = SIDEBAR_WIDTH (280px), Width = remaining screen width
-    g_main_layout = a_FlexBoxCreate(GAME_AREA_X, LAYOUT_TOP_MARGIN,
-                                     GAME_AREA_WIDTH,
-                                     SCREEN_HEIGHT - LAYOUT_TOP_MARGIN - LAYOUT_BOTTOM_CLEARANCE);
+    // X position = SIDEBAR_WIDTH (280px), Width = remaining screen width (runtime)
+    g_main_layout = a_FlexBoxCreate(GetGameAreaX(), LAYOUT_TOP_MARGIN,
+                                     GetGameAreaWidth(),
+                                     GetWindowHeight() - LAYOUT_TOP_MARGIN - LAYOUT_BOTTOM_CLEARANCE);
     a_FlexConfigure(g_main_layout, FLEX_DIR_COLUMN, FLEX_JUSTIFY_SPACE_BETWEEN, LAYOUT_GAP);
     a_FlexSetPadding(g_main_layout, 0);
 
     // Add 3 sections to main layout (no title, buttons before player cards)
-    a_FlexAddItem(g_main_layout, GAME_AREA_WIDTH, DEALER_AREA_HEIGHT, NULL);   // Dealer now index 0
-    a_FlexAddItem(g_main_layout, GAME_AREA_WIDTH, BUTTON_AREA_HEIGHT, NULL);   // Buttons now index 1
-    a_FlexAddItem(g_main_layout, GAME_AREA_WIDTH, PLAYER_AREA_HEIGHT, NULL);   // Player now index 2
+    a_FlexAddItem(g_main_layout, GetGameAreaWidth(), DEALER_AREA_HEIGHT, NULL);   // Dealer now index 0
+    a_FlexAddItem(g_main_layout, GetGameAreaWidth(), BUTTON_AREA_HEIGHT, NULL);   // Buttons now index 1
+    a_FlexAddItem(g_main_layout, GetGameAreaWidth(), PLAYER_AREA_HEIGHT, NULL);   // Player now index 2
 
     // Calculate initial layout
     a_FlexLayout(g_main_layout);
@@ -202,18 +209,18 @@ static void InitializeLayout(void) {
     // Create developer terminal
     g_terminal = InitTerminal();
 
-    // Load background surfaces (only on first initialization - they persist across scenes)
+    // Load background images (only on first initialization - managed by Archimedes cache)
     if (!g_background_texture) {
-        g_background_texture = IMG_Load("resources/textures/background1.png");
+        g_background_texture = a_ImageLoad("resources/textures/background1.png");
         if (!g_background_texture) {
-            d_LogError("Failed to load background surface");
+            d_LogError("Failed to load background image");
         }
     }
 
     if (!g_table_texture) {
-        g_table_texture = IMG_Load("resources/textures/blackjack_table.png");
+        g_table_texture = a_ImageLoad("resources/textures/blackjack_table.png");
         if (!g_table_texture) {
-            d_LogError("Failed to load table surface");
+            d_LogError("Failed to load table image");
         }
     }
 
@@ -253,7 +260,7 @@ static void InitializeLayout(void) {
     g_action_panel = CreateActionPanel("Your Turn - Choose Action:", action_buttons, NUM_ACTION_BUTTONS);
 
     // Create targeting panel section (no buttons, just instruction text)
-    g_targeting_panel = CreateActionPanel("Right-click to exit targeting mode", NULL, 0);
+    g_targeting_panel = CreateActionPanel("Right-click to exit targeting", NULL, 0);
 
     // Create deck/discard pile modals
     g_draw_pile_modal = CreateDrawPileModalSection(&g_test_deck);
@@ -295,9 +302,11 @@ static void InitializeLayout(void) {
     // Create visual effects component
     g_visual_effects = CreateVisualEffects(&g_tween_manager);
 
-    // Create enemy portrait renderer (400x400 for 0.8x scale)
-    int portrait_x = GAME_AREA_X + (GAME_AREA_WIDTH - 400) / 2 + ENEMY_PORTRAIT_X_OFFSET;
-    int portrait_y = (SCREEN_HEIGHT - 400) / 2 + ENEMY_PORTRAIT_Y_OFFSET;
+    // Create enemy portrait renderer (400x400 for 0.8x scale) - runtime positioning
+    // Position relative to table (256px table height, portrait should sit above it)
+    int portrait_x = GetGameAreaX() + (GetGameAreaWidth() - 400) / 2 + ENEMY_PORTRAIT_X_OFFSET;
+    int table_top_y = GetWindowHeight() - 256;  // Table height is 256
+    int portrait_y = table_top_y - 280 + ENEMY_PORTRAIT_Y_OFFSET;  // Move portrait higher (was -200, now -280)
     g_enemy_portrait_renderer = CreateEnemyPortraitRenderer(portrait_x, portrait_y, 400, 400, NULL);
 
     // Create tutorial event pool
@@ -703,6 +712,15 @@ static void StartNextEncounter(void) {
                   enemy->current_hp,
                   enemy->max_hp);
 
+        // Clear any lingering card tooltips from previous combat
+        // (prevents tooltip bug where old tooltips persist through state transitions)
+        if (g_player_section && g_player_section->tooltip) {
+            HideCardTooltipModal(g_player_section->tooltip);
+        }
+        if (g_dealer_section && g_dealer_section->card_tooltip) {
+            HideCardTooltipModal(g_dealer_section->card_tooltip);
+        }
+
         // Start new round and begin betting
         Game_StartNewRound(&g_game);
         State_Transition(&g_game, STATE_BETTING);
@@ -799,7 +817,7 @@ static void BlackjackLogic(float dt) {
     if (g_tutorial_system && g_tutorial_steps && !g_tutorial_started) {
         g_tutorial_start_delay -= dt;
         if (g_tutorial_start_delay <= 0.0f) {
-            StartTutorial(g_tutorial_system, g_tutorial_steps);
+            StartTutorial(g_tutorial_system, g_tutorial_steps, g_dealer_section, g_player_section);
             g_tutorial_started = true;
             d_LogInfo("Tutorial started after 0.5s delay (post narrative)");
         } else {
@@ -882,8 +900,15 @@ static void BlackjackLogic(float dt) {
         return;  // Don't process game logic while paused
     }
 
-    // Settings button clicked - Always works (even during tutorial)
+    // Settings button hover and click - Always works (even during tutorial)
+    bool settings_hovered = IsTopBarSettingsHovered(g_top_bar);
+    if (settings_hovered && !last_settings_button_hovered) {
+        PlayUIHoverSound();
+    }
+    last_settings_button_hovered = settings_hovered;
+
     if (IsTopBarSettingsClicked(g_top_bar)) {
+        PlayUIClickSound();
         d_LogInfo("Settings button clicked - showing pause menu");
         ShowPauseMenu(g_pause_menu);
         return;
@@ -916,8 +941,24 @@ static void BlackjackLogic(float dt) {
 
     // Sidebar buttons - always available (except during tutorial steps 1 and 2)
     if (!tutorial_blocking_input) {
+        // Track sidebar button hover
+        int current_hovered_sidebar = -1;
+        for (int i = 0; i < NUM_DECK_BUTTONS; i++) {
+            if (sidebar_buttons[i] && IsSidebarButtonHovered(sidebar_buttons[i])) {
+                current_hovered_sidebar = i;
+                break;
+            }
+        }
+
+        // Play hover sound if hovering a new sidebar button
+        if (current_hovered_sidebar != -1 && current_hovered_sidebar != last_hovered_sidebar_button) {
+            PlayUIHoverSound();
+        }
+        last_hovered_sidebar_button = current_hovered_sidebar;
+
         // Draw Pile button (V key) - Toggle behavior
         if (sidebar_buttons[0] && IsSidebarButtonClicked(sidebar_buttons[0])) {
+            PlayUIClickSound();
             if (IsDrawPileModalVisible(g_draw_pile_modal)) {
                 HideDrawPileModal(g_draw_pile_modal);
             } else {
@@ -927,6 +968,7 @@ static void BlackjackLogic(float dt) {
         }
         if (app.keyboard[SDL_SCANCODE_V]) {
             app.keyboard[SDL_SCANCODE_V] = 0;
+            PlayUIClickSound();
             if (IsDrawPileModalVisible(g_draw_pile_modal)) {
                 HideDrawPileModal(g_draw_pile_modal);
             } else {
@@ -937,6 +979,7 @@ static void BlackjackLogic(float dt) {
 
         // Discard Pile button (C key) - Toggle behavior
         if (sidebar_buttons[1] && IsSidebarButtonClicked(sidebar_buttons[1])) {
+            PlayUIClickSound();
             if (IsDiscardPileModalVisible(g_discard_pile_modal)) {
                 HideDiscardPileModal(g_discard_pile_modal);
             } else {
@@ -946,6 +989,7 @@ static void BlackjackLogic(float dt) {
         }
         if (app.keyboard[SDL_SCANCODE_C]) {
             app.keyboard[SDL_SCANCODE_C] = 0;
+            PlayUIClickSound();
             if (IsDiscardPileModalVisible(g_discard_pile_modal)) {
                 HideDiscardPileModal(g_discard_pile_modal);
             } else {
@@ -1269,9 +1313,27 @@ static void BlackjackLogic(float dt) {
             State_Transition(&g_game, STATE_EVENT);
         }
 
+        // Track hover state for UI sounds
+        bool reroll_hovered = IsButtonHovered(g_event_preview_modal->reroll_button);
+        bool continue_hovered = IsButtonHovered(g_event_preview_modal->continue_button);
+
+        static bool last_event_reroll_hovered = false;
+        static bool last_event_continue_hovered = false;
+
+        if (reroll_hovered && !last_event_reroll_hovered) {
+            PlayUIHoverSound();
+        }
+        last_event_reroll_hovered = reroll_hovered;
+
+        if (continue_hovered && !last_event_continue_hovered) {
+            PlayUIHoverSound();
+        }
+        last_event_continue_hovered = continue_hovered;
+
         // Check for button clicks (IsButtonClicked handles press/release detection internally)
         // Reroll button
         if (IsButtonClicked(g_event_preview_modal->reroll_button)) {
+            PlayUIClickSound();
                 Player_t* player = Game_GetPlayerByID(1);  // Human player
                 int cost = Game_GetEventRerollCost(&g_game);
                 if (player && player->chips >= cost) {
@@ -1324,6 +1386,7 @@ static void BlackjackLogic(float dt) {
 
         // Continue button (skip timer, proceed immediately)
         if (IsButtonClicked(g_event_preview_modal->continue_button)) {
+            PlayUIClickSound();
             d_LogInfo("Continue button clicked - proceeding to event");
             HideEventPreviewModal(g_event_preview_modal);
             State_Transition(&g_game, STATE_EVENT);
@@ -1479,8 +1542,18 @@ static void BlackjackLogic(float dt) {
             StartNextEncounter();  // Spawn enemy and start combat
         }
 
+        // Track hover state for UI sound
+        bool combat_continue_hovered = IsButtonHovered(g_combat_preview_modal->continue_button);
+        static bool last_combat_continue_hovered_static = false;
+
+        if (combat_continue_hovered && !last_combat_continue_hovered_static) {
+            PlayUIHoverSound();
+        }
+        last_combat_continue_hovered_static = combat_continue_hovered;
+
         // Continue button (skip timer, proceed immediately)
         if (IsButtonClicked(g_combat_preview_modal->continue_button)) {
+            PlayUIClickSound();
             d_LogInfo("Combat preview: Continue clicked");
             HideCombatPreviewModal(g_combat_preview_modal);
             StartNextEncounter();  // Spawn enemy and start combat
@@ -1662,7 +1735,7 @@ static void HandleTargetingInput(void) {
                 // Show popup notification
                 snprintf(g_popup_message, sizeof(g_popup_message), "This ability targets rank 2-9 only");
                 g_popup_alpha = 1.0f;
-                g_popup_y = SCREEN_HEIGHT / 2;
+                g_popup_y = GetWindowHeight() / 2;
                 g_popup_active = true;
 
                 return;
@@ -1697,7 +1770,7 @@ static void HandleTargetingInput(void) {
                 // Show popup notification
                 snprintf(g_popup_message, sizeof(g_popup_message), "This ability targets rank 2-9 only");
                 g_popup_alpha = 1.0f;
-                g_popup_y = SCREEN_HEIGHT / 2;
+                g_popup_y = GetWindowHeight() / 2;
                 g_popup_active = true;
 
                 return;
@@ -1707,6 +1780,25 @@ static void HandleTargetingInput(void) {
 
     // Click outside any hovered card = no-op (don't cancel targeting)
 }
+
+// ============================================================================
+// TARGETING ARROW OPTIMIZATION (batched SDL rendering)
+// ============================================================================
+
+// Pre-allocated point buffer for batched arrow rendering
+// Reduces from 70 individual SDL_RenderDrawLine() calls to 1 SDL_RenderDrawLines()
+#define ARROW_SEGMENTS 10
+#define ARROW_THICKNESS 3
+#define ARROW_TOTAL_LINES (ARROW_THICKNESS * 2 + 1)  // 7 parallel lines
+#define ARROW_POINTS_PER_LINE (ARROW_SEGMENTS + 1)   // 11 points per line
+#define ARROW_TOTAL_POINTS (ARROW_TOTAL_LINES * ARROW_POINTS_PER_LINE)  // 77 points
+
+static SDL_Point arrow_points[ARROW_TOTAL_POINTS];
+static int arrow_point_count = 0;
+static int last_mouse_x = -9999;
+static int last_mouse_y = -9999;
+static int last_trinket_x = -9999;
+static int last_trinket_y = -9999;
 
 /**
  * RenderTargetingArrow - Draw arrow from trinket to mouse cursor
@@ -1721,15 +1813,15 @@ static void RenderTargetingArrow(void) {
     int trinket_center_x, trinket_center_y;
 
     if (targeting_trinket_slot == -1) {
-        // Class trinket
-        trinket_center_x = CLASS_TRINKET_X + CLASS_TRINKET_SIZE / 2;
-        trinket_center_y = CLASS_TRINKET_Y + CLASS_TRINKET_SIZE / 2;
+        // Class trinket - runtime position
+        trinket_center_x = GetClassTrinketX() + CLASS_TRINKET_SIZE / 2;
+        trinket_center_y = GetClassTrinketY() + CLASS_TRINKET_SIZE / 2;
     } else if (targeting_trinket_slot >= 0 && targeting_trinket_slot < 6) {
-        // Regular trinket slot
+        // Regular trinket slot - runtime position
         int row = targeting_trinket_slot / 3;
         int col = targeting_trinket_slot % 3;
-        int trinket_x = TRINKET_UI_X + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
-        int trinket_y = TRINKET_UI_Y + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        int trinket_x = GetTrinketUIX() + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        int trinket_y = GetTrinketUIY() + row * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
         trinket_center_x = trinket_x + TRINKET_SLOT_SIZE / 2;
         trinket_center_y = trinket_y + TRINKET_SLOT_SIZE / 2;
     } else {
@@ -1745,33 +1837,53 @@ static void RenderTargetingArrow(void) {
     float distance = sqrtf((float)((mouse_x - trinket_center_x) * (mouse_x - trinket_center_x) +
                                     (mouse_y - trinket_center_y) * (mouse_y - trinket_center_y)));
 
-    // Draw thick curved line using multiple parallel lines
-    const int line_thickness = 3;
-    SDL_SetRenderDrawColor(app.renderer, 255, 220, 0, 255);  // Bright yellow
+    // Optimization: Only recalculate arrow points if mouse or trinket moved
+    // This caching avoids expensive Bezier calculations on static cursor (~95% of frames)
+    if (mouse_x != last_mouse_x || mouse_y != last_mouse_y ||
+        trinket_center_x != last_trinket_x || trinket_center_y != last_trinket_y) {
 
-    for (int t = -line_thickness; t <= line_thickness; t++) {
-        // Offset perpendicular to line direction for thickness
-        int offset_x = (int)(t * sinf(angle));
-        int offset_y = (int)(-t * cosf(angle));
+        last_mouse_x = mouse_x;
+        last_mouse_y = mouse_y;
+        last_trinket_x = trinket_center_x;
+        last_trinket_y = trinket_center_y;
 
-        // Draw slightly curved line using 10 segments
-        const int segments = 10;
-        for (int i = 0; i < segments; i++) {
-            float t1 = (float)i / segments;
-            float t2 = (float)(i + 1) / segments;
+        // Pre-compute all 77 Bezier curve points into buffer
+        int point_idx = 0;
+        for (int t = -ARROW_THICKNESS; t <= ARROW_THICKNESS; t++) {
+            // Offset perpendicular to line direction for thickness
+            int offset_x = (int)(t * sinf(angle));
+            int offset_y = (int)(-t * cosf(angle));
 
-            // Bezier curve control points (slight arc)
-            int mid_x = (trinket_center_x + mouse_x) / 2;
-            int mid_y = (trinket_center_y + mouse_y) / 2 - (int)(distance * 0.1f);  // Arc upward
+            // Generate points along curved line
+            for (int i = 0; i <= ARROW_SEGMENTS; i++) {
+                float t_param = (float)i / ARROW_SEGMENTS;
 
-            // Linear interpolation along curve
-            int x1 = (int)(trinket_center_x * (1-t1) * (1-t1) + mid_x * 2 * (1-t1) * t1 + mouse_x * t1 * t1) + offset_x;
-            int y1 = (int)(trinket_center_y * (1-t1) * (1-t1) + mid_y * 2 * (1-t1) * t1 + mouse_y * t1 * t1) + offset_y;
-            int x2 = (int)(trinket_center_x * (1-t2) * (1-t2) + mid_x * 2 * (1-t2) * t2 + mouse_x * t2 * t2) + offset_x;
-            int y2 = (int)(trinket_center_y * (1-t2) * (1-t2) + mid_y * 2 * (1-t2) * t2 + mouse_y * t2 * t2) + offset_y;
+                // Bezier curve control points (slight arc)
+                int mid_x = (trinket_center_x + mouse_x) / 2;
+                int mid_y = (trinket_center_y + mouse_y) / 2 - (int)(distance * 0.1f);  // Arc upward
 
-            SDL_RenderDrawLine(app.renderer, x1, y1, x2, y2);
+                // Quadratic Bezier formula: B(t) = (1-t)²P₀ + 2(1-t)tP₁ + t²P₂
+                int x = (int)(trinket_center_x * (1-t_param) * (1-t_param) +
+                              mid_x * 2 * (1-t_param) * t_param +
+                              mouse_x * t_param * t_param) + offset_x;
+                int y = (int)(trinket_center_y * (1-t_param) * (1-t_param) +
+                              mid_y * 2 * (1-t_param) * t_param +
+                              mouse_y * t_param * t_param) + offset_y;
+
+                arrow_points[point_idx].x = x;
+                arrow_points[point_idx].y = y;
+                point_idx++;
+            }
         }
+        arrow_point_count = point_idx;
+    }
+
+    // Batched draw calls - one SDL_RenderDrawLines() per parallel line (7 calls instead of 70)
+    SDL_SetRenderDrawColor(app.renderer, 255, 220, 0, 255);  // Bright yellow
+    for (int line_idx = 0; line_idx < ARROW_TOTAL_LINES; line_idx++) {
+        SDL_RenderDrawLines(app.renderer,
+                           &arrow_points[line_idx * ARROW_POINTS_PER_LINE],
+                           ARROW_POINTS_PER_LINE);
     }
 
     // Draw arrowhead at mouse position (pointing FORWARD from trinket)
@@ -1878,6 +1990,8 @@ static void HandleBettingInput(void) {
             if (bet_buttons[selected_bet_button] && bet_buttons[selected_bet_button]->enabled) break;
             if (selected_bet_button == original) break;  // All disabled
         } while (selected_bet_button != original);
+
+        PlayUIHoverSound();
     }
 
     // RIGHT arrow - Move selection right
@@ -1892,6 +2006,8 @@ static void HandleBettingInput(void) {
             if (bet_buttons[selected_bet_button] && bet_buttons[selected_bet_button]->enabled) break;
             if (selected_bet_button == original) break;  // All disabled
         } while (selected_bet_button != original);
+
+        PlayUIHoverSound();
     }
 
     // ENTER - Select currently highlighted button
@@ -1900,6 +2016,7 @@ static void HandleBettingInput(void) {
         app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
 
         if (bet_buttons[selected_bet_button] && bet_buttons[selected_bet_button]->enabled) {
+            PlayUIClickSound();
             // If player can't afford bet amount, bet all chips instead (All In)
             int actual_bet = (g_human_player->chips < bet_amounts[selected_bet_button])
                 ? g_human_player->chips
@@ -1913,6 +2030,24 @@ static void HandleBettingInput(void) {
     }
 
     // Mouse input - check each betting button
+    // First pass: Track hover state and play hover sound
+    int current_hovered_bet = -1;
+    for (int i = 0; i < NUM_BET_BUTTONS; i++) {
+        if (bet_buttons[i] && bet_buttons[i]->enabled && IsButtonHovered(bet_buttons[i])) {
+            current_hovered_bet = i;
+            break;
+        }
+    }
+
+    // Play hover sound if hovering a new button
+    if (current_hovered_bet != -1 && current_hovered_bet != last_hovered_bet_button) {
+        PlayUIHoverSound();
+        last_hovered_bet_button = current_hovered_bet;
+    } else if (current_hovered_bet == -1) {
+        last_hovered_bet_button = -1;  // Reset when not hovering any button
+    }
+
+    // Second pass: Handle clicks
     for (int i = 0; i < NUM_BET_BUTTONS; i++) {
         if (!bet_buttons[i]) {
             continue;
@@ -1921,6 +2056,7 @@ static void HandleBettingInput(void) {
         // Process click - game.c validates and executes
         if (IsButtonClicked(bet_buttons[i])) {
             d_LogInfoF("✅ BET BUTTON %d CLICKED", i);
+            PlayUIClickSound();
             // If player can't afford bet amount, bet all chips instead (All In)
             int actual_bet = (g_human_player->chips < bet_amounts[i])
                 ? g_human_player->chips
@@ -1941,6 +2077,10 @@ static void HandleBettingInput(void) {
 
     // Update selected button based on key held (for preview effect)
     if (key_held_bet_index != -1) {
+        // Play hover sound when key is first pressed (not held)
+        if (prev_key_held == -1) {
+            PlayUIHoverSound();
+        }
         selected_bet_button = key_held_bet_index;
     }
 
@@ -1952,6 +2092,7 @@ static void HandleBettingInput(void) {
             ? g_human_player->chips
             : bet_amounts[choice];
         d_LogInfoF("⌨️ KEYBOARD %d released - betting %d", choice + 1, actual_bet);
+        PlayUIClickSound();
         Game_ProcessBettingInput(&g_game, g_human_player, actual_bet);
     }
 }
@@ -2004,6 +2145,8 @@ static void HandlePlayerTurnInput(void) {
             if (action_buttons[selected_action_button] && action_buttons[selected_action_button]->enabled) break;
             if (selected_action_button == original) break;  // All disabled
         } while (selected_action_button != original);
+
+        PlayUIHoverSound();
     }
 
     // RIGHT arrow - Move selection right
@@ -2018,10 +2161,29 @@ static void HandlePlayerTurnInput(void) {
             if (action_buttons[selected_action_button] && action_buttons[selected_action_button]->enabled) break;
             if (selected_action_button == original) break;  // All disabled
         } while (selected_action_button != original);
+
+        PlayUIHoverSound();
     }
 
     // Track if an action was taken (for tutorial step 2)
     bool action_taken = false;
+
+    // Mouse hover detection for action buttons (play sound on hover change)
+    int current_hovered_action = -1;
+    for (int i = 0; i < NUM_ACTION_BUTTONS; i++) {
+        if (action_buttons[i] && action_buttons[i]->enabled && IsButtonHovered(action_buttons[i])) {
+            current_hovered_action = i;
+            break;
+        }
+    }
+
+    // Play hover sound if hovering a new button
+    if (current_hovered_action != -1 && current_hovered_action != last_hovered_action_button) {
+        PlayUIHoverSound();
+        last_hovered_action_button = current_hovered_action;
+    } else if (current_hovered_action == -1) {
+        last_hovered_action_button = -1;  // Reset when not hovering any button
+    }
 
     // ENTER - Select currently highlighted button
     if (app.keyboard[SDL_SCANCODE_RETURN] || app.keyboard[SDL_SCANCODE_KP_ENTER]) {
@@ -2030,6 +2192,7 @@ static void HandlePlayerTurnInput(void) {
 
         if (action_buttons[selected_action_button] && action_buttons[selected_action_button]->enabled) {
             PlayerAction_t actions[] = {ACTION_HIT, ACTION_STAND, ACTION_DOUBLE};
+            PlayUIClickSound();
             Game_ProcessPlayerTurnInput(&g_game, g_human_player, actions[selected_action_button]);
             action_taken = true;
         }
@@ -2037,18 +2200,21 @@ static void HandlePlayerTurnInput(void) {
 
     // Mouse input - Hit button
     if (action_buttons[0] && IsButtonClicked(action_buttons[0])) {
+        PlayUIClickSound();
         Game_ProcessPlayerTurnInput(&g_game, g_human_player, ACTION_HIT);
         action_taken = true;
     }
 
     // Stand button
     if (action_buttons[1] && IsButtonClicked(action_buttons[1])) {
+        PlayUIClickSound();
         Game_ProcessPlayerTurnInput(&g_game, g_human_player, ACTION_STAND);
         action_taken = true;
     }
 
     // Double button
     if (action_buttons[2] && IsButtonClicked(action_buttons[2])) {
+        PlayUIClickSound();
         Game_ProcessPlayerTurnInput(&g_game, g_human_player, ACTION_DOUBLE);
         action_taken = true;
     }
@@ -2064,6 +2230,10 @@ static void HandlePlayerTurnInput(void) {
 
     // Update selected button based on key held (for preview effect)
     if (key_held_action_index != -1) {
+        // Play hover sound when key is first pressed (not held)
+        if (prev_key_held == -1) {
+            PlayUIHoverSound();
+        }
         selected_action_button = key_held_action_index;
     }
 
@@ -2072,6 +2242,7 @@ static void HandlePlayerTurnInput(void) {
         int choice = prev_key_held;
         PlayerAction_t actions[] = {ACTION_HIT, ACTION_STAND, ACTION_DOUBLE};
         d_LogInfoF("⌨️ ACTION KEY %d released - performing action", choice + 1);
+        PlayUIClickSound();
         Game_ProcessPlayerTurnInput(&g_game, g_human_player, actions[choice]);
         action_taken = true;
     }
@@ -2118,6 +2289,23 @@ TweenManager_t* GetTweenManager(void) {
     return &g_tween_manager;
 }
 
+int GetDealerCardY(void) {
+    if (!g_main_layout) return LAYOUT_TOP_MARGIN + SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP;
+
+    // Get dealer section Y from FlexBox, then add offset to card area
+    int dealer_y = a_FlexGetItemY(g_main_layout, 0);  // Dealer is index 0
+    return dealer_y + SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP;
+}
+
+int GetPlayerCardY(void) {
+    if (!g_main_layout) return LAYOUT_TOP_MARGIN + DEALER_AREA_HEIGHT + BUTTON_AREA_HEIGHT +
+                               SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP;
+
+    // Get player section Y from FlexBox, then add offset to card area
+    int player_y = a_FlexGetItemY(g_main_layout, 2);  // Player is index 2
+    return player_y + SECTION_PADDING + TEXT_LINE_HEIGHT + ELEMENT_GAP;
+}
+
 VisualEffects_t* GetVisualEffects(void) {
     return g_visual_effects;
 }
@@ -2147,7 +2335,7 @@ static void BlackjackDraw(float dt) {
     // Show loading screen during initialization
     if (g_is_loading) {
         // Black background
-        a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 255});
+        a_DrawFilledRect((aRectf_t){0, 0, GetWindowWidth(), GetWindowHeight()}, (aColor_t){0, 0, 0, 255});
 
         // "Loading..." text (centered)
         aTextStyle_t loading_config = {
@@ -2159,8 +2347,17 @@ static void BlackjackDraw(float dt) {
             .scale = 1.5f,
             .padding = 0
         };
-        a_DrawText("Loading...", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, loading_config);
+        a_DrawText("Loading...", GetWindowWidth() / 2, GetWindowHeight() / 2, loading_config);
         return;  // Skip all other rendering
+    }
+
+    // Update FlexBox bounds if window size changed (for real-time resolution changes)
+    if (g_main_layout) {
+        a_FlexSetBounds(g_main_layout,
+                        GetGameAreaX(), LAYOUT_TOP_MARGIN,
+                        GetGameAreaWidth(),
+                        GetWindowHeight() - LAYOUT_TOP_MARGIN - LAYOUT_BOTTOM_CLEARANCE);
+        a_FlexLayout(g_main_layout);
     }
 
     // Apply screen shake offset to entire viewport
@@ -2168,36 +2365,41 @@ static void BlackjackDraw(float dt) {
         ApplyScreenShakeViewport(g_visual_effects);
     }
 
-    // Draw full-screen background surface first
-    if (g_background_texture) {
-        a_BlitSurfaceRect(g_background_texture, (aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, 1);
+    // Draw full-screen background image first
+    if (g_background_texture && g_background_texture->surface) {
+        aRectf_t src = {0, 0, g_background_texture->surface->w, g_background_texture->surface->h};
+        aRectf_t dest = {0, 0, GetWindowWidth(), GetWindowHeight()};
+        a_BlitRect(g_background_texture, &src, &dest, 1.0f);
     } else {
         // Fallback to black if texture didn't load
         app.background = (aColor_t){0, 0, 0, 255};
     }
 
-    // Draw enemy portrait as background (if in combat)
+    // Calculate table position (used by both portrait and table rendering)
+    const int table_width = 1024;
+    const int table_height = 256;
+    int table_x = GetGameAreaX() + (GetGameAreaWidth() - table_width) / 2;
+    int table_y = GetWindowHeight() - table_height;
+
+    // Draw enemy portrait as background (if in combat) - position relative to table
     if (g_game.is_combat_mode && g_enemy_portrait_renderer) {
+        // Update portrait position to stay with table (runtime)
+        g_enemy_portrait_renderer->x = GetGameAreaX() + (GetGameAreaWidth() - 400) / 2 + ENEMY_PORTRAIT_X_OFFSET;
+        g_enemy_portrait_renderer->y = table_y - 280 + ENEMY_PORTRAIT_Y_OFFSET;  // Move portrait higher (was -200, now -280)
         RenderEnemyPortrait(g_enemy_portrait_renderer);
     }
 
     // Draw blackjack table sprite at bottom (on top of portrait)
-    if (g_table_texture) {
-        // Use reasonable dimensions for the table
-        int table_width = 1024;
-        int table_height = 256;
+    if (g_table_texture && g_table_texture->surface) {
 
-        // Center horizontally in game area, position at bottom
-        int table_x = GAME_AREA_X + (GAME_AREA_WIDTH - table_width) / 2;
-        int table_y = SCREEN_HEIGHT - table_height;
-
+        aRectf_t src = {0, 0, g_table_texture->surface->w, g_table_texture->surface->h};
         aRectf_t dest = {
             table_x,
             table_y,
             table_width,
             table_height
         };
-        a_BlitSurfaceRect(g_table_texture, dest, 1);
+        a_BlitRect(g_table_texture, &src, &dest, 1.0f);
     }
 
     // Skip all game UI rendering during intro narrative (only show modal + overlay)
@@ -2205,9 +2407,9 @@ static void BlackjackDraw(float dt) {
         // Render top bar at fixed position (independent of FlexBox)
         RenderTopBarSection(g_top_bar, &g_game, 0);
 
-        // Render left sidebar (fixed position on left side)
+        // Render left sidebar (fixed position on left side) - runtime height
         if (g_left_sidebar && g_human_player) {
-            int sidebar_height = SCREEN_HEIGHT - LAYOUT_TOP_MARGIN - LAYOUT_BOTTOM_CLEARANCE;
+            int sidebar_height = GetWindowHeight() - LAYOUT_TOP_MARGIN - LAYOUT_BOTTOM_CLEARANCE;
             RenderLeftSidebarSection(g_left_sidebar, g_human_player, 0, LAYOUT_TOP_MARGIN, sidebar_height);
         }
 
@@ -2323,8 +2525,8 @@ static void BlackjackDraw(float dt) {
 
     // Render intro narrative modal (if visible) with dark background
     if (g_intro_narrative_modal && IsIntroNarrativeModalVisible(g_intro_narrative_modal)) {
-        // Dark semi-transparent overlay (50% black)
-        a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 128});
+        // Dark semi-transparent overlay (50% black) - runtime
+        a_DrawFilledRect((aRectf_t){0, 0, GetWindowWidth(), GetWindowHeight()}, (aColor_t){0, 0, 0, 128});
 
         // Render modal (has its own fade-in)
         RenderIntroNarrativeModal(g_intro_narrative_modal);
@@ -2373,14 +2575,14 @@ static void BlackjackDraw(float dt) {
         int padding_x = 2;  // 2px horizontal padding
         int box_width = estimated_width + (padding_x * 2);
         int box_height = 50;
-        int box_x = (SCREEN_WIDTH - box_width) / 2;
+        int box_x = (GetWindowWidth() - box_width) / 2;
         int box_y = (int)g_popup_y - 4;  // Move background DOWN 6px (was -10, now -4)
 
         // Draw background box (#10141f at 30% opacity with fade)
         Uint8 bg_alpha = (Uint8)(0.3f * g_popup_alpha * 255);
         a_DrawFilledRect((aRectf_t){box_x, box_y, box_width, box_height}, (aColor_t){16, 20, 31, bg_alpha});
 
-        // Draw text (#a53030 red with fade)
+        // Draw text (#a53030 red with fade) - runtime
         aTextStyle_t popup_config = {
             .type = FONT_ENTER_COMMAND,
             .fg = {165, 48, 48, (Uint8)(g_popup_alpha * 255)},  // #a53030 with fade
@@ -2390,7 +2592,7 @@ static void BlackjackDraw(float dt) {
             .scale = 1.2f,
             .padding = 0
         };
-        a_DrawText(g_popup_message, SCREEN_WIDTH / 2, (int)g_popup_y, popup_config);
+        a_DrawText(g_popup_message, GetWindowWidth() / 2, (int)g_popup_y, popup_config);
     }
 
     // Render terminal overlay (highest layer - above tutorial)

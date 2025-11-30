@@ -8,18 +8,20 @@
 // BLACKJACK SCENE CONSTANTS
 // ============================================================================
 
-// Layout dimensions
+// Layout dimensions - static values (don't change with resolution)
 #define LAYOUT_TOP_MARGIN       45  // Space for independent top bar (same as TOP_BAR_HEIGHT)
 #define LAYOUT_BOTTOM_CLEARANCE 0   // No bottom margin - sidebar extends to screen bottom
 #define LAYOUT_GAP              0
 #define TOP_BAR_HEIGHT          45
 #define SIDEBAR_WIDTH           280  // Left sidebar width
-#define GAME_AREA_X             (SIDEBAR_WIDTH)  // Game area starts after sidebar
-#define GAME_AREA_WIDTH         (SCREEN_WIDTH - SIDEBAR_WIDTH)
 #define TITLE_AREA_HEIGHT       10
 #define DEALER_AREA_HEIGHT      185
 #define PLAYER_AREA_HEIGHT      240
 #define BUTTON_AREA_HEIGHT      100
+
+// Runtime layout helpers (use GetWindowWidth/Height for resolution-independence)
+static inline int GetGameAreaX(void)     { return SIDEBAR_WIDTH; }
+static inline int GetGameAreaWidth(void) { return GetWindowWidth() - SIDEBAR_WIDTH; }
 
 // Section internal layout
 #define TEXT_LINE_HEIGHT        25   // Height of one line of text
@@ -64,20 +66,36 @@
 #define CLASS_TRINKET_SIZE      96
 #define CLASS_TRINKET_GAP       12
 #define TRINKET_UI_PADDING      20
-// Class trinket on LEFT, then gap, then 3x2 grid
-#define CLASS_TRINKET_X         (SCREEN_WIDTH - CLASS_TRINKET_SIZE - CLASS_TRINKET_GAP - (3 * TRINKET_SLOT_SIZE) - (2 * TRINKET_SLOT_GAP) - TRINKET_UI_PADDING)
-#define CLASS_TRINKET_Y         (SCREEN_HEIGHT - (2 * TRINKET_SLOT_SIZE) - TRINKET_SLOT_GAP - TRINKET_UI_PADDING)
-#define TRINKET_UI_X            (CLASS_TRINKET_X + CLASS_TRINKET_SIZE + CLASS_TRINKET_GAP)
-#define TRINKET_UI_Y            (SCREEN_HEIGHT - (2 * TRINKET_SLOT_SIZE) - TRINKET_SLOT_GAP - TRINKET_UI_PADDING)
+// Runtime trinket position helpers (use GetWindowWidth/Height for resolution-independence)
+static inline int GetClassTrinketX(void) {
+    return GetWindowWidth() - CLASS_TRINKET_SIZE - CLASS_TRINKET_GAP -
+           (3 * TRINKET_SLOT_SIZE) - (2 * TRINKET_SLOT_GAP) - TRINKET_UI_PADDING;
+}
+static inline int GetClassTrinketY(void) {
+    return GetWindowHeight() - (2 * TRINKET_SLOT_SIZE) - TRINKET_SLOT_GAP - TRINKET_UI_PADDING;
+}
+static inline int GetTrinketUIX(void) {
+    return GetClassTrinketX() + CLASS_TRINKET_SIZE + CLASS_TRINKET_GAP;
+}
+static inline int GetTrinketUIY(void) {
+    return GetWindowHeight() - (2 * TRINKET_SLOT_SIZE) - TRINKET_SLOT_GAP - TRINKET_UI_PADDING;
+}
 
 // ============================================================================
 // CARD LAYOUT HELPERS
 // ============================================================================
 
+// Hand positioning constants
+#define HAND_LEFT_PADDING     32   // Padding from left edge of game area for hands (FAR LEFT!)
+
+// Ability display constants
+#define ABILITY_COLUMN_WIDTH  280  // Width of ability card column
+#define ABILITY_RIGHT_MARGIN  20   // Margin from right edge of screen
+
 /**
  * CalculateCardFanPosition - Calculate position for card in fanned hand
  *
- * Uses fixed anchor point (center of game area) with symmetric fan layout.
+ * Uses fixed anchor point (LEFT side of game area) with symmetric fan layout.
  * This ensures position doesn't shift when new cards are added.
  *
  * @param card_index - Index of card in hand (0 = first card)
@@ -92,17 +110,14 @@
  */
 static inline void CalculateCardFanPosition(size_t card_index, size_t hand_size,
                                              int base_y, int* out_x, int* out_y) {
-    // Fixed anchor point at center of game area
-    int anchor_x = GAME_AREA_X + (GAME_AREA_WIDTH / 2);
+    (void)hand_size;  // Unused - left-aligned fan doesn't need total hand size
 
-    // Calculate total width of fanned hand
-    int total_offset = (int)((hand_size - 1) * CARD_SPACING);
+    // Fixed anchor point at LEFT of game area (runtime, resolution-independent)
+    int anchor_x = GetGameAreaX() + HAND_LEFT_PADDING;
 
-    // First card starts left of center by half the total width
-    int first_card_x = anchor_x - (total_offset / 2);
-
-    // This card's position = first + (index * spacing)
-    *out_x = first_card_x + ((int)card_index * CARD_SPACING);
+    // LEFT-ALIGNED fan: first card starts AT the anchor (not centered)
+    // This card's position = anchor + (index * spacing)
+    *out_x = anchor_x + ((int)card_index * CARD_SPACING);
     *out_y = base_y;
 }
 
@@ -189,6 +204,24 @@ struct CardTransitionManager* GetCardTransitionManager(void);
  * @return Pointer to global tween manager
  */
 struct TweenManager* GetTweenManager(void);
+
+/**
+ * GetDealerCardY - Get actual Y position for dealer cards (runtime, from FlexBox)
+ *
+ * Used by game.c for calculating card animation targets.
+ *
+ * @return Y position where dealer cards are rendered
+ */
+int GetDealerCardY(void);
+
+/**
+ * GetPlayerCardY - Get actual Y position for player cards (runtime, from FlexBox)
+ *
+ * Used by game.c for calculating card animation targets.
+ *
+ * @return Y position where player cards are rendered
+ */
+int GetPlayerCardY(void);
 
 /**
  * SetStatusEffectDrainAmount - Track chip drain from status effects

@@ -42,8 +42,9 @@ ActionPanel_t* CreateActionPanel(const char* instruction, Button_t** buttons, in
     // - Parent FlexBox (main_layout) calculates Y position each frame
     // - RenderActionPanel() receives Y and calls a_FlexSetBounds() to reposition
     // - Child FlexBox (button_row) then calculates button positions
-    panel->button_row = a_FlexBoxCreate(0, 0, SCREEN_WIDTH, BUTTON_ROW_HEIGHT);
-    a_FlexConfigure(panel->button_row, FLEX_DIR_ROW, FLEX_JUSTIFY_START, BUTTON_GAP);
+    // CENTERED buttons (FLEX_JUSTIFY_CENTER keeps buttons in middle)
+    panel->button_row = a_FlexBoxCreate(0, 0, GetGameAreaWidth(), BUTTON_ROW_HEIGHT);
+    a_FlexConfigure(panel->button_row, FLEX_DIR_ROW, FLEX_JUSTIFY_CENTER, BUTTON_GAP);
 
     // Add buttons to FlexBox (determine size based on first button)
     if (button_count > 0 && buttons[0]) {
@@ -137,27 +138,32 @@ void RebuildActionPanelLayout(ActionPanel_t* panel, bool button_visible[3], int 
 void RenderActionPanel(ActionPanel_t* panel, int y) {
     if (!panel) return;
 
-    // Render instruction text left-aligned above buttons
-    // Buttons are at y + ACTION_PANEL_Y_OFFSET (310), so put text ~40px above buttons
-    int text_x = GAME_AREA_X + ACTION_PANEL_LEFT_MARGIN;
-    int text_y = y + ACTION_PANEL_Y_OFFSET - 40;
+    // Render instruction text LEFT-ALIGNED above buttons (on top of them!)
+    int text_y = y + ACTION_PANEL_Y_OFFSET - 50;
 
-    // Draw instruction text (bright white)
+    int buttons_x = GetGameAreaX() + ACTION_PANEL_LEFT_MARGIN - 110; 
+    int text_x = buttons_x + 272;  // 64px right from button area + 10px padding + 32px more right = 122px
+
+    // Draw instruction text with .bg parameter (modern approach!)
     aTextStyle_t instruction_config = {
         .type = FONT_ENTER_COMMAND,
         .fg = {255, 255, 255, 255},  // Bright white
+        .bg = {0, 0, 0, 128},         // 50% opaque black background
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = 0,
-        .scale = 1.0f
+        .scale = 1.0f,
+        .padding = 6                  
     };
     a_DrawText(panel->instruction_text, text_x, text_y, instruction_config);
 
     // Only render buttons if panel has them
     if (!panel->button_row || panel->button_count == 0) return;
 
-    // Position button row in game area (left of screen, lower than flex position)
+    // Position button row in game area (avoid trinket UI on right, shift left 80px total)
     // FlexBox bounds are updated each frame because Y position comes from parent FlexBox
-    a_FlexSetBounds(panel->button_row, GAME_AREA_X + ACTION_PANEL_LEFT_MARGIN, y + ACTION_PANEL_Y_OFFSET, GAME_AREA_WIDTH, BUTTON_ROW_HEIGHT);
+    // Reduce width by 64px total (32 left + 32 right margin) to avoid trinket UI collision
+    int button_area_width = GetGameAreaWidth() - 64;
+    a_FlexSetBounds(panel->button_row, buttons_x, y + ACTION_PANEL_Y_OFFSET, button_area_width, BUTTON_ROW_HEIGHT);
 
     // Update button positions from FlexBox (includes layout calculation)
     UpdateActionPanelButtons(panel);

@@ -3,6 +3,7 @@
  */
 
 #include "../../../include/scenes/components/menuItem.h"
+#include "../../../include/audioHelper.h"
 
 // Color constants (from provided color palette)
 #define COLOR_SELECTED_HOVER ((aColor_t){222, 158, 65, 255})  // #de9e41 - orange (hover)
@@ -131,7 +132,7 @@ bool IsMenuItemClicked(MenuItem_t* item) {
 
     // Play hover sound when mouse enters (hover state changes from false to true)
     if (hovered && !item->prev_hovered) {
-        a_AudioPlayEffect(&g_ui_hover_sound);
+        PlayUIHoverSound();
     }
     item->prev_hovered = hovered;
 
@@ -144,7 +145,7 @@ bool IsMenuItemClicked(MenuItem_t* item) {
     // Press released (click complete)
     if (!app.mouse.pressed && item->was_clicked && hovered) {
         item->was_clicked = false;
-        a_AudioPlayEffect(&g_ui_click_sound);  // Play click sound
+        PlayUIClickSound();  // Play click sound
         return true;  // Click completed!
     }
 

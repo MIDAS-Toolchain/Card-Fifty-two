@@ -62,19 +62,9 @@ typedef struct ResultScreen {
     FlexBox_t* positive_effects_box;  // Top-right (wins, gains, refunds)
     FlexBox_t* negative_effects_box;  // Bottom-right (losses, drains, penalties)
 
-    // Dynamic effect arrays (NEW!)
+    // Dynamic effect arrays
     dArray_t* positive_effects;  // Array of EffectDisplay_t (wins, refunds)
     dArray_t* negative_effects;  // Array of EffectDisplay_t (losses, drains)
-
-    // DEPRECATED (kept for backward compat, will remove after FlexBox migration)
-    bool winloss_started;
-    float winloss_alpha;
-    float winloss_offset_x;
-    float winloss_offset_y;
-    bool bleed_started;
-    float bleed_alpha;
-    float bleed_offset_x;
-    float bleed_offset_y;
 } ResultScreen_t;
 
 // ============================================================================

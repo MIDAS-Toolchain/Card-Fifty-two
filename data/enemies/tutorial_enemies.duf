@@ -18,7 +18,6 @@ Its lessons have become twisted, turning the casino's rules against you."""
             effects: [
                 {
                     type: "apply_status"
-                    target: "player"
                     status: "GREED"
                     value: 0
                     duration: 2
@@ -40,7 +39,6 @@ Its lessons have become twisted, turning the casino's rules against you."""
             effects: [
                 {
                     type: "apply_status"
-                    target: "player"
                     status: "CHIP_DRAIN"
                     value: 5
                     duration: 3
@@ -94,7 +92,6 @@ growing stronger with each hand you lose."""
             effects: [
                 {
                     type: "apply_status"
-                    target: "player"
                     status: "GREED"
                     value: 0
                     duration: 2
@@ -116,7 +113,6 @@ growing stronger with each hand you lose."""
             effects: [
                 {
                     type: "apply_status"
-                    target: "player"
                     status: "CHIP_DRAIN"
                     value: 5
                     duration: 3
@@ -137,7 +133,6 @@ growing stronger with each hand you lose."""
             effects: [
                 {
                     type: "apply_status"
-                    target: "player"
                     status: "RAKE"
                     value: 5
                     duration: 1

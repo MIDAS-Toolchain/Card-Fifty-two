@@ -91,8 +91,9 @@ void RenderEnemyPortrait(const EnemyPortraitRenderer_t* renderer) {
     // Apply defeat fade effect
     SDL_SetTextureAlphaMod(portrait, (Uint8)(255 * defeat_alpha));
 
-    // Render texture - SDL automatically scales to fit dest rect
-    a_BlitTextureRect(portrait, (aRectf_t){x, y, final_w, final_h}, 1);
+    // Render texture using SDL_RenderCopy (scales automatically to fit dest rect)
+    SDL_Rect dest = {(int)x, (int)y, (int)final_w, (int)final_h};
+    SDL_RenderCopy(app.renderer, portrait, NULL, &dest);
 
     // Reset texture mods for next frame
     SDL_SetTextureColorMod(portrait, 255, 255, 255);

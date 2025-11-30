@@ -400,16 +400,17 @@ void RenderLeftSidebarSection(LeftSidebarSection_t* section, Player_t* player, i
     bool portrait_hovering = (mouse_x >= portrait_x && mouse_x < portrait_x + PORTRAIT_SIZE &&
                               mouse_y >= portrait_y && mouse_y < portrait_y + PORTRAIT_SIZE);
 
-    // Get portrait surface directly
-    SDL_Surface* portrait_surface = player->portrait_surface;
-    if (portrait_surface) {
+    // Get portrait texture (use SDL_RenderCopy like enemy portraits)
+    SDL_Texture* portrait_texture = player->portrait_texture;
+    if (portrait_texture) {
         // Scale up by 10% on hover
         int render_size = portrait_hovering ? (int)(PORTRAIT_SIZE * 1.1f) : PORTRAIT_SIZE;
         int render_x = center_x - render_size / 2;
         int render_y = portrait_y - (render_size - PORTRAIT_SIZE) / 2;  // Keep centered vertically
 
-        // Render using Archimedes surface blitting
-        a_BlitSurfaceRect(portrait_surface, (aRectf_t){render_x, render_y, render_size, render_size}, 1);
+        // Render using SDL_RenderCopy (like enemy portraits)
+        SDL_Rect dest = {render_x, render_y, render_size, render_size};
+        SDL_RenderCopy(app.renderer, portrait_texture, NULL, &dest);
     } else {
         // Fallback: Draw placeholder rect
         a_DrawFilledRect((aRectf_t){portrait_x, portrait_y, PORTRAIT_SIZE, PORTRAIT_SIZE}, (aColor_t){100, 100, 100, 255});

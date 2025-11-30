@@ -81,6 +81,7 @@ typedef struct Tween {
 typedef struct TweenManager {
     Tween_t tweens[TWEEN_MAX_ACTIVE];  // Fixed array of tweens
     int active_count;                   // Number of active tweens
+    int highest_active_slot;            // Highest index with active tween (-1 if none active)
 } TweenManager_t;
 
 // ============================================================================

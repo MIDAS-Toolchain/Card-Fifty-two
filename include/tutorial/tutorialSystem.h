@@ -91,6 +91,8 @@ typedef struct TutorialSystem {
     float advance_delay_timer;       // Countdown timer for advance delay (seconds)
     bool waiting_for_betting_state;  // Waiting for game to return to BETTING state
     int current_step_number;         // Current step number (1-indexed, 0 = inactive)
+    void* dealer_section;            // Dealer section reference (for clearing tooltips)
+    void* player_section;            // Player section reference (for clearing tooltips)
 } TutorialSystem_t;
 
 // ============================================================================
@@ -116,8 +118,10 @@ void DestroyTutorialSystem(TutorialSystem_t** system);
  *
  * @param system - Tutorial system
  * @param first_step - First tutorial step
+ * @param dealer_section - Dealer section (to clear tooltips, can be NULL)
+ * @param player_section - Player section (to clear tooltips, can be NULL)
  */
-void StartTutorial(TutorialSystem_t* system, TutorialStep_t* first_step);
+void StartTutorial(TutorialSystem_t* system, TutorialStep_t* first_step, void* dealer_section, void* player_section);
 
 /**
  * StopTutorial - End tutorial and cleanup
@@ -130,6 +134,8 @@ void StopTutorial(TutorialSystem_t* system);
  * AdvanceTutorial - Move to next tutorial step
  *
  * @param system - Tutorial system
+ *
+ * NOTE: Uses stored section pointers from StartTutorial() to clear tooltips
  */
 void AdvanceTutorial(TutorialSystem_t* system);
 

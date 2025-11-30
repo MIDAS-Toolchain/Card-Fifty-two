@@ -1,0 +1,173 @@
+@coolant_ooze {
+    name: "Coolant Ooze"
+    description: """Leaked lubricant that pooled under the slot machines and developed 
+a crude intelligence. It seeps across the floor, corroding everything it touches."""
+    hp: 420
+    image_path: "resources/enemies/coolant_ooze.png"
+
+    abilities: [
+        {
+            name: "Corrosive"
+            description: "The ooze eats through your chips."
+            trigger: {
+                type: "on_event"
+                event: "ENEMY_TAKES_DAMAGE"
+            }
+            effects: [
+                {
+                    type: "apply_status"
+                    target: "player"
+                    status: "CHIP_DRAIN"
+                    value: 2
+                    duration: 2
+                }
+            ]
+        },
+        {
+            name: "Sticky"
+            description: "Harder to escape the mess."
+            trigger: {
+                type: "on_event"
+                event: "PLAYER_BUST"
+            }
+            effects: [
+                {
+                    type: "chip_damage"
+                    target: "player"
+                    value: 2
+                }
+            ]
+        },
+        {
+            name: "Dampening"
+            description: "The gunk absorbs your momentum."
+            trigger: {
+                type: "passive"
+            }
+            effects: [
+                {
+                    type: "modify_damage"
+                    target: "player"
+                    value: -5
+                    modifier_type: "percent"
+                }
+            ]
+        }
+    ]
+}
+
+@wire_rat {
+    name: "Wire Rat"
+    description: """Nests in the walls, gnawing through cables. Its eyes are red sensors, 
+its tail a frayed power line. Pest control was discontinued."""
+    hp: 260
+    image_path: "resources/enemies/wire_rat.png"
+
+    abilities: [
+        {
+            name: "Gnawing"
+            description: "It chews through the infrastructure."
+            trigger: {
+                type: "counter"
+                event: "CARD_DRAWN"
+                count: 4
+            }
+            effects: [
+                {
+                    type: "chip_damage"
+                    target: "player"
+                    value: 3
+                }
+            ]
+        },
+        {
+            name: "Skittish"
+            description: "Hard to pin down."
+            trigger: {
+                type: "on_event"
+                event: "COMBAT_START"
+            }
+            effects: [
+                {
+                    type: "modify_damage_first_hit"
+                    target: "player"
+                    value: -50
+                    modifier_type: "percent"
+                }
+            ]
+        },
+        {
+            name: "Nested"
+            description: "It knows when to retreat."
+            trigger: {
+                type: "on_event"
+                event: "PLAYER_STAND"
+            }
+            effects: [
+                {
+                    type: "heal"
+                    target: "self"
+                    value: 5
+                }
+            ]
+        }
+    ]
+}
+
+@vent_roach {
+    name: "Vent Roach"
+    description: """Chrome carapace, survives everything. The universal sign that a place 
+has been abandoned long enough for things to move in."""
+    hp: 300
+    image_path: "resources/enemies/vent_roach.png"
+
+    abilities: [
+        {
+            name: "Survivor"
+            description: "Thrives on your mistakes."
+            trigger: {
+                type: "on_event"
+                event: "PLAYER_BUST"
+            }
+            effects: [
+                {
+                    type: "heal"
+                    value: 10
+                }
+            ]
+        },
+        {
+            name: "Filthy"
+            description: "Disease carrier."
+            trigger: {
+                type: "on_event"
+                event: "ENEMY_TAKES_DAMAGE"
+            }
+            effects: [
+                {
+                    type: "apply_status"
+                    target: "player"
+                    status: "WEAK"
+                    value: 20
+                    duration: 2
+                }
+            ]
+        },
+        {
+            name: "Infestation"
+            description: "They're everywhere."
+            trigger: {
+                type: "counter"
+                event: "HAND_END"
+                count: 3
+            }
+            effects: [
+                {
+                    type: "chip_damage"
+                    target: "player"
+                    value: 5
+                }
+            ]
+        }
+    ]
+}

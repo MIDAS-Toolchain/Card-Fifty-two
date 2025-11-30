@@ -11,7 +11,7 @@
 
 // External globals
 extern dTable_t* g_card_textures;
-extern SDL_Surface* g_card_back_texture;
+extern aImage_t* g_card_back_texture;
 
 // Color constants (matching pause menu palette)
 #define COLOR_OVERLAY           ((aColor_t){9, 10, 20, 180})     // #090a14 - almost black overlay
@@ -353,9 +353,9 @@ void RenderCardGridModal(CardGridModal_t* modal) {
 
             // Ensure texture is loaded (lazy loading)
             if (!card->texture) {
-                SDL_Surface** tex_ptr = (SDL_Surface**)d_TableGet(g_card_textures, &card->card_id);
-                if (tex_ptr && *tex_ptr) {
-                    card->texture = *tex_ptr;
+                aImage_t** img_ptr = (aImage_t**)d_TableGet(g_card_textures, &card->card_id);
+                if (img_ptr && *img_ptr) {
+                    card->texture = *img_ptr;
                 }
             }
 
@@ -371,8 +371,10 @@ void RenderCardGridModal(CardGridModal_t* modal) {
             }
 
             // Draw card - ALWAYS show face (ignore card->face_up, this is a viewer)
-            if (card->texture) {
-                a_BlitSurfaceRect(card->texture, (aRectf_t){x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT}, 1);
+            if (card->texture && card->texture->surface) {
+                aRectf_t src = {0, 0, card->texture->surface->w, card->texture->surface->h};
+                aRectf_t dest = {x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT};
+                a_BlitRect(card->texture, &src, &dest, 1.0f);
             } else {
                 a_DrawFilledRect((aRectf_t){x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT}, (aColor_t){200, 200, 200, 255});
                 a_DrawRect((aRectf_t){x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT}, (aColor_t){100, 100, 100, 255});
@@ -438,7 +440,11 @@ void RenderCardGridModal(CardGridModal_t* modal) {
                 int hover_y = base_y + (CARD_GRID_CARD_HEIGHT - hover_h) / 2;
 
                 // Draw enlarged card
-                a_BlitSurfaceRect(card->texture, (aRectf_t){hover_x, hover_y, hover_w, hover_h}, 1);
+                if (card->texture->surface) {
+                    aRectf_t src = {0, 0, card->texture->surface->w, card->texture->surface->h};
+                    aRectf_t dest = {hover_x, hover_y, hover_w, hover_h};
+                    a_BlitRect(card->texture, &src, &dest, 1.0f);
+                }
 
                 // Draw tag badge on enlarged card
                 const dArray_t* tags = GetCardTags(card->card_id);

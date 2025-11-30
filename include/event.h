@@ -145,8 +145,10 @@ typedef struct EventChoice {
     // Enemy combat modifiers (applied when transitioning to combat after event)
     float enemy_hp_multiplier;           // HP multiplier for next enemy (1.0 = normal, 0.75 = 75% HP, 1.5 = 150% HP)
 
-    // Trinket reward system (DUF-based)
+    // Trinket reward system (DUF-based with pre-rolled affixes)
     char trinket_reward_key[64];         // Trinket key from DUF (e.g., "elite_membership", "stack_trace", "" = none)
+    TrinketInstance_t trinket_reward_instance;  // Pre-rolled instance with affixes (for tooltip preview)
+    bool has_trinket_reward;             // true if trinket_reward_key is set and instance is rolled
 } EventChoice_t;
 
 /**

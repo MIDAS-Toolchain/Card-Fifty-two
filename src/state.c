@@ -14,6 +14,7 @@
 #include "cardTags.h"
 #include "hand.h"
 #include "stats.h"
+#include "audioHelper.h"
 #include <Daedalus.h>
 
 // ============================================================================
@@ -269,6 +270,10 @@ void State_UpdateLogic(GameContext_t* game, float dt) {
         case STATE_COMBAT_PREVIEW:
             // Handled by combatPreviewModal.c
             break;
+
+        case STATE_GAME_OVER:
+            // Handled by gameOverOverlay.c
+            break;
     }
 }
 
@@ -499,6 +504,9 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
                     // HIT: Deal a card with animation
                     if (Game_DealCardWithAnimation(game->deck, &dealer->hand, dealer, true)) {
                         d_LogInfoF("Dealer hits - new total: %d", dealer->hand.total_value);
+
+                        // Play card slide sound
+                        PlayCardSlideSound();
 
                         // Process card tag effects for dealer draws
                         const Card_t* last_card = GetCardFromHand(&dealer->hand, dealer->hand.cards->count - 1);

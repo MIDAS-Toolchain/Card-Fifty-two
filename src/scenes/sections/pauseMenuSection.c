@@ -5,6 +5,7 @@
 #include "../../../include/scenes/sections/pauseMenuSection.h"
 #include "../../../include/scenes/sceneBlackjack.h"
 #include "../../../include/stats.h"
+#include "../../../include/audioHelper.h"
 
 // Layout constants
 #define PAUSE_PANEL_HEADER_HEIGHT  50
@@ -184,6 +185,7 @@ PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
             SetMenuItemRowSelected(section->confirm_items[section->confirm_selected], false);
             section->confirm_selected = 0;  // Yes
             SetMenuItemRowSelected(section->confirm_items[section->confirm_selected], true);
+            PlayUIHoverSound();
             d_LogInfo("Confirm dialog: Selected 'Yes'");
         }
         if (app.keyboard[SDL_SCANCODE_D] || app.keyboard[SDL_SCANCODE_RIGHT] ||
@@ -195,6 +197,7 @@ PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
             SetMenuItemRowSelected(section->confirm_items[section->confirm_selected], false);
             section->confirm_selected = 1;  // No
             SetMenuItemRowSelected(section->confirm_items[section->confirm_selected], true);
+            PlayUIHoverSound();
             d_LogInfo("Confirm dialog: Selected 'No'");
         }
 
@@ -217,6 +220,8 @@ PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
             app.keyboard[SDL_SCANCODE_RETURN] = 0;
             app.keyboard[SDL_SCANCODE_SPACE] = 0;
             app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+
+            PlayUIClickSound();
 
             d_LogInfoF("Confirm dialog: Enter pressed - confirm_selected=%d (%s)",
                        section->confirm_selected,
@@ -261,6 +266,7 @@ PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
         SetMenuItemSelected(section->menu_items[section->selected_option], false);
         section->selected_option = (section->selected_option - 1 + 5) % 5;
         SetMenuItemSelected(section->menu_items[section->selected_option], true);
+        PlayUIHoverSound();
     }
     if (app.keyboard[SDL_SCANCODE_S] || app.keyboard[SDL_SCANCODE_DOWN]) {
         app.keyboard[SDL_SCANCODE_S] = 0;
@@ -268,6 +274,7 @@ PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
         SetMenuItemSelected(section->menu_items[section->selected_option], false);
         section->selected_option = (section->selected_option + 1) % 5;
         SetMenuItemSelected(section->menu_items[section->selected_option], true);
+        PlayUIHoverSound();
     }
 
     // Mouse hover auto-select
@@ -289,6 +296,8 @@ PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
         app.keyboard[SDL_SCANCODE_RETURN] = 0;
         app.keyboard[SDL_SCANCODE_SPACE] = 0;
         app.keyboard[SDL_SCANCODE_KP_ENTER] = 0;
+
+        PlayUIClickSound();
 
         switch (section->selected_option) {
             case 0: return PAUSE_ACTION_RESUME;
@@ -338,14 +347,18 @@ PauseAction_t HandlePauseMenuInput(PauseMenuSection_t* section) {
 static void RenderStatsOverlay(void) {
     const GlobalStats_t* stats = Stats_GetCurrent();
 
+    // Runtime window dimensions for responsiveness
+    int window_w = GetWindowWidth();
+    int window_h = GetWindowHeight();
+
     // Full-screen darkened overlay
-    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 200});
+    a_DrawFilledRect((aRectf_t){0, 0, window_w, window_h}, (aColor_t){0, 0, 0, 200});
 
     // Stats panel
     int panel_w = 700;
     int panel_h = 500;
-    int panel_x = (SCREEN_WIDTH - panel_w) / 2;
-    int panel_y = (SCREEN_HEIGHT - panel_h) / 2;
+    int panel_x = (window_w - panel_w) / 2;
+    int panel_y = (window_h - panel_h) / 2;
 
     // Panel background
     a_DrawFilledRect((aRectf_t){panel_x, panel_y, panel_w, panel_h},
@@ -354,7 +367,7 @@ static void RenderStatsOverlay(void) {
     // Header
     a_DrawFilledRect((aRectf_t){panel_x, panel_y, panel_w, PAUSE_PANEL_HEADER_HEIGHT},
                      (aColor_t){COLOR_HEADER_BG.r, COLOR_HEADER_BG.g, COLOR_HEADER_BG.b, 255});
-    a_DrawText("RUN STATS", SCREEN_WIDTH / 2, panel_y + 12,
+    a_DrawText("RUN STATS", window_w / 2, panel_y + 12,
                    (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_HEADER_TEXT.r,COLOR_HEADER_TEXT.g,COLOR_HEADER_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Stats content (using dString_t per Constitutional pattern)
@@ -364,32 +377,32 @@ static void RenderStatsOverlay(void) {
 
     // Cards Drawn
     d_StringFormat(text, "Cards Drawn: %llu", stats->cards_drawn);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={200,200,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+    a_DrawText((char*)d_StringPeek(text), window_w / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={200,200,255,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += line_height;
 
     // Turns
     y += 10;
     d_StringFormat(text, "Turns Played: %llu  Won: %llu  Lost: %llu  Pushed: %llu",
                    stats->turns_played, stats->turns_won, stats->turns_lost, stats->turns_pushed);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={255,255,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+    a_DrawText((char*)d_StringPeek(text), window_w / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={255,255,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += line_height;
 
     // Combat
     d_StringFormat(text, "Combats Won: %llu", stats->combats_won);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={150,255,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+    a_DrawText((char*)d_StringPeek(text), window_w / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={150,255,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += line_height;
 
     // Damage
     y += 10;
     d_StringFormat(text, "Total Damage: %llu", stats->damage_dealt_total);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={255,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+    a_DrawText((char*)d_StringPeek(text), window_w / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={255,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
     y += line_height;
 
     // Damage breakdown
     const char* damage_sources[] = {"Turn Wins", "Turn Pushes", "Trinket Passives", "Trinket Actives", "Abilities", "Card Tags"};
     for (int i = 0; i < DAMAGE_SOURCE_MAX; i++) {
         d_StringFormat(text, "  %s: %llu", damage_sources[i], stats->damage_by_source[i]);
-        a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={200,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+        a_DrawText((char*)d_StringPeek(text), window_w / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={200,150,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
         y += line_height;
     }
 
@@ -397,10 +410,10 @@ static void RenderStatsOverlay(void) {
     y += 10;
     d_StringFormat(text, "Chips Bet: %llu  Won: %llu  Lost: %llu  Drained: %llu",
                    stats->chips_bet, stats->chips_won, stats->chips_lost, stats->chips_drained);
-    a_DrawText((char*)d_StringPeek(text), SCREEN_WIDTH / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={150,255,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+    a_DrawText((char*)d_StringPeek(text), window_w / 2, y, (aTextStyle_t){.type=FONT_GAME, .fg={150,255,150,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Footer hint
-    a_DrawText("Press ESC or Enter to close", SCREEN_WIDTH / 2, panel_y + panel_h - 30,
+    a_DrawText("Press ESC or Enter to close", window_w / 2, panel_y + panel_h - 30,
                    (aTextStyle_t){.type=FONT_GAME, .fg={COLOR_MENU_NORMAL.r,COLOR_MENU_NORMAL.g,COLOR_MENU_NORMAL.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     d_StringDestroy(text);
@@ -413,13 +426,36 @@ static void RenderStatsOverlay(void) {
 void RenderPauseMenuSection(PauseMenuSection_t* section) {
     if (!section || !section->is_visible) return;
 
+    // Runtime window dimensions for responsiveness
+    int window_w = GetWindowWidth();
+    int window_h = GetWindowHeight();
+
     // Full-screen semi-transparent overlay
-    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT},
+    a_DrawFilledRect((aRectf_t){0, 0, window_w, window_h},
                      (aColor_t){COLOR_OVERLAY.r, COLOR_OVERLAY.g, COLOR_OVERLAY.b, COLOR_OVERLAY.a});
 
     // Centered menu panel
-    int panel_x = (SCREEN_WIDTH - PAUSE_PANEL_WIDTH) / 2;
-    int panel_y = (SCREEN_HEIGHT - PAUSE_PANEL_HEIGHT) / 2;
+    int panel_x = (window_w - PAUSE_PANEL_WIDTH) / 2;
+    int panel_y = (window_h - PAUSE_PANEL_HEIGHT) / 2;
+
+    // Update menu item positions for responsiveness
+    int center_x = window_w / 2;
+    int start_y = panel_y + (MENU_START_Y - ((SCREEN_HEIGHT - PAUSE_PANEL_HEIGHT) / 2));
+    for (int i = 0; i < 5; i++) {
+        if (section->menu_items[i]) {
+            SetMenuItemPosition(section->menu_items[i], center_x, start_y + (i * MENU_ITEM_GAP));
+        }
+    }
+
+    // Update confirmation dialog item positions
+    int confirm_y = window_h / 2 + 30;
+    int confirm_spacing = 120;
+    for (int i = 0; i < 2; i++) {
+        if (section->confirm_items[i]) {
+            int x = (window_w / 2) - 60 + (i * confirm_spacing);
+            SetMenuItemRowPosition(section->confirm_items[i], x, confirm_y);
+        }
+    }
 
     // Draw main panel background (below header)
     int panel_body_y = panel_y + PAUSE_PANEL_HEADER_HEIGHT;
@@ -437,7 +473,7 @@ void RenderPauseMenuSection(PauseMenuSection_t* section) {
                (aColor_t){COLOR_HEADER_BORDER.r, COLOR_HEADER_BORDER.g, COLOR_HEADER_BORDER.b, COLOR_HEADER_BORDER.a});
 
     // Draw header text "PAUSE MENU"
-    a_DrawText("PAUSE MENU", SCREEN_WIDTH / 2, header_y + 12,
+    a_DrawText("PAUSE MENU", window_w / 2, header_y + 12,
                    (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_HEADER_TEXT.r,COLOR_HEADER_TEXT.g,COLOR_HEADER_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     // Render menu items with custom colors
@@ -507,20 +543,20 @@ void RenderPauseMenuSection(PauseMenuSection_t* section) {
     // Render confirmation dialog if visible
     if (section->show_confirm_dialog) {
         // Draw modal backdrop overlay (dims everything beneath)
-        a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 120});
+        a_DrawFilledRect((aRectf_t){0, 0, window_w, window_h}, (aColor_t){0, 0, 0, 120});
 
         // Confirmation panel (centered on screen, on top of pause menu)
-        int confirm_x = (SCREEN_WIDTH - CONFIRM_PANEL_WIDTH) / 2;
-        int confirm_y = (SCREEN_HEIGHT - CONFIRM_PANEL_HEIGHT) / 2;
+        int confirm_x = (window_w - CONFIRM_PANEL_WIDTH) / 2;
+        int confirm_y = (window_h - CONFIRM_PANEL_HEIGHT) / 2;
         a_DrawFilledRect((aRectf_t){confirm_x, confirm_y, CONFIRM_PANEL_WIDTH, CONFIRM_PANEL_HEIGHT},
                          (aColor_t){COLOR_CONFIRM_BG.r, COLOR_CONFIRM_BG.g, COLOR_CONFIRM_BG.b, COLOR_CONFIRM_BG.a});
 
         // Confirmation title
-        a_DrawText("Are you sure?", SCREEN_WIDTH / 2, confirm_y + 40,
+        a_DrawText("Are you sure?", window_w / 2, confirm_y + 40,
                    (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_CONFIRM_TEXT.r,COLOR_CONFIRM_TEXT.g,COLOR_CONFIRM_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         // Confirmation subtitle
-        a_DrawText("Your progress will be lost", SCREEN_WIDTH / 2, confirm_y + 70,
+        a_DrawText("Your progress will be lost", window_w / 2, confirm_y + 70,
                    (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_MENU_NORMAL.r,COLOR_MENU_NORMAL.g,COLOR_MENU_NORMAL.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
         // Render Yes/No buttons

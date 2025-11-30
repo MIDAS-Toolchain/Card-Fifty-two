@@ -6,7 +6,6 @@
 
 #include "../include/common.h"
 #include "../include/settings.h"
-#include <SDL2/SDL_mixer.h>
 #include <string.h>
 
 // ============================================================================
@@ -14,13 +13,50 @@
 // ============================================================================
 
 const Resolution_t AVAILABLE_RESOLUTIONS[] = {
-    {1280, 720,  "1280x720 (HD)"},
-    {1920, 1080, "1920x1080 (Full HD)"},
-    {2560, 1440, "2560x1440 (QHD)"},
-    {3840, 2160, "3840x2160 (4K)"}
+    {1280, 720,  "1280x720"},
+    {1366, 768,  "1366x768"},
+    {1600, 900,  "1600x900"}
 };
 
 const int RESOLUTION_COUNT = sizeof(AVAILABLE_RESOLUTIONS) / sizeof(Resolution_t);
+
+// ============================================================================
+// DISPLAY DETECTION (Prevent window teleportation!)
+// ============================================================================
+
+/**
+ * GetMaxSafeResolution - Get maximum safe resolution for primary display
+ *
+ * Returns 95% of primary display bounds to account for taskbars/decorations.
+ * This prevents SDL from teleporting the window to a secondary monitor.
+ */
+static void GetMaxSafeResolution(int* out_width, int* out_height) {
+    SDL_Rect bounds;
+    if (SDL_GetDisplayBounds(0, &bounds) == 0) {  // 0 = primary display
+        // Use full display bounds (SDL handles window decorations automatically)
+        *out_width = bounds.w;
+        *out_height = bounds.h;
+        d_LogInfoF("Primary display resolution: %dx%d", *out_width, *out_height);
+    } else {
+        // Fallback if SDL fails
+        *out_width = 1920;
+        *out_height = 1080;
+        d_LogWarning("Failed to query primary display, using fallback 1920x1080");
+    }
+}
+
+/**
+ * IsResolutionValidForDisplay - Check if resolution fits on primary display
+ *
+ * @param width: Resolution width
+ * @param height: Resolution height
+ * @return: true if resolution fits safely on primary display
+ */
+bool IsResolutionValidForDisplay(int width, int height) {
+    int max_w, max_h;
+    GetMaxSafeResolution(&max_w, &max_h);
+    return (width <= max_w && height <= max_h);
+}
 
 // ============================================================================
 // DEFAULTS
@@ -32,6 +68,7 @@ static void ApplyDefaultSettings(Settings_t* settings) {
     // Audio tab
     settings->sound_volume = 50;
     settings->music_volume = 50;
+    settings->ui_volume = 75;
     settings->sound_enabled = true;
     settings->music_enabled = true;
 
@@ -46,9 +83,7 @@ static void ApplyDefaultSettings(Settings_t* settings) {
     settings->ui_scale = 0;  // 100%
 
     // Graphics tab
-    settings->fullscreen = false;
-    settings->vsync = true;
-    settings->resolution_index = 0;  // 1280x720
+    settings->resolution_index = 1;  // 1366x768 - index 1
 }
 
 // ============================================================================
@@ -173,6 +208,8 @@ void Settings_Load(Settings_t* settings) {
             settings->sound_volume = atoi(value);
         } else if (strcmp(key, "music_volume") == 0) {
             settings->music_volume = atoi(value);
+        } else if (strcmp(key, "ui_volume") == 0) {
+            settings->ui_volume = atoi(value);
         } else if (strcmp(key, "sound_enabled") == 0) {
             settings->sound_enabled = (strcmp(value, "true") == 0);
         } else if (strcmp(key, "music_enabled") == 0) {
@@ -195,11 +232,7 @@ void Settings_Load(Settings_t* settings) {
             settings->ui_scale = atoi(value);
         }
         // Graphics tab
-        else if (strcmp(key, "fullscreen") == 0) {
-            settings->fullscreen = (strcmp(value, "true") == 0);
-        } else if (strcmp(key, "vsync") == 0) {
-            settings->vsync = (strcmp(value, "true") == 0);
-        } else if (strcmp(key, "resolution_index") == 0) {
+        else if (strcmp(key, "resolution_index") == 0) {
             settings->resolution_index = atoi(value);
         }
 
@@ -232,6 +265,7 @@ void Settings_Save(const Settings_t* settings) {
     d_StringFormat(buffer, "# Audio Settings\n");
     d_StringFormat(buffer, "sound_volume=%d\n", settings->sound_volume);
     d_StringFormat(buffer, "music_volume=%d\n", settings->music_volume);
+    d_StringFormat(buffer, "ui_volume=%d\n", settings->ui_volume);
     d_StringFormat(buffer, "sound_enabled=%s\n", settings->sound_enabled ? "true" : "false");
     d_StringFormat(buffer, "music_enabled=%s\n\n", settings->music_enabled ? "true" : "false");
 
@@ -249,8 +283,6 @@ void Settings_Save(const Settings_t* settings) {
 
     // Graphics tab
     d_StringFormat(buffer, "# Graphics Settings\n");
-    d_StringFormat(buffer, "fullscreen=%s\n", settings->fullscreen ? "true" : "false");
-    d_StringFormat(buffer, "vsync=%s\n", settings->vsync ? "true" : "false");
     d_StringFormat(buffer, "resolution_index=%d\n", settings->resolution_index);
 
     // Write to file
@@ -270,34 +302,38 @@ void Settings_Save(const Settings_t* settings) {
 void Settings_Apply(const Settings_t* settings) {
     if (!settings) return;
 
-    // Apply audio settings
+    // Apply audio settings using Archimedes API
     if (settings->sound_enabled) {
-        int sdl_volume = (int)(MIX_MAX_VOLUME * (settings->sound_volume / 100.0f));
-        Mix_Volume(-1, sdl_volume);  // -1 = all channels
+        int sdl_volume = (int)(128 * (settings->sound_volume / 100.0f));  // 0-128 (MIX_MAX_VOLUME)
+        a_AudioSetChannelVolume(-1, sdl_volume);  // -1 = all channels
     } else {
-        Mix_Volume(-1, 0);
+        a_AudioSetChannelVolume(-1, 0);
+    }
+
+    // Apply UI volume separately (channels 0 and 1)
+    if (settings->sound_enabled) {
+        int ui_sdl_volume = (int)(128 * (settings->ui_volume / 100.0f));
+        a_AudioSetChannelVolume(AUDIO_CHANNEL_UI_HOVER, ui_sdl_volume);
+        a_AudioSetChannelVolume(AUDIO_CHANNEL_UI_CLICK, ui_sdl_volume);
+    } else {
+        a_AudioSetChannelVolume(AUDIO_CHANNEL_UI_HOVER, 0);
+        a_AudioSetChannelVolume(AUDIO_CHANNEL_UI_CLICK, 0);
     }
 
     if (settings->music_enabled) {
-        int sdl_volume = (int)(MIX_MAX_VOLUME * (settings->music_volume / 100.0f));
-        Mix_VolumeMusic(sdl_volume);
+        int sdl_volume = (int)(128 * (settings->music_volume / 100.0f));
+        a_AudioSetMusicVolume(sdl_volume);
     } else {
-        Mix_VolumeMusic(0);
+        a_AudioSetMusicVolume(0);
     }
 
-    // Apply graphics settings
+    // Apply graphics settings (just resolution now)
     const Resolution_t* res = Settings_GetCurrentResolution(settings);
     if (res) {
         SDL_SetWindowSize(app.window, res->width, res->height);
-        SDL_SetWindowPosition(app.window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+        // Center on primary display (0) to prevent teleporting to secondary monitor
+        SDL_SetWindowPosition(app.window, SDL_WINDOWPOS_CENTERED_DISPLAY(0), SDL_WINDOWPOS_CENTERED_DISPLAY(0));
     }
-
-    // Apply fullscreen
-    Uint32 fullscreen_flag = settings->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0;
-    SDL_SetWindowFullscreen(app.window, fullscreen_flag);
-
-    // Apply V-Sync
-    SDL_RenderSetVSync(app.renderer, settings->vsync ? 1 : 0);
 
     d_LogInfo("Settings applied to game engine");
 }
@@ -315,10 +351,10 @@ void Settings_SetSoundVolume(Settings_t* settings, int volume) {
 
     settings->sound_volume = volume;
 
-    // Apply immediately
+    // Apply immediately using Archimedes API
     if (settings->sound_enabled) {
-        int sdl_volume = (int)(MIX_MAX_VOLUME * (volume / 100.0f));
-        Mix_Volume(-1, sdl_volume);
+        int sdl_volume = (int)(128 * (volume / 100.0f));  // 0-128 (MIX_MAX_VOLUME)
+        a_AudioSetChannelVolume(-1, sdl_volume);
     }
 }
 
@@ -331,10 +367,27 @@ void Settings_SetMusicVolume(Settings_t* settings, int volume) {
 
     settings->music_volume = volume;
 
-    // Apply immediately
+    // Apply immediately using Archimedes API
     if (settings->music_enabled) {
-        int sdl_volume = (int)(MIX_MAX_VOLUME * (volume / 100.0f));
-        Mix_VolumeMusic(sdl_volume);
+        int sdl_volume = (int)(128 * (volume / 100.0f));  // 0-128 (MIX_MAX_VOLUME)
+        a_AudioSetMusicVolume(sdl_volume);
+    }
+}
+
+void Settings_SetUIVolume(Settings_t* settings, int volume) {
+    if (!settings) return;
+
+    // Clamp to 0-100
+    if (volume < 0) volume = 0;
+    if (volume > 100) volume = 100;
+
+    settings->ui_volume = volume;
+
+    // Apply immediately to UI channels (0 and 1)
+    if (settings->sound_enabled) {
+        int sdl_volume = (int)(128 * (volume / 100.0f));  // 0-128 (MIX_MAX_VOLUME)
+        a_AudioSetChannelVolume(AUDIO_CHANNEL_UI_HOVER, sdl_volume);
+        a_AudioSetChannelVolume(AUDIO_CHANNEL_UI_CLICK, sdl_volume);
     }
 }
 
@@ -345,38 +398,44 @@ void Settings_SetResolution(Settings_t* settings, int index) {
     if (index < 0) index = 0;
     if (index >= RESOLUTION_COUNT) index = RESOLUTION_COUNT - 1;
 
+    const Resolution_t* res = &AVAILABLE_RESOLUTIONS[index];
+
+    // Check if this resolution is too big for the primary display
+    if (!IsResolutionValidForDisplay(res->width, res->height)) {
+        d_LogWarningF("Resolution %s is too large for primary display, finding largest valid option...",
+                      res->label);
+
+        // Find largest resolution that DOES fit
+        bool found_valid = false;
+        for (int i = RESOLUTION_COUNT - 1; i >= 0; i--) {
+            const Resolution_t* candidate = &AVAILABLE_RESOLUTIONS[i];
+            if (IsResolutionValidForDisplay(candidate->width, candidate->height)) {
+                index = i;
+                res = candidate;
+                found_valid = true;
+                d_LogInfoF("Clamped to largest valid resolution: %s", res->label);
+                break;
+            }
+        }
+
+        // If somehow NO resolutions fit (shouldn't happen), use smallest
+        if (!found_valid) {
+            d_LogWarning("No valid resolutions found! Using smallest (1280x720)");
+            index = 0;
+            res = &AVAILABLE_RESOLUTIONS[0];
+        }
+    }
+
     settings->resolution_index = index;
 
     // Apply immediately
-    const Resolution_t* res = &AVAILABLE_RESOLUTIONS[index];
     SDL_SetWindowSize(app.window, res->width, res->height);
-    SDL_SetWindowPosition(app.window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    // Center on primary display (0) to prevent teleporting to secondary monitor
+    SDL_SetWindowPosition(app.window, SDL_WINDOWPOS_CENTERED_DISPLAY(0), SDL_WINDOWPOS_CENTERED_DISPLAY(0));
 
     d_LogInfoF("Resolution changed to %s", res->label);
 }
 
-void Settings_SetFullscreen(Settings_t* settings, bool enabled) {
-    if (!settings) return;
-
-    settings->fullscreen = enabled;
-
-    // Apply immediately
-    Uint32 fullscreen_flag = enabled ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0;
-    SDL_SetWindowFullscreen(app.window, fullscreen_flag);
-
-    d_LogInfoF("Fullscreen: %s", enabled ? "ON" : "OFF");
-}
-
-void Settings_SetVSync(Settings_t* settings, bool enabled) {
-    if (!settings) return;
-
-    settings->vsync = enabled;
-
-    // Apply immediately
-    SDL_RenderSetVSync(app.renderer, enabled ? 1 : 0);
-
-    d_LogInfoF("V-Sync: %s", enabled ? "ON" : "OFF");
-}
 
 // ============================================================================
 // GETTERS

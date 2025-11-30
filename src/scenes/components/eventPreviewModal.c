@@ -6,6 +6,7 @@
 #include "../../../include/scenes/components/eventPreviewModal.h"
 #include "../../../include/scenes/sceneBlackjack.h"
 #include "../../../include/random.h"
+#include "../../../include/audioHelper.h"
 #include <stdio.h>
 
 // ============================================================================
@@ -46,21 +47,21 @@ EventPreviewModal_t* CreateEventPreviewModal(GameContext_t* game, const char* ev
     modal->is_visible = false;
     modal->title_alpha = 0.0f;  // Start invisible, fade in
 
-    // Create reroll button (top button, centered)
+    // Create reroll button (top button, centered) - runtime positioning
     char reroll_text[64];
     snprintf(reroll_text, sizeof(reroll_text), "Reroll (%d chips)", game->event_reroll_cost);
     modal->reroll_button = CreateButton(
-        SCREEN_WIDTH / 2 - 100,  // Centered
-        SCREEN_HEIGHT / 2 + 80,  // First row
+        GetWindowWidth() / 2 - 100,  // Centered (responsive)
+        GetWindowHeight() / 2 + 80,  // First row
         200,
         50,
         reroll_text
     );
 
-    // Create continue button (bottom button, centered, 20px gap)
+    // Create continue button (bottom button, centered, 20px gap) - runtime positioning
     modal->continue_button = CreateButton(
-        SCREEN_WIDTH / 2 - 100,  // Centered
-        SCREEN_HEIGHT / 2 + 150, // Second row (80 + 50 + 20)
+        GetWindowWidth() / 2 - 100,  // Centered (responsive)
+        GetWindowHeight() / 2 + 150, // Second row (80 + 50 + 20)
         200,
         50,
         "Continue"
@@ -170,10 +171,14 @@ void UpdateEventPreviewContent(EventPreviewModal_t* modal, const char* new_title
 void RenderEventPreviewModal(const EventPreviewModal_t* modal, const GameContext_t* game) {
     if (!modal || !modal->is_visible) return;
 
-    // Draw dark overlay (full screen, 70% opacity)
-    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, (aColor_t){0, 0, 0, 178});  // 178 = 0.7 * 255
+    // Runtime window dimensions
+    int window_w = GetWindowWidth();
+    int window_h = GetWindowHeight();
 
-    // Draw random header title (top, large, dark gray)
+    // Draw dark overlay (full screen, 70% opacity) - RESPONSIVE
+    a_DrawFilledRect((aRectf_t){0, 0, window_w, window_h}, (aColor_t){0, 0, 0, 178});  // 178 = 0.7 * 255
+
+    // Draw random header title (top, large, dark gray) - RESPONSIVE
     aTextStyle_t header_config = {
         .type = FONT_ENTER_COMMAND,
         .fg = {80, 80, 80, 255},  // Dark gray, full opacity
@@ -181,9 +186,9 @@ void RenderEventPreviewModal(const EventPreviewModal_t* modal, const GameContext
         .wrap_width = 0,
         .scale = 2.0f  // Larger for emphasis
     };
-    a_DrawText(modal->header_title, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 216, header_config);
+    a_DrawText(modal->header_title, window_w / 2, window_h / 2 - 216, header_config);
 
-    // Draw centered event title with fade
+    // Draw centered event title with fade - RESPONSIVE
     aTextStyle_t title_config = {
         .type = FONT_ENTER_COMMAND,
         .fg = {255, 255, 255, (Uint8)(modal->title_alpha * 255)},  // White with fade
@@ -191,14 +196,14 @@ void RenderEventPreviewModal(const EventPreviewModal_t* modal, const GameContext
         .wrap_width = 800,  // Wrap long titles
         .scale = 1.5f       // Larger text for emphasis
     };
-    a_DrawText(modal->event_title, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 100, title_config);
+    a_DrawText(modal->event_title, window_w / 2, window_h / 2 - 100, title_config);
 
     // Draw countdown timer bar (3.0 → 0.0)
     float timer_progress = game->event_preview_timer / 3.0f;  // 1.0 → 0.0
     int timer_bar_width = 400;
     int timer_bar_height = 10;
-    int timer_bar_x = (SCREEN_WIDTH - timer_bar_width) / 2;
-    int timer_bar_y = SCREEN_HEIGHT / 2 - 40;
+    int timer_bar_x = (GetWindowWidth() - timer_bar_width) / 2;
+    int timer_bar_y = GetWindowHeight() / 2 - 40;
 
     // Background (dark gray)
     a_DrawFilledRect((aRectf_t){timer_bar_x, timer_bar_y, timer_bar_width, timer_bar_height}, (aColor_t){40, 40, 40, 255});
@@ -217,7 +222,7 @@ void RenderEventPreviewModal(const EventPreviewModal_t* modal, const GameContext
         .wrap_width = 0,
         .scale = 1.0f
     };
-    a_DrawText(timer_text, SCREEN_WIDTH / 2, timer_bar_y + 20, timer_text_config);
+    a_DrawText(timer_text, GetWindowWidth() / 2, timer_bar_y + 20, timer_text_config);
 
     // Render buttons
     RenderButton(modal->reroll_button);

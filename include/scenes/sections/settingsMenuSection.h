@@ -37,6 +37,14 @@ typedef struct SettingsMenuSection {
     // Mouse drag state for volume sliders
     SliderState_t slider_state;
 
+    // Resolution dropdown state
+    bool resolution_dropdown_open;          // Is dropdown currently open?
+    int dropdown_hovered_index;             // Which resolution is hovered in dropdown (-1 = none)
+    FlexBox_t* resolution_dropdown_layout;  // FlexBox for dropdown items (VERTICAL stack)
+
+    // Arrow blink animations for each adjustable setting (0.0-1.0 alpha)
+    float arrow_alpha[8];  // 0=sound_vol, 1=music_vol, 2=ui_vol, 3=resolution, others unused
+
     // Display text
     char title[256];                // "SETTINGS"
     char instructions[512];         // Controls help text

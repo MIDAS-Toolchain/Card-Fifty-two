@@ -177,23 +177,11 @@ static bool ParseEffect(dDUFValue_t* effect_node, AbilityEffect_t* out_effect) {
     }
     out_effect->type = parsed_type;
 
-    // Parse target (default to TARGET_PLAYER)
-    dDUFValue_t* target_node = d_DUFGetObjectItem(effect_node, "target");
-    if (target_node && target_node->value_string) {
-        EffectTarget_t parsed_target = TargetFromString(target_node->value_string);
-        // Validate: TARGET_PLAYER is the default fallback
-        if (parsed_target == TARGET_PLAYER && strcmp(target_node->value_string, "player") != 0) {
-            d_LogErrorF("ParseEffect: Invalid target '%s'", target_node->value_string);
-            return false;
-        }
-        out_effect->target = parsed_target;
-    } else {
-        out_effect->target = TARGET_PLAYER;
-    }
-
     // Parse type-specific fields
     switch (out_effect->type) {
         case EFFECT_APPLY_STATUS: {
+            // Status effects ALWAYS target the player - no 'target' field needed
+            out_effect->target = TARGET_PLAYER;
             dDUFValue_t* status_node = d_DUFGetObjectItem(effect_node, "status");
             dDUFValue_t* value_node = d_DUFGetObjectItem(effect_node, "value");
             dDUFValue_t* duration_node = d_DUFGetObjectItem(effect_node, "duration");
@@ -220,6 +208,8 @@ static bool ParseEffect(dDUFValue_t* effect_node, AbilityEffect_t* out_effect) {
         }
 
         case EFFECT_REMOVE_STATUS: {
+            // Remove status also ALWAYS targets the player
+            out_effect->target = TARGET_PLAYER;
             dDUFValue_t* status_node = d_DUFGetObjectItem(effect_node, "status");
             if (!status_node || !status_node->value_string) {
                 d_LogError("ParseEffect: remove_status effect missing 'status' field");
@@ -237,6 +227,19 @@ static bool ParseEffect(dDUFValue_t* effect_node, AbilityEffect_t* out_effect) {
 
         case EFFECT_HEAL:
         case EFFECT_DAMAGE: {
+            // Heal/Damage effects require explicit 'target' field
+            dDUFValue_t* target_node = d_DUFGetObjectItem(effect_node, "target");
+            if (!target_node || !target_node->value_string) {
+                d_LogError("ParseEffect: heal/damage effect missing 'target' field");
+                return false;
+            }
+            EffectTarget_t parsed_target = TargetFromString(target_node->value_string);
+            if (parsed_target == TARGET_PLAYER && strcmp(target_node->value_string, "player") != 0) {
+                d_LogErrorF("ParseEffect: Invalid target '%s'", target_node->value_string);
+                return false;
+            }
+            out_effect->target = parsed_target;
+
             dDUFValue_t* value_node = d_DUFGetObjectItem(effect_node, "value");
             if (value_node) {
                 out_effect->value = (int)value_node->value_int;
@@ -245,6 +248,8 @@ static bool ParseEffect(dDUFValue_t* effect_node, AbilityEffect_t* out_effect) {
         }
 
         case EFFECT_MESSAGE: {
+            // Messages don't have a target concept
+            out_effect->target = TARGET_PLAYER;
             dDUFValue_t* message_node = d_DUFGetObjectItem(effect_node, "message");
             if (message_node && message_node->value_string) {
                 out_effect->message = d_StringInit();
@@ -258,7 +263,8 @@ static bool ParseEffect(dDUFValue_t* effect_node, AbilityEffect_t* out_effect) {
         case EFFECT_FORCE_HIT:
         case EFFECT_REVEAL_HOLE:
         default:
-            // No additional fields needed
+            // These effects implicitly target the player (deck/hand manipulation)
+            out_effect->target = TARGET_PLAYER;
             break;
     }
 
