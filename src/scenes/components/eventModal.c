@@ -357,10 +357,10 @@ void ShowEventModal(EventModal_t* modal, EventEncounter_t* event) {
 
             // Initialize runtime state
             inst->trinket_stacks = 0;
-            inst->total_damage_dealt = 0;
-            inst->total_bonus_chips = 0;
-            inst->total_refunded_chips = 0;
-            inst->highest_streak = 0;
+
+            // Data-driven stat init
+            memset(inst->tracked_stats, 0, sizeof(inst->tracked_stats));
+
             inst->buffed_tag = -1;
             inst->tag_buff_value = 0;
             inst->shake_offset_x = 0.0f;

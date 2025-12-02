@@ -1119,9 +1119,10 @@ static void BlackjackLogic(float dt) {
                 dest->trinket_stack_value = src->trinket_stack_value;
                 dest->buffed_tag = src->buffed_tag;
                 dest->tag_buff_value = src->tag_buff_value;
-                dest->total_damage_dealt = src->total_damage_dealt;
-                dest->total_bonus_chips = src->total_bonus_chips;
-                dest->total_refunded_chips = src->total_refunded_chips;
+
+                // Data-driven stat copy (ONE memcpy replaces N field copies)
+                memcpy(dest->tracked_stats, src->tracked_stats, sizeof(dest->tracked_stats));
+
                 dest->shake_offset_x = src->shake_offset_x;
                 dest->shake_offset_y = src->shake_offset_y;
                 dest->flash_alpha = src->flash_alpha;

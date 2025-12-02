@@ -575,10 +575,9 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
 
             // Initialize runtime state
             dest->trinket_stacks = 0;
-            dest->total_damage_dealt = 0;
-            dest->total_bonus_chips = 0;
-            dest->total_refunded_chips = 0;
-            dest->highest_streak = 0;
+
+            // Data-driven stat init (ONE memset replaces N field=0 lines)
+            memset(dest->tracked_stats, 0, sizeof(dest->tracked_stats));
             dest->buffed_tag = -1;
             dest->tag_buff_value = 0;
             dest->shake_offset_x = 0.0f;

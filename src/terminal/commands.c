@@ -842,11 +842,8 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
     instance.tier = tier;
     instance.sell_value = template->base_value;
 
-    // Initialize stat tracking
-    instance.total_damage_dealt = 0;
-    instance.total_bonus_chips = 0;
-    instance.total_refunded_chips = 0;
-    instance.highest_streak = 0;
+    // Initialize stat tracking (data-driven)
+    memset(instance.tracked_stats, 0, sizeof(instance.tracked_stats));
 
     // Initialize tag buff tracking (Cursed Skull)
     instance.buffed_tag = -1;

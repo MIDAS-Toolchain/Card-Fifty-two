@@ -762,22 +762,22 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     // Affixes rendered in separate tooltip (no height needed here)
 
     // Show damage counter (if any)
-    if (instance->total_damage_dealt > 0) {
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_DAMAGE_DEALT) > 0) {
         tooltip_height += 20;
     }
 
     // Show bonus chips (if any - for Elite Membership)
-    if (instance->total_bonus_chips > 0) {
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_BONUS_CHIPS) > 0) {
         tooltip_height += 20;
     }
 
     // Show refunded chips (if any - for Elite Membership)
-    if (instance->total_refunded_chips > 0) {
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_REFUNDED_CHIPS) > 0) {
         tooltip_height += 20;
     }
 
     // Show highest streak (if any - for Streak Counter)
-    if (instance->highest_streak > 0) {
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_HIGHEST_STREAK) > 0) {
         tooltip_height += 20;
     }
 
@@ -862,9 +862,9 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     // Affixes rendered in separate tooltip (see RenderAffixTooltip below)
 
     // Total damage dealt (if any)
-    if (instance->total_damage_dealt > 0) {
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_DAMAGE_DEALT) > 0) {
         dString_t* dmg_text = d_StringInit();
-        d_StringFormat(dmg_text, "Total Damage Dealt: %d", instance->total_damage_dealt);
+        d_StringFormat(dmg_text, "Total Damage Dealt: %d", TRINKET_GET_STAT(instance, TRINKET_STAT_DAMAGE_DEALT));
 
         aTextStyle_t dmg_config = {
             .type = FONT_GAME,
@@ -879,9 +879,9 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     }
 
     // Bonus chips won (if any - for Elite Membership)
-    if (instance->total_bonus_chips > 0) {
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_BONUS_CHIPS) > 0) {
         dString_t* bonus_text = d_StringInit();
-        d_StringFormat(bonus_text, "Bonus Chips Won: %d", instance->total_bonus_chips);
+        d_StringFormat(bonus_text, "Bonus Chips Won: %d", TRINKET_GET_STAT(instance, TRINKET_STAT_BONUS_CHIPS));
 
         aTextStyle_t bonus_config = {
             .type = FONT_GAME,
@@ -896,9 +896,9 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     }
 
     // Chips refunded (if any - for Elite Membership)
-    if (instance->total_refunded_chips > 0) {
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_REFUNDED_CHIPS) > 0) {
         dString_t* refund_text = d_StringInit();
-        d_StringFormat(refund_text, "Chips Refunded: %d", instance->total_refunded_chips);
+        d_StringFormat(refund_text, "Chips Refunded: %d", TRINKET_GET_STAT(instance, TRINKET_STAT_REFUNDED_CHIPS));
 
         aTextStyle_t refund_config = {
             .type = FONT_GAME,
@@ -913,9 +913,9 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     }
 
     // Highest streak (if any - for Streak Counter)
-    if (instance->highest_streak > 0) {
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_HIGHEST_STREAK) > 0) {
         dString_t* streak_text = d_StringInit();
-        d_StringFormat(streak_text, "Highest Streak: %d", instance->highest_streak);
+        d_StringFormat(streak_text, "Highest Streak: %d", TRINKET_GET_STAT(instance, TRINKET_STAT_HIGHEST_STREAK));
 
         aTextStyle_t streak_config = {
             .type = FONT_GAME,

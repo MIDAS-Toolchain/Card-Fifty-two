@@ -279,6 +279,30 @@ typedef struct {
 } TrinketTemplate_t;
 
 /**
+ * TrinketStatType_t - Enum for data-driven stat tracking
+ *
+ * Each stat type has corresponding metadata (display name, color).
+ * Add new stats by: (1) adding enum value, (2) adding metadata entry.
+ */
+typedef enum {
+    TRINKET_STAT_DAMAGE_DEALT = 0,
+    TRINKET_STAT_BONUS_CHIPS,
+    TRINKET_STAT_REFUNDED_CHIPS,
+    TRINKET_STAT_HIGHEST_STREAK,
+    TRINKET_STAT_COUNT
+} TrinketStatType_t;
+
+/**
+ * TrinketStatMetadata_t - Display metadata for trinket stats
+ *
+ * Used by rendering code to show stat names and colors.
+ */
+typedef struct {
+    const char* display_name;
+    aColor_t text_color;
+} TrinketStatMetadata_t;
+
+/**
  * TrinketInstance_t - Runtime trinket with rolled affixes
  *
  * Generated when trinket drops from combat.
@@ -306,11 +330,8 @@ typedef struct {
     int buffed_tag;                  // Which tag is buffed (CardTag_t stored as int)
     int tag_buff_value;              // Damage bonus for buffed tag (+5)
 
-    // Stats tracking
-    int total_damage_dealt;          // Combat stat
-    int total_bonus_chips;           // Lifetime chips gained
-    int total_refunded_chips;        // Lifetime chips refunded
-    int highest_streak;              // Highest stack count reached (Streak Counter)
+    // Stats tracking (data-driven array replaces individual fields)
+    int tracked_stats[TRINKET_STAT_COUNT];  // Indexed by TrinketStatType_t
 
     // Animation state (shake/flash on trigger)
     float shake_offset_x;
@@ -371,6 +392,23 @@ typedef struct Player {
     int push_damage_percent;       // % of normal damage dealt on push (default 0, Pusher's Pebble = 50)
     int flat_chips_on_win;         // Flat chip bonus on win (Prosperous affix)
 } Player_t;
+
+// ============================================================================
+// TRINKET STAT ACCESSOR MACROS
+// ============================================================================
+
+/**
+ * Data-driven stat access macros for TrinketInstance_t.tracked_stats[]
+ *
+ * Usage:
+ *   int dmg = TRINKET_GET_STAT(inst, TRINKET_STAT_DAMAGE_DEALT);
+ *   TRINKET_INC_STAT(inst, TRINKET_STAT_BONUS_CHIPS);
+ *   TRINKET_ADD_STAT(inst, TRINKET_STAT_REFUNDED_CHIPS, 50);
+ */
+#define TRINKET_GET_STAT(inst, stat_type) ((inst)->tracked_stats[stat_type])
+#define TRINKET_SET_STAT(inst, stat_type, value) ((inst)->tracked_stats[stat_type] = (value))
+#define TRINKET_INC_STAT(inst, stat_type) ((inst)->tracked_stats[stat_type]++)
+#define TRINKET_ADD_STAT(inst, stat_type, amount) ((inst)->tracked_stats[stat_type] += (amount))
 
 // ============================================================================
 // CARD HOVER STATE (shared between dealer and player sections)

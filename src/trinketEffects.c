@@ -29,8 +29,8 @@ static void ExecuteAddChips(Player_t* player, TrinketInstance_t* instance, int v
 
     player->chips += value;
 
-    // Track total bonus chips for stats (pattern matches Stack Trace damage tracking)
-    instance->total_bonus_chips += value;
+    // Track total bonus chips for stats (data-driven)
+    TRINKET_ADD_STAT(instance, TRINKET_STAT_BONUS_CHIPS, value);
 
     d_LogInfoF("Trinket effect: +%d chips (total: %d)", value, player->chips);
 }
@@ -56,11 +56,11 @@ static void ExecuteAddChipsPercent(Player_t* player, TrinketInstance_t* instance
 
     player->chips += bonus;
 
-    // Track total bonus chips for stats
-    instance->total_bonus_chips += bonus;
+    // Track total bonus chips for stats (data-driven)
+    TRINKET_ADD_STAT(instance, TRINKET_STAT_BONUS_CHIPS, bonus);
 
     d_LogInfoF("🎰 Trinket effect: +%d%% of bet = +%d chips (chips: %d, total_bonus_chips: %d)",
-               percent, bonus, player->chips, instance->total_bonus_chips);
+               percent, bonus, player->chips, TRINKET_GET_STAT(instance, TRINKET_STAT_BONUS_CHIPS));
 }
 
 /**
@@ -137,10 +137,10 @@ static void ExecuteTrinketStack(TrinketInstance_t* instance, const TrinketTempla
         instance->trinket_stacks++;
     }
 
-    // Track highest streak (ONLY for infinite stack trinkets like Streak Counter)
+    // Track highest streak (ONLY for infinite stack trinkets like Streak Counter - data-driven)
     // Broken Watch has a max, so it doesn't track streaks
-    if (template->passive_stack_max == 0 && instance->trinket_stacks > instance->highest_streak) {
-        instance->highest_streak = instance->trinket_stacks;
+    if (template->passive_stack_max == 0 && instance->trinket_stacks > TRINKET_GET_STAT(instance, TRINKET_STAT_HIGHEST_STREAK)) {
+        TRINKET_SET_STAT(instance, TRINKET_STAT_HIGHEST_STREAK, instance->trinket_stacks);
     }
 
     if (template->passive_stack_max == 0) {
@@ -208,11 +208,11 @@ static void ExecuteRefundChipsPercent(Player_t* player, GameContext_t* game, Tri
 
     player->chips += refund;
 
-    // Track total refunded chips for stats (pattern matches Stack Trace damage tracking)
-    instance->total_refunded_chips += refund;
+    // Track total refunded chips for stats (data-driven)
+    TRINKET_ADD_STAT(instance, TRINKET_STAT_REFUNDED_CHIPS, refund);
 
     d_LogInfoF("💰 Trinket effect: Refund %d%% of bet = +%d chips (chips: %d, total_refunded_chips: %d)",
-               percent, refund, player->chips, instance->total_refunded_chips);
+               percent, refund, player->chips, TRINKET_GET_STAT(instance, TRINKET_STAT_REFUNDED_CHIPS));
 }
 
 /**
@@ -236,8 +236,8 @@ static void ExecuteAddDamageFlat(Player_t* player, GameContext_t* game, TrinketI
     // Apply damage to enemy (uses TakeDamage for consistency)
     TakeDamage(game->current_enemy, modified_damage);
 
-    // Track modified damage for trinket stats (tracks actual damage dealt, not base)
-    instance->total_damage_dealt += modified_damage;
+    // Track modified damage for trinket stats (data-driven)
+    TRINKET_ADD_STAT(instance, TRINKET_STAT_DAMAGE_DEALT, modified_damage);
 
     // Record for stats system
     Stats_RecordDamage(DAMAGE_SOURCE_TRINKET_PASSIVE, modified_damage);
@@ -370,10 +370,10 @@ void ExecuteTrinketEffect(
 
         case TRINKET_EFFECT_ADD_CHIPS_PERCENT:
             // Win bonuses now applied centrally in game.c using player->win_bonus_percent
-            // Still track stats for trinket tooltip (but don't add chips again)
+            // Still track stats for trinket tooltip (but don't add chips again - data-driven)
             if (player->current_bet > 0) {
                 int bonus_for_this_trinket = (player->current_bet * effect_value) / 100;
-                instance->total_bonus_chips += bonus_for_this_trinket;
+                TRINKET_ADD_STAT(instance, TRINKET_STAT_BONUS_CHIPS, bonus_for_this_trinket);
                 d_LogDebugF("Trinket %s tracking: +%d bonus chips (tooltip stat only)",
                            d_StringPeek(template->name), bonus_for_this_trinket);
             }
@@ -405,10 +405,10 @@ void ExecuteTrinketEffect(
 
         case TRINKET_EFFECT_REFUND_CHIPS_PERCENT:
             // Loss refunds now applied centrally in game.c using player->loss_refund_percent
-            // Still track stats for trinket tooltip (but don't add chips again)
+            // Still track stats for trinket tooltip (but don't add chips again - data-driven)
             if (player->current_bet > 0) {
                 int refund_for_this_trinket = (player->current_bet * effect_value) / 100;
-                instance->total_refunded_chips += refund_for_this_trinket;
+                TRINKET_ADD_STAT(instance, TRINKET_STAT_REFUNDED_CHIPS, refund_for_this_trinket);
                 d_LogDebugF("Trinket %s tracking: +%d refunded chips (tooltip stat only)",
                            d_StringPeek(template->name), refund_for_this_trinket);
             }

@@ -355,10 +355,9 @@ bool GenerateTrinketDrop(int tier, bool is_elite, int* pity_counter, TrinketInst
     }
 
     // Step 6: Initialize runtime fields
-    out_instance->total_damage_dealt = 0;
-    out_instance->total_bonus_chips = 0;
-    out_instance->total_refunded_chips = 0;
-    out_instance->highest_streak = 0;
+    // Data-driven stat init (ONE memset replaces N field=0 lines)
+    memset(out_instance->tracked_stats, 0, sizeof(out_instance->tracked_stats));
+
     out_instance->shake_offset_x = 0.0f;
     out_instance->shake_offset_y = 0.0f;
     out_instance->flash_alpha = 0.0f;
