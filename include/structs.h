@@ -195,10 +195,12 @@ typedef struct Trinket {
 typedef enum {
     TRINKET_EFFECT_NONE,
     TRINKET_EFFECT_ADD_CHIPS,              // Flat chip gain (value = amount)
+    TRINKET_EFFECT_ADD_CHIPS_PERCENT,      // Percentage chip gain (value = percent of winnings)
     TRINKET_EFFECT_LOSE_CHIPS,             // Flat chip loss (value = amount)
     TRINKET_EFFECT_APPLY_STATUS,           // Apply status effect (status_key, stacks)
     TRINKET_EFFECT_CLEAR_STATUS,           // Remove status effect (status_key)
     TRINKET_EFFECT_TRINKET_STACK,          // Increment trinket's internal stack counter
+    TRINKET_EFFECT_TRINKET_STACK_RESET,    // Reset trinket's stacks to 0 (Streak Counter on loss)
     TRINKET_EFFECT_REFUND_CHIPS_PERCENT,   // Refund % of bet on loss (value = percent)
     TRINKET_EFFECT_ADD_DAMAGE_FLAT,        // Add flat damage this combat (value = amount)
     TRINKET_EFFECT_DAMAGE_MULTIPLIER,      // Multiply damage (value = percent, e.g., 200 = 2x)
@@ -253,10 +255,11 @@ typedef struct {
     dString_t* passive_status_key;    // Status effect key (for APPLY_STATUS/CLEAR_STATUS)
     int passive_status_stacks;        // Status stacks to apply
 
-    // Trinket stack system (Broken Watch, Iron Knuckles)
+    // Trinket stack system (Broken Watch, Iron Knuckles, Streak Counter)
     dString_t* passive_stack_stat;    // Stat affected by stacks ("damage_bonus_percent")
     int passive_stack_value;          // Value per stack (+2% per stack)
-    int passive_stack_max;            // Max stacks (12 stacks = 24% max)
+    int passive_stack_max;            // Max stacks (12 stacks = 24% max, 0 = infinite)
+    dString_t* passive_stack_on_max;  // Behavior on reaching max ("reset_to_one" or NULL)
 
     // Tag system (Cursed Skull)
     dString_t* passive_tag;           // Tag to add ("CURSED")
@@ -307,6 +310,7 @@ typedef struct {
     int total_damage_dealt;          // Combat stat
     int total_bonus_chips;           // Lifetime chips gained
     int total_refunded_chips;        // Lifetime chips refunded
+    int highest_streak;              // Highest stack count reached (Streak Counter)
 
     // Animation state (shake/flash on trigger)
     float shake_offset_x;
@@ -360,6 +364,12 @@ typedef struct Player {
     int crit_chance;               // % chance to crit (0-100, LUCKY tag gives +10% per card)
     int crit_bonus;                // % bonus damage on crit (e.g., 50 = +50% damage)
     bool combat_stats_dirty;       // true = recalculate stats from hand tags
+
+    // Defensive stats (chip economy modifiers from trinkets/affixes) - ADR-09 pattern
+    int win_bonus_percent;         // % bonus chips on win (Elite Membership passive + affixes)
+    int loss_refund_percent;       // % refund chips on loss (Elite Membership passive + affixes)
+    int push_damage_percent;       // % of normal damage dealt on push (default 0, Pusher's Pebble = 50)
+    int flat_chips_on_win;         // Flat chip bonus on win (Prosperous affix)
 } Player_t;
 
 // ============================================================================

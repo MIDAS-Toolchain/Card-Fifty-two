@@ -161,10 +161,12 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
     // Position calculation: padding from top
     int name_y = y + SECTION_PADDING;
 
-    // Draw dealer text (left-aligned to make room for HP bar)
-    int text_x = SCREEN_WIDTH / 2 - 100;  // Offset left from center
+    // Draw dealer text (left-aligned above dealer cards)
+    int text_x = GetGameAreaX() + HAND_LEFT_PADDING;
+
+    float ui_scale = GetUIScale();
     a_DrawText((char*)d_StringPeek(info), text_x, name_y,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,100,100,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,100,100,255}, .bg={0,0,0,180}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=ui_scale, .padding=4});
 
     d_StringDestroy(info);
 
@@ -281,17 +283,21 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
             CalculateCardFanPosition(i, hand_size, cards_y, &x, &y_pos);
         }
 
+        float card_scale = GetCardScale();
+        float scaled_width = CARD_WIDTH * card_scale;
+        float scaled_height = CARD_HEIGHT * card_scale;
+
         if (card->face_up && card->texture && card->texture->surface) {
             aRectf_t src = {0, 0, card->texture->surface->w, card->texture->surface->h};
-            aRectf_t dest = {x, y_pos, CARD_WIDTH, CARD_HEIGHT};
+            aRectf_t dest = {x, y_pos, scaled_width, scaled_height};
             a_BlitRect(card->texture, &src, &dest, 1.0f);
         } else if (!card->face_up && g_card_back_texture && g_card_back_texture->surface) {
             aRectf_t src = {0, 0, g_card_back_texture->surface->w, g_card_back_texture->surface->h};
-            aRectf_t dest = {x, y_pos, CARD_WIDTH, CARD_HEIGHT};
+            aRectf_t dest = {x, y_pos, scaled_width, scaled_height};
             a_BlitRect(g_card_back_texture, &src, &dest, 1.0f);
         } else {
-            a_DrawFilledRect((aRectf_t){x, y_pos, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){200, 200, 200, 255});
-            a_DrawRect((aRectf_t){x, y_pos, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){100, 100, 100, 255});
+            a_DrawFilledRect((aRectf_t){x, y_pos, scaled_width, scaled_height}, (aColor_t){200, 200, 200, 255});
+            a_DrawRect((aRectf_t){x, y_pos, scaled_width, scaled_height}, (aColor_t){100, 100, 100, 255});
         }
 
         // Draw ace value text (1 or 11) on the card itself
@@ -320,13 +326,13 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
                 bool is_valid = IsCardValidTarget(card, targeting_trinket_slot);
 
                 if (is_valid) {
-                    // Green overlay for valid targets
-                    a_DrawFilledRect((aRectf_t){x, y_pos, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){0, 255, 0, 60});
-                    a_DrawRect((aRectf_t){x, y_pos, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){0, 255, 0, 180});
+                    // Green overlay for valid targets (scaled)
+                    a_DrawFilledRect((aRectf_t){x, y_pos, scaled_width, scaled_height}, (aColor_t){0, 255, 0, 60});
+                    a_DrawRect((aRectf_t){x, y_pos, scaled_width, scaled_height}, (aColor_t){0, 255, 0, 180});
                 } else {
-                    // Grey overlay for invalid targets
-                    a_DrawFilledRect((aRectf_t){x, y_pos, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){100, 100, 100, 100});
-                    a_DrawRect((aRectf_t){x, y_pos, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){100, 100, 100, 180});
+                    // Grey overlay for invalid targets (scaled)
+                    a_DrawFilledRect((aRectf_t){x, y_pos, scaled_width, scaled_height}, (aColor_t){100, 100, 100, 100});
+                    a_DrawRect((aRectf_t){x, y_pos, scaled_width, scaled_height}, (aColor_t){100, 100, 100, 180});
                 }
             }
         }

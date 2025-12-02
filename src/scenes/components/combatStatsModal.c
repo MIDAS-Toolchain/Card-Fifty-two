@@ -99,8 +99,9 @@ void RenderCombatStatsModal(CombatStatsModal_t* modal) {
         .scale = 1.0f
     };
 
-    a_DrawText("Combat Stats", content_x, current_y, title_config);
-    int title_height = a_GetWrappedTextHeight("Combat Stats", FONT_ENTER_COMMAND, content_width);
+    current_y += 4;  // Move Combat title down 4px
+    a_DrawText("Combat:", content_x, current_y, title_config);
+    int title_height = a_GetWrappedTextHeight("Combat:", FONT_ENTER_COMMAND, content_width);
     current_y += title_height + 12;
 
     // ========================================================================
@@ -177,5 +178,43 @@ void RenderCombatStatsModal(CombatStatsModal_t* modal) {
     d_StringFormat(crit_bonus_text, "+%d%%", total_crit_bonus);
     a_DrawText((char*)d_StringPeek(crit_bonus_text), content_x + 10, current_y, value_config);
     d_StringDestroy(crit_bonus_text);
+    current_y += line_height + spacing;
+
+    // ========================================================================
+    // Defensive Stats (chip economy percentage modifiers from trinkets)
+    // Shows passive bonuses from Elite Membership and defensive affixes
+    // ========================================================================
+
+    current_y += spacing * 2;  // Extra spacing before new section
+
+    // Section header
+    aTextStyle_t trinket_header_config = {
+        .type = FONT_ENTER_COMMAND,
+        .fg = {168, 202, 88, 255},  // Green
+        .align = TEXT_ALIGN_LEFT,
+        .wrap_width = content_width,
+        .scale = 1.0f
+    };
+    a_DrawText("Defensive:", content_x, current_y - 22, trinket_header_config);  // Move up 22px (18 + 4 extra)
+    current_y += line_height + spacing;
+
+    // Win Bonus (percentage modifier - always shown even if 0%)
+    a_DrawText("Win Bonus:", content_x, current_y, label_config);
+    current_y += line_height + 4;
+
+    dString_t* win_bonus_text = d_StringInit();
+    d_StringFormat(win_bonus_text, "+%d%%", modal->player->win_bonus_percent);
+    a_DrawText((char*)d_StringPeek(win_bonus_text), content_x + 10, current_y, value_config);
+    d_StringDestroy(win_bonus_text);
+    current_y += line_height + spacing;
+
+    // Loss Refund (percentage modifier - always shown even if 0%)
+    a_DrawText("Loss Refund:", content_x, current_y, label_config);
+    current_y += line_height + 4;
+
+    dString_t* loss_refund_text = d_StringInit();
+    d_StringFormat(loss_refund_text, "+%d%%", modal->player->loss_refund_percent);
+    a_DrawText((char*)d_StringPeek(loss_refund_text), content_x + 10, current_y, value_config);
+    d_StringDestroy(loss_refund_text);
     current_y += line_height + spacing;
 }

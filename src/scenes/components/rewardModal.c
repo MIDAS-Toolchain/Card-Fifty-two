@@ -179,7 +179,7 @@ bool ShowRewardModal(RewardModal_t* modal) {
         CARD_TAG_CURSED,   // 10 damage to enemy when drawn
         CARD_TAG_VAMPIRIC, // 5 damage + 5 chips when drawn
         CARD_TAG_LUCKY,    // +10% crit while in any hand
-        CARD_TAG_BRUTAL    // +10% damage while in any hand
+        CARD_TAG_JAGGED    // +10% damage while in any hand
     };
     int all_tags_count = sizeof(available_tags) / sizeof(available_tags[0]);
 

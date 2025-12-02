@@ -15,6 +15,8 @@
 #include "loaders/enemyLoader.h"
 #include "loaders/affixLoader.h"
 #include "loaders/trinketLoader.h"
+#include "loaders/eventLoader.h"
+#include "loaders/cardTagLoader.h"
 
 // ============================================================================
 // GLOBAL VARIABLES
@@ -125,6 +127,22 @@ int GetWindowHeight(void) {
     int h = 0;
     SDL_GetWindowSize(app.window, NULL, &h);
     return h;
+}
+
+float GetUIScale(void) {
+    if (!g_settings) return 1.0f;
+
+    switch (g_settings->ui_scale) {
+        case 0: return 1.0f;   // 100%
+        case 1: return 1.25f;  // 125%
+        case 2: return 1.5f;   // 150%
+        default: return 1.0f;
+    }
+}
+
+float GetCardScale(void) {
+    // Scale cards up 20% for 1600x900 (better visibility)
+    return GetWindowHeight() >= 900 ? 1.2f : 1.0f;
 }
 
 // ============================================================================
@@ -292,70 +310,120 @@ void Initialize(void) {
     // Enemy pattern: Affixes parsed on-demand, no table population needed
     d_LogInfo("Affix database loaded successfully (will parse on-demand)");
 
-    // Load combat trinket database from DUF
-    dDUFValue_t* combat_trinkets_db = NULL;
-    err = LoadTrinketDatabase("data/trinkets/combat_trinkets.duf", &combat_trinkets_db);
-    if (err != NULL) {
-        d_LogErrorF("Failed to parse combat trinket database at %d:%d - %s",
-                   err->line, err->column, d_StringPeek(err->message));
+    // Load all trinket DUF files (extensible system for modular trinket packs)
+    const char* trinket_duf_files[] = {
+        "data/trinkets/core_trinkets.duf",
+        "data/trinkets/stacking_trinkets.duf",
+        "data/trinkets/event_trinkets.duf",
+    };
+    int trinket_duf_count = sizeof(trinket_duf_files) / sizeof(trinket_duf_files[0]);
 
-        char error_buf[512];
-        snprintf(error_buf, sizeof(error_buf),
-                "Trinket DUF Parse Error\n\nFile: combat_trinkets.duf\nLine %d, Column %d\n\n%s",
-                err->line, err->column, d_StringPeek(err->message));
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", error_buf, NULL);
-
-        d_DUFErrorFree(err);
+    dArray_t* trinket_databases = d_ArrayInit(trinket_duf_count, sizeof(dDUFValue_t*));
+    if (!trinket_databases) {
+        d_LogFatal("Failed to allocate trinket database array");
         a_Quit();
         exit(1);
     }
 
-    // Validate combat trinket database
-    if (!ValidateTrinketDatabase(combat_trinkets_db, validation_error, sizeof(validation_error))) {
-        d_LogError("Combat trinket database validation failed!");
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", validation_error, NULL);
-        a_Quit();
-        exit(1);
+    // Load and validate each trinket DUF file
+    for (int i = 0; i < trinket_duf_count; i++) {
+        const char* filepath = trinket_duf_files[i];
+        dDUFValue_t* db = NULL;
+
+        d_LogInfoF("Loading trinket pack: %s", filepath);
+        err = LoadTrinketDatabase(filepath, &db);
+        if (err != NULL) {
+            d_LogErrorF("Failed to parse trinket database '%s' at %d:%d - %s",
+                       filepath, err->line, err->column, d_StringPeek(err->message));
+
+            char error_buf[512];
+            snprintf(error_buf, sizeof(error_buf),
+                    "Trinket DUF Parse Error\n\nFile: %s\nLine %d, Column %d\n\n%s",
+                    filepath, err->line, err->column, d_StringPeek(err->message));
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", error_buf, NULL);
+
+            d_DUFErrorFree(err);
+            d_ArrayDestroy(&trinket_databases);
+            a_Quit();
+            exit(1);
+        }
+
+        if (!ValidateTrinketDatabase(db, validation_error, sizeof(validation_error))) {
+            d_LogErrorF("Trinket database '%s' validation failed: %s", filepath, validation_error);
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", validation_error, NULL);
+            d_ArrayDestroy(&trinket_databases);
+            a_Quit();
+            exit(1);
+        }
+
+        d_ArrayAppend(trinket_databases, &db);
     }
 
-    // Load event trinket database from DUF
-    dDUFValue_t* event_trinkets_db = NULL;
-    err = LoadTrinketDatabase("data/trinkets/event_trinkets.duf", &event_trinkets_db);
-    if (err != NULL) {
-        d_LogErrorF("Failed to parse event trinket database at %d:%d - %s",
-                   err->line, err->column, d_StringPeek(err->message));
-
-        char error_buf[512];
-        snprintf(error_buf, sizeof(error_buf),
-                "Trinket DUF Parse Error\n\nFile: event_trinkets.duf\nLine %d, Column %d\n\n%s",
-                err->line, err->column, d_StringPeek(err->message));
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", error_buf, NULL);
-
-        d_DUFErrorFree(err);
-        a_Quit();
-        exit(1);
-    }
-
-    // Validate event trinket database
-    if (!ValidateTrinketDatabase(event_trinkets_db, validation_error, sizeof(validation_error))) {
-        d_LogError("Event trinket database validation failed!");
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", validation_error, NULL);
-        a_Quit();
-        exit(1);
-    }
-
-    // Store combat DUF reference first (needed for on-demand loading)
-    g_trinkets_db = combat_trinkets_db;
-
-    // Merge both trinket databases into key cache
-    if (!MergeTrinketDatabases(combat_trinkets_db, event_trinkets_db)) {
+    // Populate global trinket template cache from all DUF files
+    if (!PopulateAllTrinketTemplates(trinket_databases)) {
         d_LogFatal("Failed to populate trinket templates");
+        d_ArrayDestroy(&trinket_databases);
         a_Quit();
         exit(1);
     }
 
-    // DUF validation already completed in ValidateTrinketDUF()
     d_LogInfo("✓ Trinket DUF loading validated successfully");
+
+    // Load event database from DUF
+    d_LogInfo("Loading event database...");
+    err = LoadEventDatabase("data/events/tutorial_events.duf", &g_events_db);
+    if (err) {
+        d_LogErrorF("Failed to parse event database at %d:%d - %s",
+                   err->line, err->column, d_StringPeek(err->message));
+
+        char error_buf[512];
+        snprintf(error_buf, sizeof(error_buf),
+                "Event DUF Parse Error\n\nFile: tutorial_events.duf\nLine %d, Column %d\n\n%s",
+                err->line, err->column, d_StringPeek(err->message));
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", error_buf, NULL);
+
+        d_DUFErrorFree(err);
+        a_Quit();
+        exit(1);
+    }
+
+    // Validate event database
+    if (!ValidateEventDatabase(g_events_db, validation_error, sizeof(validation_error))) {
+        d_LogError("Event database validation failed!");
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", validation_error, NULL);
+        a_Quit();
+        exit(1);
+    }
+
+    d_LogInfo("✓ Event database validated successfully");
+
+    // Load card tag database from DUF
+    d_LogInfo("Loading card tag database...");
+    err = LoadCardTagDatabase("data/card_tags/tags.duf", &g_card_tags_db);
+    if (err) {
+        d_LogErrorF("Failed to parse card tag database at %d:%d - %s",
+                   err->line, err->column, d_StringPeek(err->message));
+
+        char error_buf[512];
+        snprintf(error_buf, sizeof(error_buf),
+                "Card Tag DUF Parse Error\n\nFile: tags.duf\nLine %d, Column %d\n\n%s",
+                err->line, err->column, d_StringPeek(err->message));
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", error_buf, NULL);
+
+        d_DUFErrorFree(err);
+        a_Quit();
+        exit(1);
+    }
+
+    // Validate card tag database
+    if (!ValidateCardTagDatabase(g_card_tags_db, validation_error, sizeof(validation_error))) {
+        d_LogError("Card tag database validation failed!");
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", validation_error, NULL);
+        a_Quit();
+        exit(1);
+    }
+
+    d_LogInfo("✓ Card tag database validated successfully");
 
     d_LogInfo("Global tables initialized");
     d_LogInfoF("Screen size: %dx%d", SCREEN_WIDTH, SCREEN_HEIGHT);
@@ -374,6 +442,12 @@ void Cleanup(void) {
         d_LogInfo("Player registry destroyed");
     }
 
+    // Cleanup event loader system (frees g_events_db DUF tree)
+    CleanupEventSystem();
+
+    // Cleanup card tag loader system (frees g_card_tags_db DUF tree)
+    CleanupCardTagSystem();
+
     // Cleanup trinket loader system (frees g_trinket_key_cache, DUF trees)
     CleanupTrinketLoaderSystem();
 
@@ -390,23 +464,11 @@ void Cleanup(void) {
     // Card back image is managed by Archimedes image cache (auto-cleanup)
     g_card_back_texture = NULL;
 
-    // Free all card surfaces before destroying table
+    // Card textures (aImage_t*) are managed by Archimedes image cache (auto-cleanup on a_Quit())
+    // Just destroy the table itself, NOT the image pointers
     if (g_card_textures) {
-        dArray_t* card_ids = d_TableGetAllKeys(g_card_textures);
-        if (card_ids) {
-            for (size_t i = 0; i < card_ids->count; i++) {
-                int* card_id = (int*)d_ArrayGet(card_ids, i);
-                if (card_id) {
-                    SDL_Surface** surf_ptr = (SDL_Surface**)d_TableGet(g_card_textures, card_id);
-                    if (surf_ptr && *surf_ptr) {
-                        SDL_FreeSurface(*surf_ptr);
-                    }
-                }
-            }
-            d_ArrayDestroy(card_ids);
-        }
         d_TableDestroy(&g_card_textures);
-        d_LogInfo("Surface cache destroyed");
+        d_LogInfo("Card texture table destroyed (images cleaned up by Archimedes)");
     }
 
     // Free all portrait surfaces before destroying table

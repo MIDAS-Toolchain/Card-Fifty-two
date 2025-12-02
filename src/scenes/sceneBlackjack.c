@@ -158,6 +158,10 @@ TweenManager_t g_tween_manager;
 // Card transition manager (for card dealing/discarding animations)
 static CardTransitionManager_t g_card_transition_manager;
 
+// Status effects cleared on combat victory (tracked for result screen message)
+// Non-static: accessible from game.c to record cleared effects count
+int g_cleared_status_effects = 0;
+
 // ============================================================================
 // FORWARD DECLARATIONS
 // ============================================================================
@@ -819,61 +823,13 @@ static void BlackjackLogic(float dt) {
         if (g_tutorial_start_delay <= 0.0f) {
             StartTutorial(g_tutorial_system, g_tutorial_steps, g_dealer_section, g_player_section);
             g_tutorial_started = true;
-            d_LogInfo("Tutorial started after 0.5s delay (post narrative)");
         } else {
             // Still waiting - don't process any input yet
             return;
         }
     }
 
-    // If tutorial is active, handle tutorial input (non-blocking - game input continues)
-    if (g_tutorial_system && IsTutorialActive(g_tutorial_system)) {
-        HandleTutorialInput(g_tutorial_system);
-        UpdateTutorialListeners(g_tutorial_system, dt);
-
-        // Check for Betting Power (chips) hover event (for tutorial step 3)
-        if (g_left_sidebar && UpdateLeftSidebarChipsHover(g_left_sidebar, 0, dt)) {
-            static int chips_hover_id = 3;
-            TriggerTutorialEvent(g_tutorial_system, TUTORIAL_EVENT_HOVER, (void*)(intptr_t)chips_hover_id);
-            d_LogInfo("Tutorial: Betting Power (chips) hover triggered after 1 second");
-        }
-
-        // Check for Active Bet hover event (for tutorial step 4)
-        if (g_left_sidebar && UpdateLeftSidebarHoverTracking(g_left_sidebar, 0, dt)) {
-            static int bet_hover_id = 1;
-            TriggerTutorialEvent(g_tutorial_system, TUTORIAL_EVENT_HOVER, (void*)(intptr_t)bet_hover_id);
-            d_LogInfo("Tutorial: Active Bet hover triggered after 1 second");
-        }
-
-        // Check for ability hover event (for tutorial step 5)
-        if (g_dealer_section && g_game.current_enemy &&
-            UpdateDealerAbilityHoverTracking(g_dealer_section, g_game.current_enemy, dt)) {
-            static int ability_hover_id = 2;
-            TriggerTutorialEvent(g_tutorial_system, TUTORIAL_EVENT_HOVER, (void*)(intptr_t)ability_hover_id);
-            d_LogInfo("Tutorial: All abilities hovered");
-        }
-
-        // Note: Don't return - allow game input to continue
-    }
-
-    // Check if tutorial is active and blocking input
-    // Block input ONLY during steps 3, 4, 5 (hover tutorial steps)
-    // Steps 1 and 2 allow normal gameplay (betting and player actions)
-    bool tutorial_blocking_input = (g_tutorial_system && IsTutorialActive(g_tutorial_system) &&
-                                     g_tutorial_system->current_step &&
-                                     g_tutorial_system->current_step_number >= 3 &&
-                                     g_tutorial_system->current_step_number <= 5);
-
-    // Debug: Log when blocking changes
-    static bool last_blocking_state = false;
-    if (tutorial_blocking_input != last_blocking_state) {
-        d_LogInfoF("Tutorial input blocking: %s (step %d)",
-                   tutorial_blocking_input ? "BLOCKED" : "ALLOWED",
-                   g_tutorial_system ? g_tutorial_system->current_step_number : 0);
-        last_blocking_state = tutorial_blocking_input;
-    }
-
-    // If pause menu is visible, handle it exclusively
+    // If pause menu is visible, handle it exclusively (check BEFORE tutorial input!)
     if (g_pause_menu && g_pause_menu->is_visible) {
         PauseAction_t action = HandlePauseMenuInput(g_pause_menu);
         switch (action) {
@@ -899,6 +855,41 @@ static void BlackjackLogic(float dt) {
         }
         return;  // Don't process game logic while paused
     }
+
+    // If tutorial is active, handle tutorial input (non-blocking - game input continues)
+    if (g_tutorial_system && IsTutorialActive(g_tutorial_system)) {
+        HandleTutorialInput(g_tutorial_system);
+        UpdateTutorialListeners(g_tutorial_system, dt);
+
+        // Check for Betting Power (chips) hover event (for tutorial step 3)
+        if (g_left_sidebar && UpdateLeftSidebarChipsHover(g_left_sidebar, 0, dt)) {
+            static int chips_hover_id = 3;
+            TriggerTutorialEvent(g_tutorial_system, TUTORIAL_EVENT_HOVER, (void*)(intptr_t)chips_hover_id);
+        }
+
+        // Check for Active Bet hover event (for tutorial step 4)
+        if (g_left_sidebar && UpdateLeftSidebarHoverTracking(g_left_sidebar, 0, dt)) {
+            static int bet_hover_id = 1;
+            TriggerTutorialEvent(g_tutorial_system, TUTORIAL_EVENT_HOVER, (void*)(intptr_t)bet_hover_id);
+        }
+
+        // Check for ability hover event (for tutorial step 5)
+        if (g_dealer_section && g_game.current_enemy &&
+            UpdateDealerAbilityHoverTracking(g_dealer_section, g_game.current_enemy, dt)) {
+            static int ability_hover_id = 2;
+            TriggerTutorialEvent(g_tutorial_system, TUTORIAL_EVENT_HOVER, (void*)(intptr_t)ability_hover_id);
+        }
+
+        // Note: Don't return - allow game input to continue
+    }
+
+    // Check if tutorial is active and blocking input
+    // Block input ONLY during steps 3, 4, 5 (hover tutorial steps)
+    // Steps 1 and 2 allow normal gameplay (betting and player actions)
+    bool tutorial_blocking_input = (g_tutorial_system && IsTutorialActive(g_tutorial_system) &&
+                                     g_tutorial_system->current_step &&
+                                     g_tutorial_system->current_step_number >= 3 &&
+                                     g_tutorial_system->current_step_number <= 5);
 
     // Settings button hover and click - Always works (even during tutorial)
     bool settings_hovered = IsTopBarSettingsHovered(g_top_bar);
@@ -1009,6 +1000,7 @@ static void BlackjackLogic(float dt) {
     // Capture chips before round (for slot machine animation)
     if (previous_state != STATE_DEALER_TURN && g_game.current_state == STATE_DEALER_TURN) {
         result_old_chips = GetPlayerChips(g_human_player);
+        g_cleared_status_effects = 0;  // Reset for new round
         if (g_result_screen) {
             g_result_screen->status_drain = 0;  // Reset for this round
         }
@@ -1035,7 +1027,7 @@ static void BlackjackLogic(float dt) {
             int chip_delta = total_delta + g_result_screen->status_drain;  // Bet outcome only (win/loss)
 
             bool is_victory = (g_game.current_state == STATE_COMBAT_VICTORY);
-            ShowResultScreen(g_result_screen, result_old_chips, chip_delta, g_result_screen->status_drain, is_victory);
+            ShowResultScreen(g_result_screen, result_old_chips, chip_delta, g_result_screen->status_drain, is_victory, g_cleared_status_effects);
         }
 
         // Show victory overlay when entering COMBAT_VICTORY
@@ -2375,9 +2367,23 @@ static void BlackjackDraw(float dt) {
         app.background = (aColor_t){0, 0, 0, 255};
     }
 
-    // Calculate table position (used by both portrait and table rendering)
-    const int table_width = 1024;
-    const int table_height = 256;
+    // Calculate table position and size based on resolution
+    // 1280x720 / 1366x768: 1024x256 table, portrait at -280
+    // 1600x900: 1200x300 table (17% bigger), portrait at -340 (closer)
+    int table_width, table_height, portrait_offset_y;
+
+    if (GetWindowHeight() >= 900) {
+        // 1600x900 - scale up table and bring enemy closer
+        table_width = 1200;
+        table_height = 300;
+        portrait_offset_y = -328;  // 12px lower than before (-340 + 12 = -328)
+    } else {
+        // 1280x720 / 1366x768 - original sizes
+        table_width = 1024;
+        table_height = 256;
+        portrait_offset_y = -280;
+    }
+
     int table_x = GetGameAreaX() + (GetGameAreaWidth() - table_width) / 2;
     int table_y = GetWindowHeight() - table_height;
 
@@ -2385,7 +2391,7 @@ static void BlackjackDraw(float dt) {
     if (g_game.is_combat_mode && g_enemy_portrait_renderer) {
         // Update portrait position to stay with table (runtime)
         g_enemy_portrait_renderer->x = GetGameAreaX() + (GetGameAreaWidth() - 400) / 2 + ENEMY_PORTRAIT_X_OFFSET;
-        g_enemy_portrait_renderer->y = table_y - 280 + ENEMY_PORTRAIT_Y_OFFSET;  // Move portrait higher (was -200, now -280)
+        g_enemy_portrait_renderer->y = table_y + portrait_offset_y + ENEMY_PORTRAIT_Y_OFFSET;
         RenderEnemyPortrait(g_enemy_portrait_renderer);
     }
 
@@ -2432,7 +2438,7 @@ static void BlackjackDraw(float dt) {
         if (should_render_hands) {
             // Pass current enemy to dealer section (NULL if not in combat)
             Enemy_t* current_enemy = g_game.is_combat_mode ? g_game.current_enemy : NULL;
-            RenderDealerSection(g_dealer_section, g_dealer, current_enemy, dealer_y);
+            RenderDealerSection(g_dealer_section, g_dealer, current_enemy, dealer_y + 1);  // +1px fine-tuning
             RenderPlayerSection(g_player_section, g_human_player, player_y);
         }
 

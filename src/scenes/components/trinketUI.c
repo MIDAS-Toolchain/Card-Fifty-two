@@ -9,6 +9,7 @@
 #include "../../../include/stateStorage.h"
 #include "../../../include/tutorial/tutorialSystem.h"
 #include "../../../include/loaders/trinketLoader.h"
+#include "../../../include/loaders/affixLoader.h"
 
 // External references
 extern TutorialSystem_t* g_tutorial_system;
@@ -27,11 +28,28 @@ TrinketUI_t* CreateTrinketUI(void) {
     ui->hovered_trinket_slot = -1;
     ui->hovered_class_trinket = false;
 
+    // Initialize affix template cache
+    for (int i = 0; i < 3; i++) {
+        ui->cached_affix_templates[i] = NULL;
+    }
+    ui->cached_affix_count = 0;
+    ui->cached_slot_index = -2;  // -2 = no cache
+
     return ui;
 }
 
 void DestroyTrinketUI(TrinketUI_t** ui) {
     if (!ui || !*ui) return;
+
+    // Cleanup cached affix templates
+    for (int i = 0; i < 3; i++) {
+        if ((*ui)->cached_affix_templates[i]) {
+            CleanupAffixTemplate((*ui)->cached_affix_templates[i]);
+            free((*ui)->cached_affix_templates[i]);
+            (*ui)->cached_affix_templates[i] = NULL;
+        }
+    }
+
     free(*ui);
     *ui = NULL;
 }
@@ -371,6 +389,10 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
             d_StringFormat(passive_text, "%s: Gain %d chips", trigger_str, effect_value);
             break;
 
+        case TRINKET_EFFECT_ADD_CHIPS_PERCENT:
+            d_StringFormat(passive_text, "%s: Gain %d%% of bet", trigger_str, effect_value);
+            break;
+
         case TRINKET_EFFECT_LOSE_CHIPS:
             d_StringFormat(passive_text, "%s: Lose %d chips", trigger_str, effect_value);
             break;
@@ -397,19 +419,98 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
         }
 
         case TRINKET_EFFECT_TRINKET_STACK: {
-            const char* stat = template->passive_stack_stat ? d_StringPeek(template->passive_stack_stat) : "???";
+            const char* stat_key = template->passive_stack_stat ? d_StringPeek(template->passive_stack_stat) : "???";
+
+            // Format stat name for readability and detect flat vs percent stats
+            const char* stat_name = stat_key;
+            bool is_flat_stat = false;
+
+            if (strcmp(stat_key, "crit_chance") == 0) {
+                stat_name = "chance to crit";
+            } else if (strcmp(stat_key, "damage_bonus_percent") == 0) {
+                stat_name = "damage";
+            } else if (strcmp(stat_key, "damage_flat") == 0) {
+                stat_name = "flat damage";
+                is_flat_stat = true;
+            }
+
+            // Check for loop mechanic (Broken Watch)
+            const char* on_max_behavior = template->passive_stack_on_max ?
+                                         d_StringPeek(template->passive_stack_on_max) : NULL;
+            bool loops = (on_max_behavior && strcmp(on_max_behavior, "reset_to_one") == 0);
+
             // Show current stacks / max stacks if instance exists
             if (instance && instance->trinket_stacks > 0) {
-                d_StringFormat(passive_text, "%s: +%d%% %s (%d/%d stacks)",
-                              trigger_str, template->passive_stack_value, stat,
-                              instance->trinket_stacks, template->passive_stack_max);
+                // Show current/max (0 = infinite)
+                if (template->passive_stack_max == 0) {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (%d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (%d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks);
+                    }
+                } else if (loops) {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (%d/%d, loops)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks, template->passive_stack_max);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (%d/%d, loops)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks, template->passive_stack_max);
+                    }
+                } else {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (%d/%d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks, template->passive_stack_max);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (%d/%d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks, template->passive_stack_max);
+                    }
+                }
             } else {
-                d_StringFormat(passive_text, "%s: +%d%% %s (max %d stacks)",
-                              trigger_str, template->passive_stack_value, stat,
-                              template->passive_stack_max);
+                // Show max stacks (0 = infinite)
+                if (template->passive_stack_max == 0) {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (no limit)",
+                                      trigger_str, template->passive_stack_value, stat_name);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (no limit)",
+                                      trigger_str, template->passive_stack_value, stat_name);
+                    }
+                } else if (loops) {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (loops at %d)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      template->passive_stack_max);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (loops at %d)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      template->passive_stack_max);
+                    }
+                } else {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (max %d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      template->passive_stack_max);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (max %d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      template->passive_stack_max);
+                    }
+                }
             }
             break;
         }
+
+        case TRINKET_EFFECT_TRINKET_STACK_RESET:
+            d_StringFormat(passive_text, "%s: Reset stacks to 0", trigger_str);
+            break;
 
         case TRINKET_EFFECT_ADD_DAMAGE_FLAT:
             d_StringFormat(passive_text, "%s: Deal %d damage", trigger_str, effect_value);
@@ -438,12 +539,166 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
         }
 
         case TRINKET_EFFECT_NONE:
+            d_StringFormat(passive_text, "%s: (no effect)", trigger_str);
+            break;
+
         default:
-            d_StringFormat(passive_text, "%s: ???", trigger_str);
+            d_LogWarningF("FormatTrinketPassive: Effect type %d not formatted in trinketUI.c", effect_type);
+            d_StringFormat(passive_text, "%s: (effect %d not formatted)", trigger_str, effect_type);
             break;
     }
 
     return passive_text;
+}
+
+/**
+ * RenderAffixTooltip - Render separate secondary tooltip for affixes
+ *
+ * Positioned to the left of the main tooltip with intelligent screen-edge detection.
+ * Shows affixes in FlexBox 2-column layout with weight/quality color gradients.
+ */
+static void RenderAffixTooltip(TrinketUI_t* ui, TrinketInstance_t* instance, int slot_index,
+                                 int main_tooltip_x, int main_tooltip_y, int main_tooltip_height) {
+    if (!ui || !instance || ui->cached_affix_count == 0) return;
+
+    // Dimensions
+    int affix_padding = 16;
+    int affix_width = 320;  // Slightly narrower than main tooltip (340)
+    int content_width = affix_width - (affix_padding * 2);
+
+    // Calculate height dynamically based on affix count
+    int affix_height = affix_padding;
+    affix_height += (ui->cached_affix_count * 45);  // Each affix = 2 rows (name 20px + desc 20px + gap 5px)
+    affix_height += affix_padding;  // Bottom padding
+
+    // Position to left of main tooltip with 15px gap
+    int affix_tooltip_x = main_tooltip_x - affix_width - 15;
+    int affix_tooltip_y = main_tooltip_y;  // Align top with main tooltip
+
+    // If too far left (would go offscreen), position to right of trinket slot instead
+    if (affix_tooltip_x < 10) {
+        int row = slot_index / 3;
+        int col = slot_index % 3;
+        int slot_x = GetTrinketUIX() + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
+        affix_tooltip_x = slot_x + TRINKET_SLOT_SIZE + 15;
+    }
+
+    // Clamp Y to screen bounds
+    if (affix_tooltip_y + affix_height > SCREEN_HEIGHT - 10) {
+        affix_tooltip_y = SCREEN_HEIGHT - affix_height - 10;
+    }
+    if (affix_tooltip_y < TOP_BAR_HEIGHT + 10) {
+        affix_tooltip_y = TOP_BAR_HEIGHT + 10;
+    }
+
+    // Background (dark panel, matching main tooltip)
+    a_DrawFilledRect((aRectf_t){affix_tooltip_x, affix_tooltip_y, affix_width, affix_height},
+                    (aColor_t){9, 10, 20, 240});  // COLOR_PANEL_BG
+
+    // Blue border (to distinguish from main tooltip's rarity-colored border)
+    a_DrawRect((aRectf_t){affix_tooltip_x, affix_tooltip_y, affix_width, affix_height},
+              (aColor_t){100, 150, 255, 255});  // Blue
+    a_DrawRect((aRectf_t){affix_tooltip_x + 1, affix_tooltip_y + 1, affix_width - 2, affix_height - 2},
+              (aColor_t){100, 150, 255, 255});  // Double border
+
+    // Render content
+    int content_x = affix_tooltip_x + affix_padding;
+    int current_y = affix_tooltip_y + affix_padding;
+
+    // Render each affix with FlexBox 2-column layout (no header needed)
+    for (int i = 0; i < instance->affix_count && i < ui->cached_affix_count; i++) {
+        int value = instance->affixes[i].rolled_value;
+        AffixTemplate_t* affix_template = ui->cached_affix_templates[i];
+
+        if (!affix_template) {
+            continue;
+        }
+
+        const char* affix_name = d_StringPeek(affix_template->name);
+        int weight = affix_template->weight;
+
+        // Calculate weight-based color gradient for affix name
+        // Weight range: 25 (rare/orange) to 100 (common/white)
+        float t = (weight - 25.0f) / 75.0f;  // 0.0 = rare, 1.0 = common
+        t = fmaxf(0.0f, fminf(1.0f, t));     // Clamp to [0, 1]
+
+        // Interpolate: Orange (255,140,0) -> White (200,200,200)
+        uint8_t name_r = (uint8_t)(255.0f - (55.0f * t));   // 255 -> 200
+        uint8_t name_g = (uint8_t)(140.0f + (60.0f * t));   // 140 -> 200
+        uint8_t name_b = (uint8_t)(0.0f + (200.0f * t));    // 0 -> 200
+
+        // Format description with rolled value (replace {value} placeholder)
+        const char* desc_template = d_StringPeek(affix_template->description);
+        dString_t* temp_desc = d_StringInit();
+        const char* desc_str = desc_template;
+        bool replaced = false;
+        for (size_t j = 0; desc_str[j] != '\0'; j++) {
+            if (desc_str[j] == '{' && desc_str[j+1] == 'v' && desc_str[j+2] == 'a' &&
+                desc_str[j+3] == 'l' && desc_str[j+4] == 'u' && desc_str[j+5] == 'e' &&
+                desc_str[j+6] == '}' && !replaced) {
+                // Found {value}, replace with actual value
+                d_StringAppendInt(temp_desc, value);
+                j += 6;  // Skip past {value}
+                replaced = true;
+            } else {
+                d_StringAppendChar(temp_desc, desc_str[j]);
+            }
+        }
+
+        // Render affix name (row 1: bold, weight-colored, smaller, moved up)
+        aTextStyle_t name_config = {
+            .type = FONT_ENTER_COMMAND,
+            .fg = {name_r, name_g, name_b, 255},
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = 0,
+            .scale = 0.9f  // Smaller (was 1.1f)
+        };
+        a_DrawText((char*)affix_name, content_x, current_y - 12, name_config);  // Move up 12px
+        current_y += 20;  // Move down for description
+
+        // Calculate roll quality percentage
+        int min_val = affix_template->min_value;
+        int max_val = affix_template->max_value;
+        float roll_range = (float)(max_val - min_val);
+        float roll_quality = (roll_range > 0) ? ((float)(value - min_val) / roll_range) : 0.5f;
+        roll_quality = fmaxf(0.0f, fminf(1.0f, roll_quality));  // Clamp [0, 1]
+
+        // Color gradient based on roll quality:
+        // 0-30%: Gray (160, 160, 160)
+        // 31-70%: Gray -> White (160->235)
+        // 71-100%: White -> Green (235,235,235 -> 168,202,88 from palette)
+        uint8_t desc_r, desc_g, desc_b;
+
+        if (roll_quality <= 0.30f) {
+            // Low roll: Gray
+            desc_r = desc_g = desc_b = 160;
+        } else if (roll_quality <= 0.70f) {
+            // Mid roll: Gray -> White
+            float t2 = (roll_quality - 0.30f) / 0.40f;  // 0.0 to 1.0
+            desc_r = desc_g = desc_b = (uint8_t)(160 + (75 * t2));  // 160 -> 235
+        } else {
+            // High roll: White -> Green
+            float t2 = (roll_quality - 0.70f) / 0.30f;  // 0.0 to 1.0
+            desc_r = (uint8_t)(235 - (67 * t2));   // 235 -> 168 (palette green)
+            desc_g = (uint8_t)(235 - (33 * t2));   // 235 -> 202 (palette green)
+            desc_b = (uint8_t)(235 - (147 * t2));  // 235 -> 88 (palette green)
+        }
+
+        // Render description (row 2: roll-quality colored, left-aligned, moved down 4px)
+        aTextStyle_t desc_config = {
+            .type = FONT_GAME,
+            .fg = {desc_r, desc_g, desc_b, 255},
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,  // Allow wrapping
+            .scale = 1.0f
+        };
+        a_DrawText((char*)d_StringPeek(temp_desc), content_x, current_y + 4, desc_config);
+
+        // Cleanup strings
+        d_StringDestroy(temp_desc);
+
+        current_y += 20 + 5;  // Description height + gap before next affix
+    }
 }
 
 /**
@@ -452,9 +707,9 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
  * Shows:
  * - Base trinket name, rarity, flavor
  * - Passive trigger/effect
- * - All rolled affixes
+ * - Stats counters
  */
-static void RenderTrinketTooltip(const TrinketTemplate_t* template, TrinketInstance_t* instance, int slot_index) {
+static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* template, TrinketInstance_t* instance, int slot_index) {
     if (!template || !instance) return;
 
     // Calculate tooltip position
@@ -493,17 +748,36 @@ static void RenderTrinketTooltip(const TrinketTemplate_t* template, TrinketInsta
     tooltip_height += flavor_height + 12;
     tooltip_height += 1 + 12;  // Divider
 
-    // Add passive description height
-    tooltip_height += 20;  // "Passive:" label
-    // TODO: Format passive trigger + effect
+    // Add passive description height (primary)
+    tooltip_height += 20;  // Primary passive line
 
-    // Add affix heights
-    for (int i = 0; i < instance->affix_count; i++) {
-        tooltip_height += 20;  // Each affix line
+    // Add secondary passive height (if exists)
+    if (template->passive_trigger_2 != 0) {
+        tooltip_height += 20;  // Secondary passive line
     }
+
+    // Add spacing after passives (before bottom padding)
+    tooltip_height += 8;
+
+    // Affixes rendered in separate tooltip (no height needed here)
 
     // Show damage counter (if any)
     if (instance->total_damage_dealt > 0) {
+        tooltip_height += 20;
+    }
+
+    // Show bonus chips (if any - for Elite Membership)
+    if (instance->total_bonus_chips > 0) {
+        tooltip_height += 20;
+    }
+
+    // Show refunded chips (if any - for Elite Membership)
+    if (instance->total_refunded_chips > 0) {
+        tooltip_height += 20;
+    }
+
+    // Show highest streak (if any - for Streak Counter)
+    if (instance->highest_streak > 0) {
         tooltip_height += 20;
     }
 
@@ -550,7 +824,7 @@ static void RenderTrinketTooltip(const TrinketTemplate_t* template, TrinketInsta
         .fg = {150, 150, 150, 255},  // Dimmed italic style
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = content_width,
-        .scale = 0.9f
+        .scale = 1.0f
     };
     a_DrawText((char*)flavor, content_x, current_y, flavor_config);
     current_y += flavor_height + 12;
@@ -585,28 +859,7 @@ static void RenderTrinketTooltip(const TrinketTemplate_t* template, TrinketInsta
         if (passive_text_2) d_StringDestroy(passive_text_2);
     }
 
-    current_y += 8;  // Spacing before affixes
-
-    // Affixes
-    aTextStyle_t affix_config = {
-        .type = FONT_GAME,
-        .fg = {100, 150, 255, 255},  // Blue
-        .align = TEXT_ALIGN_LEFT,
-        .wrap_width = content_width,
-        .scale = 1.0f
-    };
-
-    for (int i = 0; i < instance->affix_count; i++) {
-        const char* stat_key = d_StringPeek(instance->affixes[i].stat_key);
-        int value = instance->affixes[i].rolled_value;
-
-        dString_t* affix_text = d_StringInit();
-        d_StringFormat(affix_text, "+%d %s", value, stat_key);
-        a_DrawText((char*)d_StringPeek(affix_text), content_x, current_y, affix_config);
-        d_StringDestroy(affix_text);
-
-        current_y += 20;
-    }
+    // Affixes rendered in separate tooltip (see RenderAffixTooltip below)
 
     // Total damage dealt (if any)
     if (instance->total_damage_dealt > 0) {
@@ -623,6 +876,62 @@ static void RenderTrinketTooltip(const TrinketTemplate_t* template, TrinketInsta
         a_DrawText((char*)d_StringPeek(dmg_text), content_x, current_y, dmg_config);
         d_StringDestroy(dmg_text);
         current_y += 20;
+    }
+
+    // Bonus chips won (if any - for Elite Membership)
+    if (instance->total_bonus_chips > 0) {
+        dString_t* bonus_text = d_StringInit();
+        d_StringFormat(bonus_text, "Bonus Chips Won: %d", instance->total_bonus_chips);
+
+        aTextStyle_t bonus_config = {
+            .type = FONT_GAME,
+            .fg = {255, 255, 255, 255},  // White text
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.0f
+        };
+        a_DrawText((char*)d_StringPeek(bonus_text), content_x, current_y, bonus_config);
+        d_StringDestroy(bonus_text);
+        current_y += 20;
+    }
+
+    // Chips refunded (if any - for Elite Membership)
+    if (instance->total_refunded_chips > 0) {
+        dString_t* refund_text = d_StringInit();
+        d_StringFormat(refund_text, "Chips Refunded: %d", instance->total_refunded_chips);
+
+        aTextStyle_t refund_config = {
+            .type = FONT_GAME,
+            .fg = {255, 255, 255, 255},  // White text
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.0f
+        };
+        a_DrawText((char*)d_StringPeek(refund_text), content_x, current_y, refund_config);
+        d_StringDestroy(refund_text);
+        current_y += 20;
+    }
+
+    // Highest streak (if any - for Streak Counter)
+    if (instance->highest_streak > 0) {
+        dString_t* streak_text = d_StringInit();
+        d_StringFormat(streak_text, "Highest Streak: %d", instance->highest_streak);
+
+        aTextStyle_t streak_config = {
+            .type = FONT_GAME,
+            .fg = {255, 255, 255, 255},  // White text
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.0f
+        };
+        a_DrawText((char*)d_StringPeek(streak_text), content_x, current_y, streak_config);
+        d_StringDestroy(streak_text);
+        current_y += 20;
+    }
+
+    // Render separate affix tooltip (if affixes exist)
+    if (ui->cached_affix_count > 0) {
+        RenderAffixTooltip(ui, instance, slot_index, tooltip_x, tooltip_y, tooltip_height);
     }
 }
 
@@ -650,7 +959,7 @@ void RenderTrinketTooltips(TrinketUI_t* ui, Player_t* player) {
             TrinketInstance_t* instance = &player->trinket_slots[ui->hovered_trinket_slot];
             const TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(instance->base_trinket_key));
             if (template) {
-                RenderTrinketTooltip(template, instance, ui->hovered_trinket_slot);
+                RenderTrinketTooltip(ui, template, instance, ui->hovered_trinket_slot);
             }
         }
     }
@@ -703,8 +1012,49 @@ void UpdateTrinketUIHover(TrinketUI_t* ui, Player_t* player) {
 
         if (slot_hovered) {
             ui->hovered_trinket_slot = slot_index;
+
+            // Cache affix templates if slot changed
+            if (ui->cached_slot_index != slot_index) {
+                // Clear old cache
+                for (int i = 0; i < 3; i++) {
+                    if (ui->cached_affix_templates[i]) {
+                        CleanupAffixTemplate(ui->cached_affix_templates[i]);
+                        free(ui->cached_affix_templates[i]);
+                        ui->cached_affix_templates[i] = NULL;
+                    }
+                }
+                ui->cached_affix_count = 0;
+                ui->cached_slot_index = slot_index;
+
+                // Load new templates
+                TrinketInstance_t* instance = &player->trinket_slots[slot_index];
+                if (instance->base_trinket_key && d_StringGetLength(instance->base_trinket_key) > 0) {
+                    for (int i = 0; i < instance->affix_count && i < 3; i++) {
+                        const char* stat_key = d_StringPeek(instance->affixes[i].stat_key);
+                        AffixTemplate_t* template = LoadAffixTemplateFromDUF(stat_key);
+                        if (template) {
+                            ui->cached_affix_templates[i] = template;
+                            ui->cached_affix_count++;
+                        }
+                    }
+                }
+            }
+
             return;  // Early exit if slot hovered
         }
+    }
+
+    // No slot hovered - clear cache if it was set
+    if (ui->cached_slot_index != -2) {
+        for (int i = 0; i < 3; i++) {
+            if (ui->cached_affix_templates[i]) {
+                CleanupAffixTemplate(ui->cached_affix_templates[i]);
+                free(ui->cached_affix_templates[i]);
+                ui->cached_affix_templates[i] = NULL;
+            }
+        }
+        ui->cached_affix_count = 0;
+        ui->cached_slot_index = -2;
     }
 }
 

@@ -26,6 +26,7 @@ struct EventEncounter;
  */
 typedef enum {
     GAME_EVENT_COMBAT_START,         // Combat begins (enemy appears) - fires ONCE per combat
+    GAME_EVENT_HAND_START,           // Blackjack hand starts (before dealing cards) - fires MULTIPLE times per combat
     GAME_EVENT_HAND_END,             // Blackjack hand ends (after payouts) - fires MULTIPLE times per combat
     GAME_EVENT_PLAYER_WIN,           // Player wins hand (beat dealer)
     GAME_EVENT_PLAYER_LOSS,          // Player loses hand

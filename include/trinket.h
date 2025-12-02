@@ -132,34 +132,17 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
 void TickTrinketCooldowns(Player_t* player);
 
 // ============================================================================
-// MODIFIER SYSTEM (Called during win/loss resolution like status effects)
+// MODIFIER SYSTEM (Win/Loss Modifiers - REMOVED)
 // ============================================================================
-
-/**
- * ModifyWinningsWithTrinkets - Apply trinket win modifiers (like Elite Membership)
- *
- * @param player - Player who won
- * @param base_winnings - Base winnings before trinket modifiers
- * @param bet_amount - Original bet amount (for percentage calculations)
- * @return int - Modified winnings after trinket bonuses
- *
- * Called in game.c AFTER status effect modifiers, BEFORE clearing current_bet
- * Pattern matches ModifyWinnings() from statusEffects.c (ADR-002)
- */
-int ModifyWinningsWithTrinkets(Player_t* player, int base_winnings, int bet_amount);
-
-/**
- * ModifyLossesWithTrinkets - Apply trinket loss modifiers (like Elite Membership refund)
- *
- * @param player - Player who lost
- * @param base_loss - Base loss amount (bet amount)
- * @param bet_amount - Original bet amount (for percentage calculations)
- * @return int - Chip refund from trinkets (added back to player->chips)
- *
- * Called in game.c AFTER status effect modifiers, AFTER LoseBet()
- * Pattern matches ModifyLosses() from statusEffects.c (ADR-002)
- */
-int ModifyLossesWithTrinkets(Player_t* player, int base_loss, int bet_amount);
+//
+// ModifyWinningsWithTrinkets() and ModifyLossesWithTrinkets() have been removed.
+// Elite Membership and similar trinkets now use the standard DUF event trigger system:
+// - PLAYER_WIN → ExecuteAddChipsPercent() (adds bonus chips + tracks stats)
+// - PLAYER_LOSS → ExecuteRefundChipsPercent() (refunds chips + tracks stats)
+//
+// This makes all trinkets consistent (Lucky Chip, Insurance Policy, etc.) and
+// fixes stats tracking bugs. See src/trinket.c for implementation details.
+// ============================================================================
 
 // ============================================================================
 // ACTIVE TARGETING

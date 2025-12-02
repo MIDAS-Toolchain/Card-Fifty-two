@@ -23,9 +23,9 @@ static void ApplyAffixToStats(Player_t* player, const char* stat_key, int value)
         player->damage_percent += value;
         d_LogDebugF("Trinket affix: +%d%% damage", value);
     }
-    else if (strcmp(stat_key, "flat_damage") == 0) {
+    else if (strcmp(stat_key, "damage_flat") == 0) {
         player->damage_flat += value;
-        d_LogDebugF("Trinket affix: +%d flat damage", value);
+        d_LogDebugF("Trinket: +%d flat damage", value);
     }
     else if (strcmp(stat_key, "crit_chance") == 0) {
         player->crit_chance += value;
@@ -35,7 +35,23 @@ static void ApplyAffixToStats(Player_t* player, const char* stat_key, int value)
         player->crit_bonus += value;
         d_LogDebugF("Trinket affix: +%d%% crit bonus", value);
     }
-    // Note: Other affixes like bust_save_chance, won_chips_bonus_percent, etc.
+    else if (strcmp(stat_key, "won_chips_bonus_percent") == 0) {
+        player->win_bonus_percent += value;
+        d_LogDebugF("Trinket affix: +%d%% win bonus", value);
+    }
+    else if (strcmp(stat_key, "lost_chips_refund_percent") == 0) {
+        player->loss_refund_percent += value;
+        d_LogDebugF("Trinket affix: +%d%% loss refund", value);
+    }
+    else if (strcmp(stat_key, "push_damage_percent") == 0) {
+        player->push_damage_percent += value;
+        d_LogDebugF("Trinket: +%d%% push damage", value);
+    }
+    else if (strcmp(stat_key, "flat_chips_on_win") == 0) {
+        player->flat_chips_on_win += value;
+        d_LogDebugF("Trinket affix: +%d flat chips on win", value);
+    }
+    // Note: Other affixes like bust_save_chance, etc.
     // are NOT combat stats - they're passive effects handled by trinket system
     else {
         d_LogDebugF("Trinket affix %s (+%d) is not a combat stat (passive effect)", stat_key, value);
@@ -110,10 +126,36 @@ void AggregateTrinketStats(Player_t* player) {
 
         // Apply trinket stack bonus (if any)
         ApplyTrinketStackBonus(player, instance);
+
+        // Apply trinket passive effects to defensive stats
+        // Elite Membership: add_chips_percent (20%) → win_bonus_percent
+        // Elite Membership: refund_chips_percent (20%) → loss_refund_percent
+        // Pusher's Pebble: push_damage_percent (50%) → push_damage_percent
+        if (template->passive_effect_type == TRINKET_EFFECT_ADD_CHIPS_PERCENT) {
+            player->win_bonus_percent += template->passive_effect_value;
+            d_LogDebugF("Trinket passive: %s adds +%d%% win bonus",
+                        d_StringPeek(template->name), template->passive_effect_value);
+        }
+        if (template->passive_effect_type_2 == TRINKET_EFFECT_REFUND_CHIPS_PERCENT) {
+            player->loss_refund_percent += template->passive_effect_value_2;
+            d_LogDebugF("Trinket passive: %s adds +%d%% loss refund",
+                        d_StringPeek(template->name), template->passive_effect_value_2);
+        }
+        if (template->passive_effect_type == TRINKET_EFFECT_PUSH_DAMAGE_PERCENT) {
+            player->push_damage_percent += template->passive_effect_value;
+            d_LogDebugF("Trinket passive: %s adds +%d%% push damage",
+                        d_StringPeek(template->name), template->passive_effect_value);
+        }
+
+        // Cleanup heap-allocated template (ADR-19)
+        CleanupTrinketTemplate((TrinketTemplate_t*)template);
+        free((void*)template);
     }
 
     d_LogInfoF("Trinket stat aggregation complete: %d trinkets, %d affixes applied",
                trinket_count, total_affixes);
     d_LogInfoF("Final combat stats: %d flat dmg, %d%% dmg, %d%% crit chance, %d%% crit bonus",
                player->damage_flat, player->damage_percent, player->crit_chance, player->crit_bonus);
+    d_LogInfoF("Final defensive stats: %d%% win bonus, %d flat win chips, %d%% loss refund, %d%% push damage",
+               player->win_bonus_percent, player->flat_chips_on_win, player->loss_refund_percent, player->push_damage_percent);
 }

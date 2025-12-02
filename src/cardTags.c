@@ -1,6 +1,7 @@
 /*
  * Card Tags System Implementation
  * Constitutional pattern: dTable_t for metadata storage, dArray_t for tag lists
+ * Tag metadata loaded from DUF (ADR-019 + ADR-021)
  */
 
 #include "cardTags.h"
@@ -12,6 +13,7 @@
 #include "scenes/sceneBlackjack.h"  // For GetVisualEffects, TweenEnemyHP, TriggerEnemyDamageEffect
 #include "scenes/components/visualEffects.h"
 #include "tween/tween.h"
+#include "loaders/cardTagLoader.h"  // For DUF-based tag metadata
 
 // ============================================================================
 // GLOBAL REGISTRY
@@ -251,14 +253,21 @@ const char* GetCardFlavorText(int card_id) {
 // ============================================================================
 
 const char* GetCardTagName(CardTag_t tag) {
-    switch (tag) {
-        case CARD_TAG_CURSED:   return "Cursed";
-        case CARD_TAG_VAMPIRIC: return "Vampiric";
-        case CARD_TAG_LUCKY:    return "Lucky";
-        case CARD_TAG_BRUTAL:   return "Brutal";
-        case CARD_TAG_DOUBLED:  return "Doubled";
-        default:                return "Unknown";
-    }
+    // DUF-based implementation (ADR-021)
+    return GetTagDisplayName(tag);
+}
+
+CardTag_t CardTagFromString(const char* str) {
+    if (!str) return CARD_TAG_CURSED;  // Default fallback
+
+    if (strcmp(str, "CURSED") == 0) return CARD_TAG_CURSED;
+    if (strcmp(str, "VAMPIRIC") == 0) return CARD_TAG_VAMPIRIC;
+    if (strcmp(str, "LUCKY") == 0) return CARD_TAG_LUCKY;
+    if (strcmp(str, "JAGGED") == 0) return CARD_TAG_JAGGED;
+    if (strcmp(str, "DOUBLED") == 0) return CARD_TAG_DOUBLED;
+
+    d_LogWarningF("Unknown card tag: %s (defaulting to CURSED)", str);
+    return CARD_TAG_CURSED;
 }
 
 const char* GetCardRarityName(CardRarity_t rarity) {
@@ -272,26 +281,8 @@ const char* GetCardRarityName(CardRarity_t rarity) {
 }
 
 void GetCardTagColor(CardTag_t tag, int* out_r, int* out_g, int* out_b) {
-    switch (tag) {
-        case CARD_TAG_CURSED:   // #a53030 - red from palette
-            *out_r = 165; *out_g = 48; *out_b = 48;
-            break;
-        case CARD_TAG_VAMPIRIC: // #cf573c - red-orange from palette
-            *out_r = 207; *out_g = 87; *out_b = 60;
-            break;
-        case CARD_TAG_LUCKY:    // #75a743 - green from palette
-            *out_r = 117; *out_g = 167; *out_b = 67;
-            break;
-        case CARD_TAG_BRUTAL:   // #de9e41 - orange from palette
-            *out_r = 222; *out_g = 158; *out_b = 65;
-            break;
-        case CARD_TAG_DOUBLED:  // #e8c170 - gold from palette
-            *out_r = 232; *out_g = 193; *out_b = 112;
-            break;
-        default:  // #577277 - gray from palette
-            *out_r = 87; *out_g = 114; *out_b = 119;
-            break;
-    }
+    // DUF-based implementation (ADR-021)
+    GetTagColor(tag, out_r, out_g, out_b);
 }
 
 void GetCardRarityColor(CardRarity_t rarity, int* out_r, int* out_g, int* out_b) {
@@ -315,20 +306,8 @@ void GetCardRarityColor(CardRarity_t rarity, int* out_r, int* out_g, int* out_b)
 }
 
 const char* GetCardTagDescription(CardTag_t tag) {
-    switch (tag) {
-        case CARD_TAG_CURSED:
-            return "10 damage to enemy when drawn";
-        case CARD_TAG_VAMPIRIC:
-            return "5 damage + 5 chips when drawn";
-        case CARD_TAG_LUCKY:
-            return "+10% crit while in any hand";
-        case CARD_TAG_BRUTAL:
-            return "+10% damage while in any hand";
-        case CARD_TAG_DOUBLED:
-            return "Counts twice for hand value";
-        default:
-            return "Unknown tag";
-    }
+    // DUF-based implementation (ADR-021)
+    return GetTagDescription(tag);
 }
 
 // ============================================================================

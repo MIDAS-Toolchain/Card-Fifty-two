@@ -178,11 +178,11 @@ static int GenerateChoiceTooltipLines(const EventChoice_t* choice, TooltipLine_t
         count++;
     }
 
-    // Enemy HP modifier
-    if (choice->enemy_hp_multiplier != 1.0f && count < max_lines) {
-        int hp_percent = (int)(choice->enemy_hp_multiplier * 100);
-        snprintf(lines[count].text, sizeof(lines[count].text), "Daemon at %d%% HP", hp_percent);
-        lines[count].sentiment = (choice->enemy_hp_multiplier < 1.0f) ? TOOLTIP_LINE_POSITIVE : TOOLTIP_LINE_NEGATIVE;
+    // Enemy HP modifier (next enemy only)
+    if (choice->next_enemy_hp_multi != 1.0f && count < max_lines) {
+        int hp_percent = (int)(choice->next_enemy_hp_multi * 100);
+        snprintf(lines[count].text, sizeof(lines[count].text), "Next Daemon at %d%% HP", hp_percent);
+        lines[count].sentiment = (choice->next_enemy_hp_multi < 1.0f) ? TOOLTIP_LINE_POSITIVE : TOOLTIP_LINE_NEGATIVE;
         count++;
     }
 
@@ -360,6 +360,7 @@ void ShowEventModal(EventModal_t* modal, EventEncounter_t* event) {
             inst->total_damage_dealt = 0;
             inst->total_bonus_chips = 0;
             inst->total_refunded_chips = 0;
+            inst->highest_streak = 0;
             inst->buffed_tag = -1;
             inst->tag_buff_value = 0;
             inst->shake_offset_x = 0.0f;

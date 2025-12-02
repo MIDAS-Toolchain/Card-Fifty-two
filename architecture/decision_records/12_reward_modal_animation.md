@@ -84,7 +84,7 @@ Colored rectangles with tag name (black text on colored background):
 CARD_TAG_CURSED:   #a53030  // Red
 CARD_TAG_VAMPIRIC: #cf573c  // Red-orange
 CARD_TAG_LUCKY:    #75a743  // Green
-CARD_TAG_BRUTAL:   #de9e41  // Orange
+CARD_TAG_JAGGED:   #de9e41  // Orange
 CARD_TAG_DOUBLED:  #e8c170  // Gold
 ```
 

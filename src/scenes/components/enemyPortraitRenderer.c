@@ -75,9 +75,18 @@ void RenderEnemyPortrait(const EnemyPortraitRenderer_t* renderer) {
     int scale_offset_x = 0;  // No horizontal drift during fade
     int scale_offset_y = (renderer->target_h - final_h) / 2;
 
+    // Resolution-specific portrait positioning: raise for 1366, lower for 1600
+    int resolution_offset_y = 0;
+    if (GetWindowHeight() >= 900) {
+        resolution_offset_y = 24;  // Move down for 1600x900
+    } else if (GetWindowHeight() >= 768) {
+        resolution_offset_y = -24; // Move up for 1366x768
+    }
+    // 1280x720 stays at baseline (0)
+
     // Calculate final position with all offsets
     int x = renderer->x + (int)shake_x + scale_offset_x;
-    int y = renderer->y + (int)shake_y + scale_offset_y;
+    int y = renderer->y + (int)shake_y + scale_offset_y + resolution_offset_y;
 
     // Apply color flash effects (red for damage, green for heal)
     if (red_alpha > 0) {

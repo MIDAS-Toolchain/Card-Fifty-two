@@ -115,7 +115,7 @@ its tail a frayed power line. Pest control was discontinued."""
 }
 
 @vent_roach {
-    name: "Vent Roach"
+    name: "Chrome Roach"
     description: """Chrome carapace, survives everything. The universal sign that a place 
 has been abandoned long enough for things to move in."""
     hp: 300

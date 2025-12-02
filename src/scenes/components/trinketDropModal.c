@@ -44,7 +44,6 @@ static bool last_sell_hovered = false;
 // FORWARD DECLARATIONS
 // ============================================================================
 
-// FormatTrinketPassive from trinketUI.c (will extract to shared utils later)
 static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const TrinketInstance_t* instance, bool secondary);
 
 // ============================================================================
@@ -197,19 +196,98 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
         }
 
         case TRINKET_EFFECT_TRINKET_STACK: {
-            const char* stat = template->passive_stack_stat ? d_StringPeek(template->passive_stack_stat) : "???";
+            const char* stat_key = template->passive_stack_stat ? d_StringPeek(template->passive_stack_stat) : "???";
+
+            // Format stat name for readability and detect flat vs percent stats
+            const char* stat_name = stat_key;
+            bool is_flat_stat = false;
+
+            if (strcmp(stat_key, "crit_chance") == 0) {
+                stat_name = "chance to crit";
+            } else if (strcmp(stat_key, "damage_bonus_percent") == 0) {
+                stat_name = "damage";
+            } else if (strcmp(stat_key, "damage_flat") == 0) {
+                stat_name = "flat damage";
+                is_flat_stat = true;
+            }
+
+            // Check for loop mechanic (Broken Watch)
+            const char* on_max_behavior = template->passive_stack_on_max ?
+                                         d_StringPeek(template->passive_stack_on_max) : NULL;
+            bool loops = (on_max_behavior && strcmp(on_max_behavior, "reset_to_one") == 0);
+
             // Show current stacks / max stacks if instance exists
             if (instance && instance->trinket_stacks > 0) {
-                d_StringFormat(passive_text, "%s: +%d%% %s (%d/%d stacks)",
-                              trigger_str, template->passive_stack_value, stat,
-                              instance->trinket_stacks, template->passive_stack_max);
+                // Show current/max (0 = infinite)
+                if (template->passive_stack_max == 0) {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (%d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (%d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks);
+                    }
+                } else if (loops) {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (%d/%d, loops)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks, template->passive_stack_max);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (%d/%d, loops)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks, template->passive_stack_max);
+                    }
+                } else {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (%d/%d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks, template->passive_stack_max);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (%d/%d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      instance->trinket_stacks, template->passive_stack_max);
+                    }
+                }
             } else {
-                d_StringFormat(passive_text, "%s: +%d%% %s (max %d stacks)",
-                              trigger_str, template->passive_stack_value, stat,
-                              template->passive_stack_max);
+                // Show max stacks (0 = infinite)
+                if (template->passive_stack_max == 0) {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (no limit)",
+                                      trigger_str, template->passive_stack_value, stat_name);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (no limit)",
+                                      trigger_str, template->passive_stack_value, stat_name);
+                    }
+                } else if (loops) {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (loops at %d)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      template->passive_stack_max);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (loops at %d)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      template->passive_stack_max);
+                    }
+                } else {
+                    if (is_flat_stat) {
+                        d_StringFormat(passive_text, "%s: +%d %s (max %d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      template->passive_stack_max);
+                    } else {
+                        d_StringFormat(passive_text, "%s: +%d%% %s (max %d stacks)",
+                                      trigger_str, template->passive_stack_value, stat_name,
+                                      template->passive_stack_max);
+                    }
+                }
             }
             break;
         }
+
+        case TRINKET_EFFECT_TRINKET_STACK_RESET:
+            d_StringFormat(passive_text, "%s: Reset stacks to 0", trigger_str);
+            break;
 
         case TRINKET_EFFECT_ADD_DAMAGE_FLAT:
             d_StringFormat(passive_text, "%s: Deal %d damage", trigger_str, effect_value);
@@ -464,8 +542,8 @@ bool HandleTrinketDropModalInput(TrinketDropModal_t* modal, Player_t* player, fl
                 break;
 
             case TRINKET_ANIM_FLY_TO_SLOT:
-                // Stage 1: Wait for fly animation to complete (1.0s)
-                if (modal->trinket_scale <= 0.81f) {
+                // Stage 1: Wait for fly animation to complete (0.6s: 2.0 -> 1.0)
+                if (modal->trinket_scale <= 1.01f) {
                     // Start slot highlight (longer, more visible)
                     modal->anim_stage = TRINKET_ANIM_SLOT_HIGHLIGHT;
                     modal->slot_flash_alpha = 1.0f;  // Start at full brightness
@@ -975,8 +1053,11 @@ void RenderTrinketDropModal(const TrinketDropModal_t* modal, const Player_t* pla
             .wrap_width = content_width - 20,
             .scale = 1.0f
         };
+        int passive_height = a_GetWrappedTextHeight((char*)d_StringPeek(primary_passive),
+                                                    FONT_GAME,
+                                                    content_width - 20);
         a_DrawText((char*)d_StringPeek(primary_passive), content_x + 10, content_y, passive_desc_config);
-        content_y += 25;
+        content_y += passive_height + 8;  // Dynamic height + gap
     }
     if (primary_passive) d_StringDestroy(primary_passive);
 
@@ -990,8 +1071,11 @@ void RenderTrinketDropModal(const TrinketDropModal_t* modal, const Player_t* pla
             .wrap_width = content_width - 20,
             .scale = 1.0f
         };
+        int passive_height = a_GetWrappedTextHeight((char*)d_StringPeek(secondary_passive),
+                                                    FONT_GAME,
+                                                    content_width - 20);
         a_DrawText((char*)d_StringPeek(secondary_passive), content_x + 10, content_y, passive_desc_config);
-        content_y += 25;
+        content_y += passive_height + 8;  // Dynamic height + gap
     }
     if (secondary_passive) d_StringDestroy(secondary_passive);
 

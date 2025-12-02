@@ -99,7 +99,7 @@ void DestroyResultScreen(ResultScreen_t** screen) {
 // DISPLAY
 // ============================================================================
 
-void ShowResultScreen(ResultScreen_t* screen, int old_chips, int chip_delta, int status_drain, bool is_victory) {
+void ShowResultScreen(ResultScreen_t* screen, int old_chips, int chip_delta, int status_drain, bool is_victory, int cleared_effects_count) {
     if (!screen) return;
 
     screen->old_chips = old_chips;
@@ -168,18 +168,18 @@ void ShowResultScreen(ResultScreen_t* screen, int old_chips, int chip_delta, int
         d_LogInfoF("📊 Added %s effect: -%d chips", label, status_drain);
     }
 
-    // Add "Cleansed!" bonus message if this is a victory and no status drain occurred
-    if (is_victory && status_drain == 0) {
-        // POSITIVE: "Cleansed!" (cyan/light blue, celebrating status effect removal)
+    // Add "Status Cleansed" bonus message if status effects were cleared on victory
+    if (is_victory && cleared_effects_count > 0) {
+        // POSITIVE: "Status Cleansed" (cyan/light blue, celebrating status effect removal)
         EffectDisplay_t effect = {
-            .label = "Cleansed!",  // Static string, no heap allocation
+            .label = "Status Cleansed",  // Static string, no heap allocation
             .amount = 0,  // No chip value
             .alpha = 255.0f,
             .color = {100, 200, 255, 255}  // Light blue/cyan
         };
         d_ArrayAppend(screen->positive_effects, &effect);
         a_FlexAddItem(screen->positive_effects_box, 180, 35, NULL);
-        d_LogInfo("📊 Added CLEANSED effect (victory with no status drain)");
+        d_LogInfoF("📊 Added STATUS CLEANSED effect (%d effects removed)", cleared_effects_count);
     }
 
     // Tween all effects to fade out over 2 seconds
@@ -289,7 +289,7 @@ void RenderResultScreen(ResultScreen_t* screen, Player_t* player, GameState_t st
 
         dString_t* text = d_StringInit();
         if (effect->amount == 0) {
-            // Label only (e.g. "Cleansed!")
+            // Label only (e.g. "Status Cleansed")
             d_StringFormat(text, "%s", effect->label);
         } else {
             // Amount + label (e.g. "+50 Win")

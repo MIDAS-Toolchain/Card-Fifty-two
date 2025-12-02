@@ -151,8 +151,8 @@ bool HandleCardGridModalInput(CardGridModal_t* modal) {
     if (!modal || !modal->is_visible) return false;
 
     // Match rendering position (shifted 96px right)
-    int modal_x = ((SCREEN_WIDTH - MODAL_WIDTH) / 2) + 96;
-    int modal_y = (SCREEN_HEIGHT - MODAL_HEIGHT) / 2;
+    int modal_x = ((GetWindowWidth() - MODAL_WIDTH) / 2) + 96;
+    int modal_y = (GetWindowHeight() - MODAL_HEIGHT) / 2;
 
     // ESC, V, or C key closes modal (V and C are the hotkeys for draw/discard pile)
     if (app.keyboard[SDL_SCANCODE_ESCAPE]) {
@@ -185,8 +185,15 @@ bool HandleCardGridModalInput(CardGridModal_t* modal) {
     // Update hovered card index (for hover-to-enlarge effect)
     modal->hovered_card_index = -1;
     if (modal->cards && modal->cards->count > 0) {
-        // Calculate actual grid width for centering
-        int actual_grid_width = CARD_GRID_COLS * CARD_GRID_CARD_WIDTH + (CARD_GRID_COLS - 1) * CARD_GRID_SPACING;
+        // Apply card scaling for proper spacing and hover detection
+        float card_scale = GetCardScale();
+        float scaled_card_width = CARD_GRID_CARD_WIDTH * card_scale;
+        float scaled_card_height = CARD_GRID_CARD_HEIGHT * card_scale;
+        float scaled_spacing = CARD_GRID_SPACING * card_scale;
+
+        // Calculate actual grid width using SCALED dimensions for centering
+        int actual_grid_width = CARD_GRID_COLS * scaled_card_width + (CARD_GRID_COLS - 1) * scaled_spacing;
+
         int grid_x = modal_x + (MODAL_WIDTH - SCROLLBAR_WIDTH - 20 - actual_grid_width) / 2;
         int grid_y = modal_y + MODAL_HEADER_HEIGHT + CARD_GRID_PADDING;
         int mx = app.mouse.x;
@@ -196,12 +203,12 @@ bool HandleCardGridModalInput(CardGridModal_t* modal) {
         for (int i = 0; i < card_count; i++) {
             int col = i % CARD_GRID_COLS;
             int row = i / CARD_GRID_COLS;
-            int x = grid_x + col * (CARD_GRID_CARD_WIDTH + CARD_GRID_SPACING);
-            int y = grid_y + row * (CARD_GRID_CARD_HEIGHT + CARD_GRID_SPACING) - modal->scroll_offset;
+            int x = grid_x + col * (scaled_card_width + scaled_spacing);
+            int y = grid_y + row * (scaled_card_height + scaled_spacing) - modal->scroll_offset;
 
-            // Check if mouse is over this card
-            if (mx >= x && mx <= x + CARD_GRID_CARD_WIDTH &&
-                my >= y && my <= y + CARD_GRID_CARD_HEIGHT) {
+            // Check if mouse is over this card (using scaled dimensions!)
+            if (mx >= x && mx <= x + scaled_card_width &&
+                my >= y && my <= y + scaled_card_height) {
                 modal->hovered_card_index = i;
                 break;
             }
@@ -213,11 +220,15 @@ bool HandleCardGridModalInput(CardGridModal_t* modal) {
     int scrollbar_y = modal_y + MODAL_HEADER_HEIGHT + 10;
     int scrollbar_height = MODAL_HEIGHT - MODAL_HEADER_HEIGHT - 20;
 
-    // Calculate grid dimensions
+    // Calculate grid dimensions (use scaled card size for proper scrolling!)
     if (modal->cards) {
+        float card_scale = GetCardScale();
+        float scaled_card_height = CARD_GRID_CARD_HEIGHT * card_scale;
+        float scaled_spacing = CARD_GRID_SPACING * card_scale;
+
         int card_count = (int)modal->cards->count;
         int rows = (card_count + CARD_GRID_COLS - 1) / CARD_GRID_COLS;
-        int grid_height = rows * (CARD_GRID_CARD_HEIGHT + CARD_GRID_SPACING) + CARD_GRID_PADDING;
+        int grid_height = rows * (scaled_card_height + scaled_spacing) + CARD_GRID_PADDING;
         int visible_height = MODAL_HEIGHT - MODAL_HEADER_HEIGHT - 20;
         modal->max_scroll = (grid_height > visible_height) ? (grid_height - visible_height) : 0;
 
@@ -257,10 +268,10 @@ bool HandleCardGridModalInput(CardGridModal_t* modal) {
             }
         }
 
-        // Mouse wheel scrolling
+        // Mouse wheel scrolling (use scaled spacing!)
         if (app.mouse.wheel != 0) {
-            // Scroll by ~3 cards per wheel tick
-            int scroll_speed = (CARD_GRID_CARD_HEIGHT + CARD_GRID_SPACING) * 3;
+            // Scroll by ~3 cards per wheel tick (scaled)
+            int scroll_speed = (scaled_card_height + scaled_spacing) * 3;
             modal->scroll_offset -= app.mouse.wheel * scroll_speed;  // Negative wheel = scroll down
 
             // Clamp scroll offset
@@ -282,12 +293,12 @@ bool HandleCardGridModalInput(CardGridModal_t* modal) {
 void RenderCardGridModal(CardGridModal_t* modal) {
     if (!modal || !modal->is_visible) return;
 
-    // Full-screen overlay
-    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, COLOR_OVERLAY);
+    // Full-screen overlay (use runtime window size!)
+    a_DrawFilledRect((aRectf_t){0, 0, GetWindowWidth(), GetWindowHeight()}, COLOR_OVERLAY);
 
     // Modal panel (shifted 96px right from center, matching reward modal)
-    int modal_x = ((SCREEN_WIDTH - MODAL_WIDTH) / 2) + 96;
-    int modal_y = (SCREEN_HEIGHT - MODAL_HEIGHT) / 2;
+    int modal_x = ((GetWindowWidth() - MODAL_WIDTH) / 2) + 96;
+    int modal_y = (GetWindowHeight() - MODAL_HEIGHT) / 2;
 
     // Draw panel body
     int panel_body_y = modal_y + MODAL_HEADER_HEIGHT;
@@ -322,9 +333,14 @@ void RenderCardGridModal(CardGridModal_t* modal) {
 
     // Draw card grid with clipping
     if (modal->cards && modal->cards->count > 0) {
-        // Calculate actual grid width for centering
-        // Grid: 6 cols * 75px cards + 5 * 10px spacing = 500px
-        int actual_grid_width = CARD_GRID_COLS * CARD_GRID_CARD_WIDTH + (CARD_GRID_COLS - 1) * CARD_GRID_SPACING;
+        // Apply card scaling for proper spacing
+        float card_scale = GetCardScale();
+        float scaled_card_width = CARD_GRID_CARD_WIDTH * card_scale;
+        float scaled_card_height = CARD_GRID_CARD_HEIGHT * card_scale;
+        float scaled_spacing = CARD_GRID_SPACING * card_scale;
+
+        // Calculate actual grid width using SCALED dimensions for centering
+        int actual_grid_width = CARD_GRID_COLS * scaled_card_width + (CARD_GRID_COLS - 1) * scaled_spacing;
 
         // Center grid horizontally in modal (leaving room for scrollbar)
         int grid_x = modal_x + (MODAL_WIDTH - SCROLLBAR_WIDTH - 20 - actual_grid_width) / 2;
@@ -359,25 +375,25 @@ void RenderCardGridModal(CardGridModal_t* modal) {
                 }
             }
 
-            // Calculate position
+            // Calculate position (use scaled spacing!)
             int col = i % CARD_GRID_COLS;
             int row = i / CARD_GRID_COLS;
-            int x = grid_x + col * (CARD_GRID_CARD_WIDTH + CARD_GRID_SPACING);
-            int y = grid_y + row * (CARD_GRID_CARD_HEIGHT + CARD_GRID_SPACING) - modal->scroll_offset;
+            int x = grid_x + col * (scaled_card_width + scaled_spacing);
+            int y = grid_y + row * (scaled_card_height + scaled_spacing) - modal->scroll_offset;
 
-            // Skip if off-screen
-            if (y + CARD_GRID_CARD_HEIGHT < panel_body_y || y > panel_body_y + panel_body_height) {
+            // Skip if off-screen (use scaled height!)
+            if (y + scaled_card_height < panel_body_y || y > panel_body_y + panel_body_height) {
                 continue;
             }
 
             // Draw card - ALWAYS show face (ignore card->face_up, this is a viewer)
             if (card->texture && card->texture->surface) {
                 aRectf_t src = {0, 0, card->texture->surface->w, card->texture->surface->h};
-                aRectf_t dest = {x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT};
+                aRectf_t dest = {x, y, scaled_card_width, scaled_card_height};
                 a_BlitRect(card->texture, &src, &dest, 1.0f);
             } else {
-                a_DrawFilledRect((aRectf_t){x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT}, (aColor_t){200, 200, 200, 255});
-                a_DrawRect((aRectf_t){x, y, CARD_GRID_CARD_WIDTH, CARD_GRID_CARD_HEIGHT}, (aColor_t){100, 100, 100, 255});
+                a_DrawFilledRect((aRectf_t){x, y, scaled_card_width, scaled_card_height}, (aColor_t){200, 200, 200, 255});
+                a_DrawRect((aRectf_t){x, y, scaled_card_width, scaled_card_height}, (aColor_t){100, 100, 100, 255});
             }
 
             // Draw tag badge on top-right of card
@@ -425,19 +441,23 @@ void RenderCardGridModal(CardGridModal_t* modal) {
             Card_t* card = (Card_t*)d_ArrayGet(modal->cards, card_idx);
 
             if (card && card->texture) {
-                // Calculate base position in grid
+                // Calculate base position in grid (use scaled spacing!)
                 int col = i % CARD_GRID_COLS;
                 int row = i / CARD_GRID_COLS;
-                int base_x = grid_x + col * (CARD_GRID_CARD_WIDTH + CARD_GRID_SPACING);
-                int base_y = grid_y + row * (CARD_GRID_CARD_HEIGHT + CARD_GRID_SPACING) - modal->scroll_offset;
+                int base_x = grid_x + col * (scaled_card_width + scaled_spacing);
+                int base_y = grid_y + row * (scaled_card_height + scaled_spacing) - modal->scroll_offset;
 
-                // Enlarged size (1.5x scale, like hand hover)
-                int hover_w = (int)(CARD_GRID_CARD_WIDTH * HOVER_CARD_SCALE);
-                int hover_h = (int)(CARD_GRID_CARD_HEIGHT * HOVER_CARD_SCALE);
+                // Base card dimensions (already scaled)
+                float base_width = scaled_card_width;
+                float base_height = scaled_card_height;
+
+                // Enlarged size (1.5x hover scale on top of card scale)
+                int hover_w = (int)(base_width * HOVER_CARD_SCALE);
+                int hover_h = (int)(base_height * HOVER_CARD_SCALE);
 
                 // Center enlarged card on its base position (not mouse)
-                int hover_x = base_x + (CARD_GRID_CARD_WIDTH - hover_w) / 2;
-                int hover_y = base_y + (CARD_GRID_CARD_HEIGHT - hover_h) / 2;
+                int hover_x = base_x + ((int)base_width - hover_w) / 2;
+                int hover_y = base_y + ((int)base_height - hover_h) / 2;
 
                 // Draw enlarged card
                 if (card->texture->surface) {
@@ -487,11 +507,11 @@ void RenderCardGridModal(CardGridModal_t* modal) {
             Card_t* card = (Card_t*)d_ArrayGet(modal->cards, card_idx);
 
             if (card) {
-                // Calculate card position in grid
+                // Calculate card position in grid (use scaled spacing!)
                 int col = i % CARD_GRID_COLS;
                 int row = i / CARD_GRID_COLS;
-                int card_x = grid_x + col * (CARD_GRID_CARD_WIDTH + CARD_GRID_SPACING);
-                int card_y = grid_y + row * (CARD_GRID_CARD_HEIGHT + CARD_GRID_SPACING) - modal->scroll_offset;
+                int card_x = grid_x + col * (scaled_card_width + scaled_spacing);
+                int card_y = grid_y + row * (scaled_card_height + scaled_spacing) - modal->scroll_offset;
 
                 // Flip tooltip left for last 2 columns (columns 4 and 5 in 6-column grid)
                 bool force_left = (col >= CARD_GRID_COLS - 2);

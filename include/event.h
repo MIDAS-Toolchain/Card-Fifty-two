@@ -143,7 +143,7 @@ typedef struct EventChoice {
     ChoiceRequirement_t requirement;     // Requirement to unlock this choice (defaults to REQUIREMENT_NONE)
 
     // Enemy combat modifiers (applied when transitioning to combat after event)
-    float enemy_hp_multiplier;           // HP multiplier for next enemy (1.0 = normal, 0.75 = 75% HP, 1.5 = 150% HP)
+    float next_enemy_hp_multi;           // HP multiplier for NEXT enemy only (1.0 = normal, 0.75 = 75% HP, 1.5 = 150% HP) - NOT permanent!
 
     // Trinket reward system (DUF-based with pre-rolled affixes)
     char trinket_reward_key[64];         // Trinket key from DUF (e.g., "elite_membership", "stack_trace", "" = none)
@@ -483,5 +483,39 @@ typedef struct EventRegistryEntry {
  * Used by terminal autocomplete and command execution.
  */
 const EventRegistryEntry_t* GetEventRegistry(int* out_count);
+
+// ============================================================================
+// STRING TO ENUM CONVERTERS (For DUF Parsing)
+// ============================================================================
+
+/**
+ * EventTypeFromString - Convert string to EventType_t enum
+ *
+ * @param str - String value from DUF (e.g., "choice", "dialogue", "blessing")
+ * @return EventType_t - Enum value, defaults to EVENT_TYPE_CHOICE if unknown
+ *
+ * Used by eventLoader.c to parse event type from DUF files.
+ */
+EventType_t EventTypeFromString(const char* str);
+
+/**
+ * TagTargetStrategyFromString - Convert string to TagTargetStrategy_t enum
+ *
+ * @param str - String value from DUF (e.g., "RANDOM_CARD", "SUIT_HEARTS", "RANK_ACES")
+ * @return TagTargetStrategy_t - Enum value, defaults to TAG_TARGET_RANDOM_CARD if unknown
+ *
+ * Used by eventLoader.c to parse tag targeting strategies from DUF files.
+ */
+TagTargetStrategy_t TagTargetStrategyFromString(const char* str);
+
+/**
+ * RequirementTypeFromString - Convert string to RequirementType_t enum
+ *
+ * @param str - String value from DUF (e.g., "TAG_COUNT", "SANITY_THRESHOLD", "CHIPS_THRESHOLD")
+ * @return RequirementType_t - Enum value, defaults to REQUIREMENT_NONE if unknown
+ *
+ * Used by eventLoader.c to parse requirement types from DUF files.
+ */
+RequirementType_t RequirementTypeFromString(const char* str);
 
 #endif // EVENT_H

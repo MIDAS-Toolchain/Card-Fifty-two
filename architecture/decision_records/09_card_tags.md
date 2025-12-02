@@ -88,9 +88,9 @@ void AddCardToHand(Hand_t* hand, Card_t card) {
 void UpdateCombatBonuses(GameContext_t* game) {
     if (!game->combat_bonuses_dirty) return;  // Skip if valid
     
-    // Scan all hands for LUCKY/BRUTAL tags
+    // Scan all hands for LUCKY/JAGGED tags
     game->global_crit_bonus = CountTagsInPlay(CARD_TAG_LUCKY) * 10;
-    game->global_damage_bonus = CountTagsInPlay(CARD_TAG_BRUTAL) * 10;
+    game->global_damage_bonus = CountTagsInPlay(CARD_TAG_JAGGED) * 10;
     
     game->combat_bonuses_dirty = false;  // Cache now valid
 }
@@ -101,3 +101,69 @@ void UpdateCombatBonuses(GameContext_t* game) {
 - CURSED/VAMPIRIC trigger exactly once per card draw (logged)
 - LUCKY/BRUTAL bonuses update within 1 frame of hand change
 - Fitness function verifies all AddCardToHand/RemoveCardFromHand set dirty flag
+
+---
+
+## Evolution: DUF Migration (ADR-021)
+
+**Date:** 2025-11-30
+
+**Change:** Tag metadata (names, colors, descriptions) migrated from hardcoded C to DUF data files.
+
+**Before (Hardcoded):**
+```c
+const char* GetCardTagName(CardTag_t tag) {
+    switch (tag) {
+        case CARD_TAG_CURSED: return "Cursed";
+        case CARD_TAG_LUCKY: return "Lucky";
+        // ... hardcoded for all 5 tags
+    }
+}
+```
+
+**After (DUF-Based):**
+```c
+// src/cardTags.c
+const char* GetCardTagName(CardTag_t tag) {
+    return GetTagDisplayName(tag);  // Delegates to DUF loader
+}
+
+// data/card_tags/tags.duf
+@cursed {
+    display_name: "Cursed"
+    description: "10 damage to enemy when drawn"
+    color_r: 165
+    color_g: 48
+    color_b: 48
+    trigger: { type: "on_draw" }
+    effects: [ { type: "damage_enemy", value: 10 } ]
+}
+```
+
+**Rationale:**
+- **Consistency:** Events, trinkets, enemies all use DUF (ADR-019 pattern)
+- **Declarative:** Trigger/effect structure matches enemy abilities
+- **Flexibility:** Easy to tweak display text/colors without recompiling
+
+**What Stayed in C (ADR-09 Core):**
+- `CardTag_t` enum (5 fixed tags: CURSED, VAMPIRIC, LUCKY, BRUTAL, DOUBLED)
+- Tag effect execution logic (`ProcessCardTagEffects()`)
+- Event-driven triggers (GAME_EVENT_CARD_DRAWN for on-draw tags)
+- Dirty-flag aggregation (passive tag bonuses)
+
+**What Moved to DUF (ADR-021):**
+- Display names ("Cursed", "Lucky", etc.)
+- RGB color values (165,48,48 for CURSED, etc.)
+- Effect descriptions ("10 damage to enemy when drawn")
+- Trigger metadata (type: "on_draw" vs "passive", scope, duration)
+
+**Architecture Impact:**
+- **Loader Created:** `src/loaders/cardTagLoader.c` (400 lines, ADR-019 compliant)
+- **Startup Validation:** `ValidateCardTagDatabase()` ensures all 5 tags present
+- **Fitness Function Updated:** FF-009 now checks for DUF loader calls (not switch statements)
+
+**See Also:**
+- ADR-019 (On-Demand DUF Loader Pattern)
+- ADR-021 (Card Tag DUF Migration) - full implementation details
+- `data/card_tags/tags.duf` - tag definitions
+- `src/loaders/cardTagLoader.c` - loader implementation

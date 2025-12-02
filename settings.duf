@@ -2,9 +2,9 @@
 # Auto-generated - do not edit while game is running
 
 # Audio Settings
-sound_volume=90
-music_volume=90
-ui_volume=80
+sound_volume=100
+music_volume=100
+ui_volume=100
 sound_enabled=true
 music_enabled=true
 
@@ -19,4 +19,4 @@ screen_shake=true
 ui_scale=0
 
 # Graphics Settings
-resolution_index=1
+resolution_index=2

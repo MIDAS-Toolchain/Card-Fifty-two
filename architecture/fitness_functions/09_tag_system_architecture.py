@@ -27,7 +27,7 @@ ON_DRAW_TAGS = {
 
 PASSIVE_TAGS = {
     "CARD_TAG_LUCKY",     # +10% crit while in any hand (global)
-    "CARD_TAG_BRUTAL",    # +10% damage while in any hand (global)
+    "CARD_TAG_JAGGED",    # +10% damage while in any hand (global)
 }
 
 ONE_TIME_TAGS = {
@@ -51,7 +51,7 @@ EXPECTED_DESCRIPTIONS = {
     "CARD_TAG_CURSED": "10 damage to enemy when drawn",
     "CARD_TAG_VAMPIRIC": "5 damage + 5 chips when drawn",
     "CARD_TAG_LUCKY": "+10% crit while in any hand",
-    "CARD_TAG_BRUTAL": "+10% damage while in any hand",
+    "CARD_TAG_JAGGED": "+10% damage while in any hand",
     "CARD_TAG_DOUBLED": "Counts twice for hand value"
 }
 
@@ -134,7 +134,7 @@ def verify_tag_definitions(project_root: Path) -> bool:
 
 
 def verify_helper_functions(project_root: Path) -> bool:
-    """Verify all tags have GetCardTagName/Color/Description cases"""
+    """Verify all tags have GetCardTagName/Color/Description cases (supports both hardcoded and DUF-based)"""
     cardtags_c = project_root / "src" / "cardTags.c"
 
     if not cardtags_c.exists():
@@ -150,33 +150,62 @@ def verify_helper_functions(project_root: Path) -> bool:
 
     actual_tags = sorted(tags - {"CARD_TAG_MAX"})
 
-    print("📋 Verifying helper functions for each tag:")
+    # Detect DUF loader pattern (ADR-021)
+    uses_duf_loader = ("GetTagDisplayName" in content and
+                       "GetTagColor" in content and
+                       "GetTagDescription" in content)
+
+    if uses_duf_loader:
+        print("📋 Verifying helper functions (DUF-based pattern, ADR-021):")
+    else:
+        print("📋 Verifying helper functions (hardcoded pattern):")
     print()
 
     all_good = True
 
-    for tag in actual_tags:
-        has_name = f"case {tag}:" in content and "GetCardTagName" in content
-        has_color = f"case {tag}:" in content and "GetCardTagColor" in content
-        has_desc = f"case {tag}:" in content and "GetCardTagDescription" in content
+    if uses_duf_loader:
+        # DUF pattern: functions delegate to loader (check once, applies to all tags)
+        has_name_impl = "GetTagDisplayName" in content
+        has_color_impl = "GetTagColor" in content
+        has_desc_impl = "GetTagDescription" in content
 
-        if has_name and has_color and has_desc:
-            print(f"   ✅ {tag} - name/color/description all present")
+        if has_name_impl and has_color_impl and has_desc_impl:
+            print("   ✅ All tags use DUF loader (GetTagDisplayName/Color/Description)")
+            print(f"      Verified for {len(actual_tags)} tags: {', '.join(actual_tags)}")
         else:
-            print(f"   ❌ {tag} - missing:", end="")
-            if not has_name:
-                print(" name", end="")
-            if not has_color:
-                print(" color", end="")
-            if not has_desc:
-                print(" description", end="")
-            print()
+            print(f"   ❌ DUF loader incomplete:")
+            if not has_name_impl:
+                print("      Missing: GetTagDisplayName() call")
+            if not has_color_impl:
+                print("      Missing: GetTagColor() call")
+            if not has_desc_impl:
+                print("      Missing: GetTagDescription() call")
             all_good = False
+    else:
+        # Legacy pattern: check switch statements for each tag
+        for tag in actual_tags:
+            has_name = f"case {tag}:" in content and "GetCardTagName" in content
+            has_color = f"case {tag}:" in content and "GetCardTagColor" in content
+            has_desc = f"case {tag}:" in content and "GetCardTagDescription" in content
+
+            if has_name and has_color and has_desc:
+                print(f"   ✅ {tag} - name/color/description all present")
+            else:
+                print(f"   ❌ {tag} - missing:", end="")
+                if not has_name:
+                    print(" name", end="")
+                if not has_color:
+                    print(" color", end="")
+                if not has_desc:
+                    print(" description", end="")
+                print()
+                all_good = False
 
     print()
 
     if all_good:
-        print("✅ All tags have name/color/description helpers")
+        pattern = "DUF loader" if uses_duf_loader else "hardcoded switch statements"
+        print(f"✅ All tags have name/color/description helpers ({pattern})")
         print()
     else:
         print("❌ FAIL: Some tags missing helper functions")
@@ -186,57 +215,114 @@ def verify_helper_functions(project_root: Path) -> bool:
 
 
 def verify_tag_descriptions(project_root: Path) -> bool:
-    """Verify tag descriptions match ADR-09 documentation"""
+    """Verify tag descriptions match ADR-09 documentation (supports both hardcoded and DUF-based)"""
+
+    # Check if using DUF loader pattern
     cardtags_c = project_root / "src" / "cardTags.c"
-    content = cardtags_c.read_text()
+    cardtags_content = cardtags_c.read_text()
+    uses_duf_loader = "GetTagDescription" in cardtags_content
 
-    # Find GetCardTagDescription function
-    desc_pattern = r'const char\* GetCardTagDescription\(CardTag_t tag\)\s*\{([^}]+)\}'
-    match = re.search(desc_pattern, content, re.DOTALL)
+    if uses_duf_loader:
+        # DUF-based: check data/card_tags/tags.duf
+        tags_duf = project_root / "data" / "card_tags" / "tags.duf"
+        if not tags_duf.exists():
+            print(f"❌ FATAL: DUF loader detected but {tags_duf} not found")
+            return False
 
-    if not match:
-        print("❌ FATAL: Could not parse GetCardTagDescription()")
-        return False
+        duf_content = tags_duf.read_text()
+        print("📋 Verifying tag descriptions match ADR-09 (DUF-based):")
+        print()
 
-    func_body = match.group(1)
+        all_match = True
 
-    print("📋 Verifying tag descriptions match ADR-09:")
-    print()
+        for tag, expected_desc in EXPECTED_DESCRIPTIONS.items():
+            # Convert CARD_TAG_CURSED → cursed
+            tag_key = tag.replace("CARD_TAG_", "").lower()
 
-    all_match = True
+            # Find description in DUF file
+            # Pattern: @cursed { ... description: "10 damage to enemy when drawn" ... }
+            desc_pattern = rf'@{tag_key}\s*\{{[^}}]*description:\s*"([^"]+)"'
+            match = re.search(desc_pattern, duf_content, re.DOTALL)
 
-    for tag, expected_desc in EXPECTED_DESCRIPTIONS.items():
-        # Find the return statement for this tag
-        case_pattern = rf'case {tag}:\s*return\s+"([^"]+)"'
-        case_match = re.search(case_pattern, func_body)
+            if not match:
+                print(f"   ❌ {tag} - description not found in tags.duf")
+                all_match = False
+                continue
 
-        if not case_match:
-            print(f"   ❌ {tag} - description not found")
-            all_match = False
-            continue
+            actual_desc = match.group(1)
 
-        actual_desc = case_match.group(1)
+            # Normalize for comparison
+            if actual_desc.lower().strip() == expected_desc.lower().strip():
+                print(f"   ✅ {tag}")
+                print(f"      \"{actual_desc}\"")
+            else:
+                print(f"   ❌ {tag} - description mismatch")
+                print(f"      Expected: \"{expected_desc}\"")
+                print(f"      Actual:   \"{actual_desc}\"")
+                all_match = False
 
-        # Normalize for comparison (case-insensitive, strip whitespace)
-        if actual_desc.lower().strip() == expected_desc.lower().strip():
-            print(f"   ✅ {tag}")
-            print(f"      \"{actual_desc}\"")
+        print()
+
+        if all_match:
+            print("✅ All tag descriptions match ADR-09 (validated from DUF)")
+            print()
         else:
-            print(f"   ❌ {tag} - description mismatch")
-            print(f"      Expected: \"{expected_desc}\"")
-            print(f"      Actual:   \"{actual_desc}\"")
-            all_match = False
+            print("❌ FAIL: Tag descriptions don't match ADR-09")
+            print()
 
-    print()
+        return all_match
 
-    if all_match:
-        print("✅ All tag descriptions match ADR-09")
-        print()
     else:
-        print("❌ FAIL: Tag descriptions don't match ADR-09")
+        # Legacy hardcoded pattern: check switch statements in cardTags.c
+        content = cardtags_content
+
+        # Find GetCardTagDescription function
+        desc_pattern = r'const char\* GetCardTagDescription\(CardTag_t tag\)\s*\{([^}]+)\}'
+        match = re.search(desc_pattern, content, re.DOTALL)
+
+        if not match:
+            print("❌ FATAL: Could not parse GetCardTagDescription()")
+            return False
+
+        func_body = match.group(1)
+
+        print("📋 Verifying tag descriptions match ADR-09 (hardcoded):")
         print()
 
-    return all_match
+        all_match = True
+
+        for tag, expected_desc in EXPECTED_DESCRIPTIONS.items():
+            # Find the return statement for this tag
+            case_pattern = rf'case {tag}:\s*return\s+"([^"]+)"'
+            case_match = re.search(case_pattern, func_body)
+
+            if not case_match:
+                print(f"   ❌ {tag} - description not found")
+                all_match = False
+                continue
+
+            actual_desc = case_match.group(1)
+
+            # Normalize for comparison (case-insensitive, strip whitespace)
+            if actual_desc.lower().strip() == expected_desc.lower().strip():
+                print(f"   ✅ {tag}")
+                print(f"      \"{actual_desc}\"")
+            else:
+                print(f"   ❌ {tag} - description mismatch")
+                print(f"      Expected: \"{expected_desc}\"")
+                print(f"      Actual:   \"{actual_desc}\"")
+                all_match = False
+
+        print()
+
+        if all_match:
+            print("✅ All tag descriptions match ADR-09")
+            print()
+        else:
+            print("❌ FAIL: Tag descriptions don't match ADR-09")
+            print()
+
+        return all_match
 
 
 def verify_on_draw_pattern(project_root: Path) -> bool:

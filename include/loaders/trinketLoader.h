@@ -51,13 +51,17 @@ dDUFError_t* LoadTrinketDatabase(const char* filepath, dDUFValue_t** out_db);
 bool PopulateTrinketTemplates(dDUFValue_t* trinkets_db);
 
 /**
- * MergeTrinketDatabases - Combine multiple DUF databases (combat + event)
+ * PopulateAllTrinketTemplates - Load all trinket DUFs into global registry
  *
- * @param combat_db - Combat trinkets database
- * @param event_db - Event trinkets database
+ * @param databases - Array of dDUFValue_t* (all trinket DUF files to load)
+ * @return bool - Success/failure
  *
- * Populates g_trinket_templates from both databases.
- * Call after loading both DUF files.
+ * Extensible system for modular trinket packs. Replaces old MergeTrinketDatabases.
+ */
+bool PopulateAllTrinketTemplates(dArray_t* databases);
+
+/**
+ * MergeTrinketDatabases - DEPRECATED: Use PopulateAllTrinketTemplates instead
  */
 bool MergeTrinketDatabases(dDUFValue_t* combat_db, dDUFValue_t* event_db);
 

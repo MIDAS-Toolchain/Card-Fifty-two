@@ -24,11 +24,43 @@
  *
  * Example: Loaded Dice (+5 chips on win)
  */
-static void ExecuteAddChips(Player_t* player, int value) {
-    if (!player || value <= 0) return;
+static void ExecuteAddChips(Player_t* player, TrinketInstance_t* instance, int value) {
+    if (!player || !instance || value <= 0) return;
 
     player->chips += value;
+
+    // Track total bonus chips for stats (pattern matches Stack Trace damage tracking)
+    instance->total_bonus_chips += value;
+
     d_LogInfoF("Trinket effect: +%d chips (total: %d)", value, player->chips);
+}
+
+/**
+ * ExecuteAddChipsPercent - Add percentage of bet as bonus chips
+ *
+ * Example: Elite Membership (+20% of bet on win)
+ */
+static void ExecuteAddChipsPercent(Player_t* player, TrinketInstance_t* instance, int percent) {
+    if (!player || !instance || percent <= 0) return;
+
+    int bet_amount = player->current_bet;
+    d_LogInfoF("🎰 ExecuteAddChipsPercent: bet=%d, percent=%d", bet_amount, percent);
+
+    if (bet_amount <= 0) {
+        d_LogWarning("ExecuteAddChipsPercent: No active bet (current_bet=0)");
+        return;
+    }
+
+    int bonus = (bet_amount * percent) / 100;
+    if (bonus <= 0) return;
+
+    player->chips += bonus;
+
+    // Track total bonus chips for stats
+    instance->total_bonus_chips += bonus;
+
+    d_LogInfoF("🎰 Trinket effect: +%d%% of bet = +%d chips (chips: %d, total_bonus_chips: %d)",
+               percent, bonus, player->chips, instance->total_bonus_chips);
 }
 
 /**
@@ -76,45 +108,98 @@ static void ExecuteClearStatus(Player_t* player, const char* status_key) {
 /**
  * ExecuteTrinketStack - Increment trinket's stack counter
  *
- * Example: Broken Watch (+1 stack on combat start, +2% damage per stack, max 12)
+ * Example: Broken Watch (+1 stack on combat start, +2% damage per stack, max 12, loops to 1)
+ *          Streak Counter (+1 stack on win, +4% crit per stack, infinite stacks)
  */
-static void ExecuteTrinketStack(TrinketInstance_t* instance, const TrinketTemplate_t* template) {
+static void ExecuteTrinketStack(TrinketInstance_t* instance, const TrinketTemplate_t* template, Player_t* player) {
     if (!instance || !template) return;
 
-    // Check if already at max stacks
-    if (instance->trinket_stacks >= instance->trinket_stack_max) {
-        d_LogDebugF("Trinket %s already at max stacks (%d/%d)",
-                    d_StringPeek(template->name),
-                    instance->trinket_stacks,
-                    instance->trinket_stack_max);
-        return;
+    // Check if already at max stacks (0 = infinite, no cap)
+    if (template->passive_stack_max > 0 && instance->trinket_stacks >= template->passive_stack_max) {
+        // Check for loop behavior (Broken Watch: reset_to_one)
+        const char* on_max = template->passive_stack_on_max ?
+                             d_StringPeek(template->passive_stack_on_max) : NULL;
+
+        if (on_max && strcmp(on_max, "reset_to_one") == 0) {
+            instance->trinket_stacks = 1;  // Loop back to 1
+            d_LogInfoF("⏰ Trinket %s reached max, looping to 1! (time loops!)",
+                       d_StringPeek(template->name));
+        } else {
+            // Stay capped at max (current behavior)
+            d_LogDebugF("Trinket %s already at max stacks (%d/%d)",
+                        d_StringPeek(template->name),
+                        instance->trinket_stacks,
+                        template->passive_stack_max);
+            return;
+        }
+    } else {
+        // Increment stack (normal case or infinite scaling)
+        instance->trinket_stacks++;
     }
 
-    // Increment stack
-    instance->trinket_stacks++;
+    // Track highest streak (ONLY for infinite stack trinkets like Streak Counter)
+    // Broken Watch has a max, so it doesn't track streaks
+    if (template->passive_stack_max == 0 && instance->trinket_stacks > instance->highest_streak) {
+        instance->highest_streak = instance->trinket_stacks;
+    }
 
-    d_LogInfoF("Trinket %s gained stack: %d/%d (+%d%% %s per stack)",
-               d_StringPeek(template->name),
-               instance->trinket_stacks,
-               instance->trinket_stack_max,
-               instance->trinket_stack_value,
-               d_StringPeek(instance->trinket_stack_stat));
+    if (template->passive_stack_max == 0) {
+        d_LogInfoF("Trinket %s gained stack: %d/∞ (+%d%% %s per stack)",
+                   d_StringPeek(template->name),
+                   instance->trinket_stacks,
+                   instance->trinket_stack_value,
+                   d_StringPeek(instance->trinket_stack_stat));
+    } else {
+        d_LogInfoF("Trinket %s gained stack: %d/%d (+%d%% %s per stack)",
+                   d_StringPeek(template->name),
+                   instance->trinket_stacks,
+                   template->passive_stack_max,
+                   instance->trinket_stack_value,
+                   d_StringPeek(instance->trinket_stack_stat));
+    }
 
-    // Mark combat stats dirty for recalculation
-    // TODO: Set player->combat_stats_dirty when stat aggregation is implemented
+    // Mark combat stats dirty for recalculation (ADR-09: Dirty-flag aggregation)
+    if (player) {
+        player->combat_stats_dirty = true;
+        d_LogDebug("Trinket stack changed - marked combat_stats_dirty for recalculation");
+    }
+}
+
+/**
+ * ExecuteTrinketStackReset - Reset trinket's stacks to 0
+ *
+ * Example: Streak Counter (reset all stacks on loss)
+ */
+static void ExecuteTrinketStackReset(TrinketInstance_t* instance, const TrinketTemplate_t* template, Player_t* player) {
+    if (!instance || !template) return;
+
+    int old_stacks = instance->trinket_stacks;
+    instance->trinket_stacks = 0;
+
+    d_LogInfoF("💔 Trinket %s stack reset: %d → 0 (lost streak!)",
+               d_StringPeek(template->name), old_stacks);
+
+    // Mark combat stats dirty for recalculation (ADR-09: Dirty-flag aggregation)
+    if (player) {
+        player->combat_stats_dirty = true;
+        d_LogDebug("Trinket stacks reset - marked combat_stats_dirty for recalculation");
+    }
 }
 
 /**
  * ExecuteRefundChipsPercent - Refund % of bet to player
  *
- * Example: Tarnished Medal (15% refund on bust)
+ * Example: Tarnished Medal (15% refund on bust), Elite Membership (20% refund on loss)
  */
-static void ExecuteRefundChipsPercent(Player_t* player, GameContext_t* game, int percent) {
-    if (!player || !game || percent <= 0) return;
+static void ExecuteRefundChipsPercent(Player_t* player, GameContext_t* game, TrinketInstance_t* instance, int percent) {
+    if (!player || !game || !instance || percent <= 0) return;
 
     int bet_amount = player->current_bet;
+    d_LogInfoF("💰 ExecuteRefundChipsPercent: bet=%d, percent=%d, chips_before=%d",
+               bet_amount, percent, player->chips);
+
     if (bet_amount <= 0) {
-        d_LogDebug("ExecuteRefundChipsPercent: No active bet to refund");
+        d_LogWarning("ExecuteRefundChipsPercent: No active bet to refund (current_bet=0)");
         return;
     }
 
@@ -122,8 +207,12 @@ static void ExecuteRefundChipsPercent(Player_t* player, GameContext_t* game, int
     if (refund <= 0) return;
 
     player->chips += refund;
-    d_LogInfoF("Trinket effect: Refund %d%% of bet = +%d chips (total: %d)",
-               percent, refund, player->chips);
+
+    // Track total refunded chips for stats (pattern matches Stack Trace damage tracking)
+    instance->total_refunded_chips += refund;
+
+    d_LogInfoF("💰 Trinket effect: Refund %d%% of bet = +%d chips (chips: %d, total_refunded_chips: %d)",
+               percent, refund, player->chips, instance->total_refunded_chips);
 }
 
 /**
@@ -140,19 +229,18 @@ static void ExecuteAddDamageFlat(Player_t* player, GameContext_t* game, TrinketI
         return;
     }
 
-    int old_hp = game->current_enemy->current_hp;
+    // Apply combat stat modifiers (damage%, flat damage, crit) - same as regular combat damage
+    bool is_crit = false;
+    int modified_damage = ApplyPlayerDamageModifiers(player, damage, &is_crit);
 
-    // Apply damage to enemy
-    game->current_enemy->current_hp -= damage;
-    if (game->current_enemy->current_hp < 0) {
-        game->current_enemy->current_hp = 0;
-    }
+    // Apply damage to enemy (uses TakeDamage for consistency)
+    TakeDamage(game->current_enemy, modified_damage);
 
-    // Track total damage for trinket stats
-    instance->total_damage_dealt += damage;
+    // Track modified damage for trinket stats (tracks actual damage dealt, not base)
+    instance->total_damage_dealt += modified_damage;
 
     // Record for stats system
-    Stats_RecordDamage(damage, DAMAGE_SOURCE_TRINKET_PASSIVE);
+    Stats_RecordDamage(DAMAGE_SOURCE_TRINKET_PASSIVE, modified_damage);
 
     // Trigger visual feedback
     TweenEnemyHP(game->current_enemy);  // Smooth HP bar drain animation
@@ -170,14 +258,14 @@ static void ExecuteAddDamageFlat(Player_t* player, GameContext_t* game, TrinketI
     // Spawn damage number via visual effects component
     VisualEffects_t* vfx = GetVisualEffects();
     if (vfx) {
-        VFX_SpawnDamageNumber(vfx, damage,
+        VFX_SpawnDamageNumber(vfx, modified_damage,
                              SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
                              ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
-                             false, false, false);  // Not healing, not crit, not rake
+                             false, is_crit, false);  // Pass crit flag from modifiers
     }
 
-    d_LogInfoF("📊 Trinket effect: Deal %d flat damage to enemy (HP: %d → %d)",
-               damage, old_hp, game->current_enemy->current_hp);
+    d_LogInfoF("📊 Trinket effect: Deal %d damage (base: %d, modified: %d) - Enemy HP: %d",
+               modified_damage, damage, modified_damage, game->current_enemy->current_hp);
 }
 
 /**
@@ -277,7 +365,18 @@ void ExecuteTrinketEffect(
             break;
 
         case TRINKET_EFFECT_ADD_CHIPS:
-            ExecuteAddChips(player, effect_value);
+            ExecuteAddChips(player, instance, effect_value);
+            break;
+
+        case TRINKET_EFFECT_ADD_CHIPS_PERCENT:
+            // Win bonuses now applied centrally in game.c using player->win_bonus_percent
+            // Still track stats for trinket tooltip (but don't add chips again)
+            if (player->current_bet > 0) {
+                int bonus_for_this_trinket = (player->current_bet * effect_value) / 100;
+                instance->total_bonus_chips += bonus_for_this_trinket;
+                d_LogDebugF("Trinket %s tracking: +%d bonus chips (tooltip stat only)",
+                           d_StringPeek(template->name), bonus_for_this_trinket);
+            }
             break;
 
         case TRINKET_EFFECT_LOSE_CHIPS:
@@ -297,11 +396,22 @@ void ExecuteTrinketEffect(
             break;
 
         case TRINKET_EFFECT_TRINKET_STACK:
-            ExecuteTrinketStack(instance, template);
+            ExecuteTrinketStack(instance, template, player);
+            break;
+
+        case TRINKET_EFFECT_TRINKET_STACK_RESET:
+            ExecuteTrinketStackReset(instance, template, player);
             break;
 
         case TRINKET_EFFECT_REFUND_CHIPS_PERCENT:
-            ExecuteRefundChipsPercent(player, game, effect_value);
+            // Loss refunds now applied centrally in game.c using player->loss_refund_percent
+            // Still track stats for trinket tooltip (but don't add chips again)
+            if (player->current_bet > 0) {
+                int refund_for_this_trinket = (player->current_bet * effect_value) / 100;
+                instance->total_refunded_chips += refund_for_this_trinket;
+                d_LogDebugF("Trinket %s tracking: +%d refunded chips (tooltip stat only)",
+                           d_StringPeek(template->name), refund_for_this_trinket);
+            }
             break;
 
         case TRINKET_EFFECT_BUFF_TAG_DAMAGE:
@@ -317,9 +427,15 @@ void ExecuteTrinketEffect(
             break;
 
         case TRINKET_EFFECT_DAMAGE_MULTIPLIER:
-        case TRINKET_EFFECT_PUSH_DAMAGE_PERCENT:
-            // These will be handled by stat aggregation system (Phase 6)
+            // Handled by stat aggregation system (damage_percent modifier)
             d_LogDebugF("Trinket effect %d deferred to stat aggregation", effect_type);
+            break;
+
+        case TRINKET_EFFECT_PUSH_DAMAGE_PERCENT:
+            // Push damage tracking happens in game.c AFTER damage modifiers are applied
+            // (Similar to how Stack Trace tracks at point of damage application)
+            // This ensures tooltip shows actual modified damage, not base contribution
+            d_LogDebugF("Trinket effect %d deferred to damage application (tracks modified damage)", effect_type);
             break;
 
         default:

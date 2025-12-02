@@ -22,7 +22,7 @@ typedef enum {
     CARD_TAG_CURSED,     // 10 damage to enemy when drawn
     CARD_TAG_VAMPIRIC,   // 5 damage + 5 chips when drawn
     CARD_TAG_LUCKY,      // +10% crit while in any hand (global passive)
-    CARD_TAG_BRUTAL,     // +10% damage while in any hand (global passive)
+    CARD_TAG_JAGGED,     // +10% damage while in any hand (global passive)
     CARD_TAG_DOUBLED,    // Value doubled this hand (one-time, removed after calculation)
     CARD_TAG_MAX
 } CardTag_t;
@@ -196,6 +196,16 @@ const char* GetCardFlavorText(int card_id);
  * @return const char* tag name ("Cursed", "Blessed", etc.)
  */
 const char* GetCardTagName(CardTag_t tag);
+
+/**
+ * CardTagFromString - Convert string to tag enum
+ *
+ * @param str - Tag name string ("CURSED", "LUCKY", etc.)
+ * @return CardTag_t - Tag enum (defaults to CARD_TAG_CURSED on unknown)
+ *
+ * Used by DUF loaders to parse tag names from data files.
+ */
+CardTag_t CardTagFromString(const char* str);
 
 /**
  * GetCardRarityName - Convert rarity enum to string

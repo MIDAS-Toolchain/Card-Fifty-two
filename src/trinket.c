@@ -6,7 +6,7 @@
 #include "../include/trinket.h"
 #include "../include/player.h"
 #include "../include/trinkets/degenerateGambit.h"
-#include "../include/trinkets/eliteMembership.h"
+// Elite Membership now loaded from DUF (data/trinkets/event_trinkets.duf)
 #include "../include/trinkets/stackTrace.h"
 #include "../include/scenes/sceneBlackjack.h"  // For GetTweenManager
 #include "../include/tween/tween.h"            // For TweenFloat, TWEEN_EASE_*
@@ -47,7 +47,7 @@ void InitTrinketSystem(void) {
 
     // Register all trinket templates
     CreateDegenerateGambitTrinket();  // ID 0 - Degenerate starter trinket
-    CreateEliteMembershipTrinket();   // ID 1 - Elite Membership (House Odds event)
+    // Elite Membership (ID 1) now loaded from DUF (data/trinkets/event_trinkets.duf)
     CreateStackTraceTrinket();        // ID 2 - Stack Trace (System Maintenance event)
 }
 
@@ -310,21 +310,47 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
 
         // Check primary passive trigger
         if (template->passive_trigger == event) {
-            d_LogInfoF("Triggering DUF trinket passive: %s (event: %s)",
+            // Check optional bet condition
+            if (template->passive_condition_bet_gte > 0 && player->current_bet < template->passive_condition_bet_gte) {
+                d_LogDebugF("Trinket %s condition not met: bet %d < %d",
+                            d_StringPeek(template->name),
+                            player->current_bet,
+                            template->passive_condition_bet_gte);
+                // Cleanup heap-allocated template (enemy pattern)
+                CleanupTrinketTemplate((TrinketTemplate_t*)template);
+                free((void*)template);
+                // Skip to next slot (condition not met)
+                continue;
+            }
+
+            d_LogInfoF("🔔 Triggering DUF trinket passive: %s (event: %s, effect: %d, value: %d, bet: %d)",
                        d_StringPeek(template->name),
-                       GameEventToString(event));
+                       GameEventToString(event),
+                       template->passive_effect_type,
+                       template->passive_effect_value,
+                       player->current_bet);
 
             ExecuteTrinketEffect(template, instance, player, game, i, false);
         }
 
         // Check secondary passive trigger (if exists)
         if (template->passive_trigger_2 != 0 && template->passive_trigger_2 == event) {
-            d_LogInfoF("Triggering DUF trinket SECONDARY passive: %s (event: %s)",
+            // Note: Secondary passives don't have separate condition fields
+            // If needed in future, add passive_condition_bet_gte_2 field
+
+            d_LogInfoF("🔔 Triggering DUF trinket SECONDARY passive: %s (event: %s, effect: %d, value: %d, bet: %d)",
                        d_StringPeek(template->name),
-                       GameEventToString(event));
+                       GameEventToString(event),
+                       template->passive_effect_type_2,
+                       template->passive_effect_value_2,
+                       player->current_bet);
 
             ExecuteTrinketEffect(template, instance, player, game, i, true);
         }
+
+        // Cleanup heap-allocated template (enemy pattern - ADR-19)
+        CleanupTrinketTemplate((TrinketTemplate_t*)template);
+        free((void*)template);
     }
 }
 
@@ -533,69 +559,14 @@ bool EquipClassTrinket(Player_t* player, Trinket_t* trinket_template) {
 }
 
 // ============================================================================
-// MODIFIER SYSTEM (Win/Loss Modifiers - Pattern matches statusEffects.c)
+// MODIFIER SYSTEM (Win/Loss Modifiers - REMOVED)
 // ============================================================================
-
-int ModifyWinningsWithTrinkets(Player_t* player, int base_winnings, int bet_amount) {
-    if (!player) {
-        return base_winnings;
-    }
-    // Note: trinket_slots is a fixed-size array embedded in Player_t, not a pointer
-
-    int modified = base_winnings;
-
-    // Check class trinket first
-    Trinket_t* class_trinket = GetClassTrinket(player);
-    if (class_trinket && class_trinket->trinket_id == 1) {  // Elite Membership
-        int bonus = (bet_amount * 30) / 100;  // 30% of bet
-        modified += bonus;
-        class_trinket->total_bonus_chips += bonus;
-        d_LogInfoF("💳 Elite Membership (Class): +%d bonus chips (30%% win boost)", bonus);
-    }
-
-    // Check regular trinket slots
-    for (int i = 0; i < 6; i++) {
-        Trinket_t* trinket = GetEquippedTrinket(player, i);
-        if (trinket && trinket->trinket_id == 1) {  // Elite Membership
-            int bonus = (bet_amount * 30) / 100;  // 30% of bet
-            modified += bonus;
-            trinket->total_bonus_chips += bonus;
-            d_LogInfoF("💳 Elite Membership (Slot %d): +%d bonus chips (30%% win boost)", i, bonus);
-        }
-    }
-
-    return modified;
-}
-
-int ModifyLossesWithTrinkets(Player_t* player, int base_loss, int bet_amount) {
-    (void)base_loss;  // Unused, but kept for API consistency with status effects
-
-    if (!player) {
-        return 0;
-    }
-    // Note: trinket_slots is a fixed-size array embedded in Player_t, not a pointer
-
-    int total_refund = 0;
-
-    // Check class trinket first
-    Trinket_t* class_trinket = GetClassTrinket(player);
-    if (class_trinket && class_trinket->trinket_id == 1) {  // Elite Membership
-        int refund = (bet_amount * 30) / 100;  // 30% of bet
-        total_refund += refund;
-        class_trinket->total_refunded_chips += refund;
-        d_LogInfoF("💳 Elite Membership (Class): +%d refunded chips (30%% loss protection)", refund);
-    }
-
-    // Check regular trinket slots
-    for (int i = 0; i < 6; i++) {
-        Trinket_t* trinket = GetEquippedTrinket(player, i);
-        if (trinket && trinket->trinket_id == 1) {  // Elite Membership
-            int refund = (bet_amount * 30) / 100;  // 30% of bet
-            total_refund += refund;
-            trinket->total_refunded_chips += refund;
-            d_LogInfoF("💳 Elite Membership (Slot %d): +%d refunded chips (30%% loss protection)", i, refund);
-        }
-    }
-
-    return total_refund;
-}
+//
+// ModifyWinningsWithTrinkets() and ModifyLossesWithTrinkets() have been removed.
+// Elite Membership now uses the standard DUF event trigger system:
+// - PLAYER_WIN → ExecuteAddChipsPercent() (adds bonus chips + tracks stats)
+// - PLAYER_LOSS → ExecuteRefundChipsPercent() (refunds chips + tracks stats)
+//
+// This makes Elite Membership consistent with other DUF trinkets (Lucky Chip,
+// Insurance Policy, etc.) and fixes stats tracking bugs.
+// ============================================================================

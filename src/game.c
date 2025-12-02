@@ -20,11 +20,13 @@
 #include "../include/stateStorage.h"
 #include "../include/statusEffects.h"
 #include "../include/trinket.h"
+#include "../include/loaders/trinketLoader.h"
 #include "../include/audioHelper.h"
 
 // External globals
 extern dTable_t* g_players;
 extern TweenManager_t g_tween_manager;  // From sceneBlackjack.c
+extern int g_cleared_status_effects;  // From sceneBlackjack.c (for result screen message)
 
 // ============================================================================
 // GAME EVENTS
@@ -33,6 +35,7 @@ extern TweenManager_t g_tween_manager;  // From sceneBlackjack.c
 const char* GameEventToString(GameEvent_t event) {
     switch (event) {
         case GAME_EVENT_COMBAT_START:        return "COMBAT_START";
+        case GAME_EVENT_HAND_START:          return "HAND_START";
         case GAME_EVENT_HAND_END:            return "HAND_END";
         case GAME_EVENT_PLAYER_WIN:          return "PLAYER_WIN";
         case GAME_EVENT_PLAYER_LOSS:         return "PLAYER_LOSS";
@@ -518,6 +521,15 @@ void Game_ResolveRound(GameContext_t* game) {
 
         if (player->status_effects) {
             ProcessStatusEffectsRoundStart(player->status_effects, player);
+
+            // Check for game over after status effects (CHIP_DRAIN can reduce chips to 0!)
+            if (player->chips <= 0) {
+                d_LogWarning("Player reached 0 chips from CHIP_DRAIN - GAME OVER!");
+                game->player_defeated = true;
+                // Transition to game over screen
+                State_Transition(game, STATE_GAME_OVER);
+                return;  // Early exit - don't continue round resolution
+            }
         }
     }
 
@@ -552,6 +564,23 @@ void Game_ResolveRound(GameContext_t* game) {
         Stats_RecordTurnPlayed();
 
         if (player->hand.is_bust) {
+            // Fire bust event BEFORE LoseBet (trinkets need current_bet value)
+            Game_TriggerEvent(game, GAME_EVENT_PLAYER_BUST);
+
+            // Fire loss event BEFORE LoseBet (trinkets need current_bet value for refunds)
+            d_LogInfoF("📢 Firing PLAYER_LOSS event (current_bet=%d, chips=%d)",
+                       player->current_bet, player->chips);
+            Game_TriggerEvent(game, GAME_EVENT_PLAYER_LOSS);
+
+            // Apply loss refund from aggregated stats (Elite Membership passive + affixes)
+            // Do this BEFORE LoseBet() so we can refund part of the bet
+            if (player->loss_refund_percent > 0) {
+                int refund = (bet_amount * player->loss_refund_percent) / 100;
+                player->chips += refund;
+                d_LogInfoF("💰 Loss refund: +%d%% of %d bet = +%d chips (total: %d chips)",
+                           player->loss_refund_percent, bet_amount, refund, player->chips);
+            }
+
             LoseBet(player);
 
             // Check for game over (0 chips = defeat)
@@ -574,13 +603,6 @@ void Game_ResolveRound(GameContext_t* game) {
                 }
             }
 
-            // Apply trinket loss modifiers (Elite Membership 50% refund)
-            int trinket_refund = ModifyLossesWithTrinkets(player, bet_amount, bet_amount);
-            if (trinket_refund > 0) {
-                player->chips += trinket_refund;
-                Stats_UpdateChipsPeak(player->chips);
-            }
-
             player->state = PLAYER_STATE_LOST;
             outcome = "BUST - LOSE";
 
@@ -588,24 +610,23 @@ void Game_ResolveRound(GameContext_t* game) {
             Stats_RecordTurnLost();
             Stats_RecordChipsLost(bet_amount);
 
-            // Fire event
-            Game_TriggerEvent(game, GAME_EVENT_PLAYER_BUST);
-
         } else if (player->hand.is_blackjack) {
             if (dealer->hand.is_blackjack) {
-                ReturnBet(player);
                 player->state = PLAYER_STATE_PUSH;
-                outcome = "PUSH - Half Damage";
+                outcome = "PUSH";
 
-                // Push deals half damage (explicitly calculate half to avoid any issues)
+                // Push damage based on player stat (default 0%, Pusher's Pebble = 50%)
                 int full_damage = hand_value * bet_amount;
-                damage_dealt = full_damage / 2;
+                damage_dealt = (full_damage * player->push_damage_percent) / 100;
 
                 // Track push in stats
                 Stats_RecordTurnPushed();
 
-                // Fire event
+                // Fire event BEFORE returning bet (trinkets need current_bet value)
                 Game_TriggerEvent(game, GAME_EVENT_PLAYER_PUSH);
+
+                // Return bet after event (clears current_bet)
+                ReturnBet(player);
             } else {
                 // Calculate base winnings (net profit only)
                 int base_winnings = (int)(bet_amount * 1.5f);
@@ -615,13 +636,12 @@ void Game_ResolveRound(GameContext_t* game) {
                     base_winnings = ModifyWinnings(player->status_effects, base_winnings, bet_amount);
                 }
 
-                // Apply trinket win modifiers (Elite Membership 50% bonus)
-                base_winnings = ModifyWinningsWithTrinkets(player, base_winnings, bet_amount);
+                // Trinket win modifiers now handled via event system (GAME_EVENT_PLAYER_WIN)
+                // Elite Membership and other trinkets trigger ExecuteAddChipsPercent() automatically
 
                 // Award net winnings only (bet was never deducted)
                 player->chips += base_winnings;
                 Stats_UpdateChipsPeak(player->chips);
-                player->current_bet = 0;
 
                 player->state = PLAYER_STATE_WON;
                 outcome = "BLACKJACK - WIN 3:2";
@@ -632,8 +652,11 @@ void Game_ResolveRound(GameContext_t* game) {
                 Stats_RecordTurnWon();
                 Stats_RecordChipsWon(base_winnings);
 
-                // Fire event
+                // Fire event BEFORE clearing bet (trinkets need current_bet value)
                 Game_TriggerEvent(game, GAME_EVENT_PLAYER_BLACKJACK);
+
+                // Clear bet after event (so trinkets can access bet amount)
+                player->current_bet = 0;
             }
         } else if (dealer_bust) {
             // Calculate base winnings (net profit only)
@@ -644,12 +667,11 @@ void Game_ResolveRound(GameContext_t* game) {
                 base_winnings = ModifyWinnings(player->status_effects, base_winnings, bet_amount);
             }
 
-            // Apply trinket win modifiers (Elite Membership 50% bonus)
-            base_winnings = ModifyWinningsWithTrinkets(player, base_winnings, bet_amount);
+            // Trinket win modifiers now handled via event system (GAME_EVENT_PLAYER_WIN)
+            // Elite Membership and other trinkets trigger ExecuteAddChipsPercent() automatically
 
             // Award net winnings only (bet was never deducted)
             player->chips += base_winnings;
-            player->current_bet = 0;
 
             player->state = PLAYER_STATE_WON;
             outcome = "DEALER BUST - WIN";
@@ -659,8 +681,28 @@ void Game_ResolveRound(GameContext_t* game) {
             Stats_RecordTurnWon();
             Stats_RecordChipsWon(base_winnings);
 
-            // ✅ NEW: Fire event
+            // Fire event BEFORE clearing bet (trinkets need current_bet value)
+            d_LogInfoF("📢 Firing PLAYER_WIN event (current_bet=%d, chips=%d)",
+                       player->current_bet, player->chips);
             Game_TriggerEvent(game, GAME_EVENT_PLAYER_WIN);
+
+            // Apply win bonus from aggregated stats (Elite Membership passive + affixes)
+            if (player->win_bonus_percent > 0) {
+                int bonus = (bet_amount * player->win_bonus_percent) / 100;
+                player->chips += bonus;
+                d_LogInfoF("💰 Win bonus: +%d%% of %d bet = +%d chips (total: %d chips)",
+                           player->win_bonus_percent, bet_amount, bonus, player->chips);
+            }
+
+            // Apply flat chip bonus on win (Prosperous affix)
+            if (player->flat_chips_on_win > 0) {
+                player->chips += player->flat_chips_on_win;
+                d_LogInfoF("💰 Flat win bonus: +%d chips (total: %d chips)",
+                           player->flat_chips_on_win, player->chips);
+            }
+
+            // Clear bet after event (so trinkets can access bet amount)
+            player->current_bet = 0;
 
         } else if (player->hand.total_value > dealer_value) {
             // Calculate base winnings (net profit only)
@@ -671,12 +713,11 @@ void Game_ResolveRound(GameContext_t* game) {
                 base_winnings = ModifyWinnings(player->status_effects, base_winnings, bet_amount);
             }
 
-            // Apply trinket win modifiers (Elite Membership 50% bonus)
-            base_winnings = ModifyWinningsWithTrinkets(player, base_winnings, bet_amount);
+            // Trinket win modifiers now handled via event system (GAME_EVENT_PLAYER_WIN)
+            // Elite Membership and other trinkets trigger ExecuteAddChipsPercent() automatically
 
             // Award net winnings only (bet was never deducted)
             player->chips += base_winnings;
-            player->current_bet = 0;
 
             player->state = PLAYER_STATE_WON;
             outcome = "WIN";
@@ -686,10 +727,42 @@ void Game_ResolveRound(GameContext_t* game) {
             Stats_RecordTurnWon();
             Stats_RecordChipsWon(base_winnings);
 
-            // ✅ NEW: Fire event
+            // Fire event BEFORE clearing bet (trinkets need current_bet value)
+            d_LogInfoF("📢 Firing PLAYER_WIN event (current_bet=%d, chips=%d)",
+                       player->current_bet, player->chips);
             Game_TriggerEvent(game, GAME_EVENT_PLAYER_WIN);
 
+            // Apply win bonus from aggregated stats (Elite Membership passive + affixes)
+            if (player->win_bonus_percent > 0) {
+                int bonus = (bet_amount * player->win_bonus_percent) / 100;
+                player->chips += bonus;
+                d_LogInfoF("💰 Win bonus: +%d%% of %d bet = +%d chips (total: %d chips)",
+                           player->win_bonus_percent, bet_amount, bonus, player->chips);
+            }
+
+            // Apply flat chip bonus on win (Prosperous affix)
+            if (player->flat_chips_on_win > 0) {
+                player->chips += player->flat_chips_on_win;
+                d_LogInfoF("💰 Flat win bonus: +%d chips (total: %d chips)",
+                           player->flat_chips_on_win, player->chips);
+            }
+
+            // Clear bet after event (so trinkets can access bet amount)
+            player->current_bet = 0;
+
         } else if (player->hand.total_value < dealer_value) {
+            // Fire loss event BEFORE LoseBet (trinkets need current_bet value)
+            Game_TriggerEvent(game, GAME_EVENT_PLAYER_LOSS);
+
+            // Apply loss refund from aggregated stats (Elite Membership passive + affixes)
+            // Do this BEFORE LoseBet() so we can refund part of the bet
+            if (player->loss_refund_percent > 0) {
+                int refund = (bet_amount * player->loss_refund_percent) / 100;
+                player->chips += refund;
+                d_LogInfoF("💰 Loss refund: +%d%% of %d bet = +%d chips (total: %d chips)",
+                           player->loss_refund_percent, bet_amount, refund, player->chips);
+            }
+
             LoseBet(player);
 
             // Check for game over (0 chips = defeat)
@@ -712,12 +785,8 @@ void Game_ResolveRound(GameContext_t* game) {
                 }
             }
 
-            // Apply trinket loss modifiers (Elite Membership 50% refund)
-            int trinket_refund = ModifyLossesWithTrinkets(player, bet_amount, bet_amount);
-            if (trinket_refund > 0) {
-                player->chips += trinket_refund;
-                Stats_UpdateChipsPeak(player->chips);
-            }
+            // Trinket loss modifiers now handled via event system (GAME_EVENT_PLAYER_LOSS)
+            // Elite Membership and other trinkets trigger ExecuteRefundChipsPercent() automatically
 
             player->state = PLAYER_STATE_LOST;
             outcome = "LOSE";
@@ -726,23 +795,22 @@ void Game_ResolveRound(GameContext_t* game) {
             Stats_RecordTurnLost();
             Stats_RecordChipsLost(bet_amount);
 
-            // ✅ NEW: Fire event
-            Game_TriggerEvent(game, GAME_EVENT_PLAYER_LOSS);
-
         } else {
-            ReturnBet(player);
             player->state = PLAYER_STATE_PUSH;
-            outcome = "PUSH - Half Damage";
+            outcome = "PUSH";
 
-            // Push deals half damage (explicitly calculate half to avoid any issues)
+            // Push damage based on player stat (default 0%, Pusher's Pebble = 50%)
             int full_damage = hand_value * bet_amount;
-            damage_dealt = full_damage / 2;
+            damage_dealt = (full_damage * player->push_damage_percent) / 100;
 
             // Track push in stats
             Stats_RecordTurnPushed();
 
-            // ✅ NEW: Fire event
+            // Fire event BEFORE returning bet (trinkets need current_bet value)
             Game_TriggerEvent(game, GAME_EVENT_PLAYER_PUSH);
+
+            // Return bet after event (clears current_bet)
+            ReturnBet(player);
         }
 
         d_LogInfoF("%s: %s (base_damage=%d)",
@@ -765,6 +833,15 @@ void Game_ResolveRound(GameContext_t* game) {
                     }
                 }
 
+                // Check for game over after rake (rake can reduce chips to 0!)
+                if (player->chips <= 0) {
+                    d_LogWarning("Player reached 0 chips from RAKE penalty - GAME OVER!");
+                    game->player_defeated = true;
+                    // Transition to game over screen
+                    State_Transition(game, STATE_GAME_OVER);
+                    return;  // Early exit - don't continue turn processing
+                }
+
                 TweenEnemyHP(game->current_enemy);  // Smooth HP bar drain animation
                 TriggerEnemyDamageEffect(game->current_enemy, &g_tween_manager);  // Shake + red flash
 
@@ -773,6 +850,36 @@ void Game_ResolveRound(GameContext_t* game) {
                     ? DAMAGE_SOURCE_TURN_PUSH
                     : DAMAGE_SOURCE_TURN_WIN;
                 Stats_RecordDamage(damage_source, damage_dealt);
+
+                // Track push damage for Pusher's Pebble trinket (after modifiers applied)
+                if (player->state == PLAYER_STATE_PUSH && player->push_damage_percent > 0) {
+                    // Find Pusher's Pebble in player's trinket slots
+                    for (int slot = 0; slot < 6; slot++) {
+                        if (!player->trinket_slot_occupied[slot]) continue;
+
+                        TrinketInstance_t* instance = &player->trinket_slots[slot];
+                        const TrinketTemplate_t* template = GetTrinketTemplate(
+                            d_StringPeek(instance->base_trinket_key)
+                        );
+
+                        if (template && template->passive_effect_type == TRINKET_EFFECT_PUSH_DAMAGE_PERCENT) {
+                            // Calculate this trinket's proportional contribution
+                            // If multiple trinkets have push_damage_percent, split proportionally
+                            int trinket_contribution = (damage_dealt * template->passive_effect_value) / player->push_damage_percent;
+                            instance->total_damage_dealt += trinket_contribution;
+                            d_LogDebugF("Pusher's Pebble tracking: +%d modified push damage", trinket_contribution);
+
+                            CleanupTrinketTemplate((TrinketTemplate_t*)template);
+                            free((void*)template);
+                            break;  // Only one Pusher's Pebble can exist
+                        }
+
+                        if (template) {
+                            CleanupTrinketTemplate((TrinketTemplate_t*)template);
+                            free((void*)template);
+                        }
+                    }
+                }
 
                 // Spawn floating damage number (centered, above HP bar)
                 // Position using constants from sceneBlackjack.h
@@ -797,13 +904,16 @@ void Game_ResolveRound(GameContext_t* game) {
                           GetEnemyName(game->current_enemy));
 
                 // Clear all status effects on victory (no chip drain on victory screen!)
+                g_cleared_status_effects = 0;  // Reset before accumulating
                 for (size_t j = 0; j < game->active_players->count; j++) {
                     int* player_id = (int*)d_ArrayGet(game->active_players, j);
                     Player_t* p = Game_GetPlayerByID(*player_id);
                     if (p && !p->is_dealer && p->status_effects) {
-                        ClearAllStatusEffects(p->status_effects);
+                        size_t cleared = ClearAllStatusEffects(p->status_effects);
+                        g_cleared_status_effects += cleared;  // Track for result screen
                     }
                 }
+                d_LogInfoF("Combat victory: Cleared %d total status effects", g_cleared_status_effects);
 
                 // Don't continue to normal round end - go to victory state
                 return;
@@ -884,10 +994,10 @@ void Game_ApplyEventConsequences(GameContext_t* game, EventEncounter_t* event, P
     // Apply consequences using event.c helper
     ApplyEventConsequences(event, player, game->deck);
 
-    // Apply enemy HP multiplier for next combat (if not default 1.0)
-    if (choice->enemy_hp_multiplier != 1.0f) {
-        game->next_enemy_hp_multiplier = choice->enemy_hp_multiplier;
-        d_LogInfoF("Event consequence: Next enemy HP multiplier set to %.2f", choice->enemy_hp_multiplier);
+    // Apply enemy HP multiplier for next combat only (if not default 1.0) - ONE-TIME
+    if (choice->next_enemy_hp_multi != 1.0f) {
+        game->next_enemy_hp_multiplier = choice->next_enemy_hp_multi;
+        d_LogInfoF("Event consequence: Next enemy HP multiplier set to %.2f (one-time)", choice->next_enemy_hp_multi);
     }
 
     // Trigger game events for any abilities that might react
@@ -907,7 +1017,7 @@ void Game_ApplyEventConsequences(GameContext_t* game, EventEncounter_t* event, P
     d_LogInfoF("Applied event consequences: chips=%+d, sanity=%+d, tags=%zu/%zu, hp_mult=%.2f",
                choice->chips_delta, choice->sanity_delta,
                choice->granted_tags->count, choice->removed_tags->count,
-               choice->enemy_hp_multiplier);
+               choice->next_enemy_hp_multi);
 }
 
 int Game_GetEventRerollCost(const GameContext_t* game) {

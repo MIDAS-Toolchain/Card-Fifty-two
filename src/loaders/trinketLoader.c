@@ -10,9 +10,10 @@
 // GLOBAL REGISTRY (Enemy pattern: DUF tree + key cache, no table)
 // ============================================================================
 
-dDUFValue_t* g_trinkets_db = NULL;     // Raw DUF data - combat trinkets
-static dDUFValue_t* g_event_trinkets_db = NULL;  // Raw DUF data - event trinkets
-dArray_t* g_trinket_key_cache = NULL;  // Cache of all trinket keys (const char*) for iteration
+// Global trinket database registry (extensible for modular trinket packs)
+static dArray_t* g_trinket_databases = NULL;  // Array of dDUFValue_t* (all loaded trinket DUFs)
+dDUFValue_t* g_trinkets_db = NULL;             // Legacy: points to first DUF (for compatibility)
+dArray_t* g_trinket_key_cache = NULL;           // Cache of all trinket keys (const char*) for iteration
 
 // ============================================================================
 // ENUM CONVERTERS
@@ -22,12 +23,15 @@ TrinketEffectType_t TrinketEffectTypeFromString(const char* str) {
     if (!str) return TRINKET_EFFECT_NONE;
 
     if (strcmp(str, "add_chips") == 0) return TRINKET_EFFECT_ADD_CHIPS;
+    if (strcmp(str, "add_chips_percent") == 0) return TRINKET_EFFECT_ADD_CHIPS_PERCENT;
     if (strcmp(str, "lose_chips") == 0) return TRINKET_EFFECT_LOSE_CHIPS;
     if (strcmp(str, "apply_status") == 0) return TRINKET_EFFECT_APPLY_STATUS;
     if (strcmp(str, "clear_status") == 0) return TRINKET_EFFECT_CLEAR_STATUS;
     if (strcmp(str, "trinket_stack") == 0) return TRINKET_EFFECT_TRINKET_STACK;
+    if (strcmp(str, "trinket_stack_reset") == 0) return TRINKET_EFFECT_TRINKET_STACK_RESET;
     if (strcmp(str, "refund_chips_percent") == 0) return TRINKET_EFFECT_REFUND_CHIPS_PERCENT;
-    if (strcmp(str, "add_damage_flat") == 0) return TRINKET_EFFECT_ADD_DAMAGE_FLAT;
+    if (strcmp(str, "deal_damage") == 0) return TRINKET_EFFECT_ADD_DAMAGE_FLAT;  // Renamed from add_damage_flat
+    if (strcmp(str, "add_damage_flat") == 0) return TRINKET_EFFECT_ADD_DAMAGE_FLAT;  // Keep old name for backwards compat
     if (strcmp(str, "damage_multiplier") == 0) return TRINKET_EFFECT_DAMAGE_MULTIPLIER;
     if (strcmp(str, "add_tag_to_cards") == 0) return TRINKET_EFFECT_ADD_TAG_TO_CARDS;
     if (strcmp(str, "buff_tag_damage") == 0) return TRINKET_EFFECT_BUFF_TAG_DAMAGE;
@@ -205,6 +209,17 @@ static bool ParseTrinketTemplate(dDUFValue_t* trinket_node, const char* trinket_
         out_trinket->passive_stack_max = (int)stack_max_node->value_int;
     }
 
+    dDUFValue_t* stack_on_max_node = d_DUFGetObjectItem(trinket_node, "passive_stack_on_max");
+    if (stack_on_max_node && stack_on_max_node->value_string) {
+        out_trinket->passive_stack_on_max = d_StringInit();
+        if (!out_trinket->passive_stack_on_max) {
+            d_LogError("ParseTrinketTemplate: Failed to allocate passive_stack_on_max");
+            CleanupTrinketTemplate(out_trinket);
+            return false;
+        }
+        d_StringSet(out_trinket->passive_stack_on_max, stack_on_max_node->value_string, 0);
+    }
+
     // Parse tag fields (optional, for ADD_TAG_TO_CARDS/BUFF_TAG_DAMAGE)
     dDUFValue_t* tag_node = d_DUFGetObjectItem(trinket_node, "passive_tag");
     if (tag_node && tag_node->value_string) {
@@ -230,11 +245,11 @@ static bool ParseTrinketTemplate(dDUFValue_t* trinket_node, const char* trinket_
     // Parse secondary passive (optional)
     dDUFValue_t* trigger_2_node = d_DUFGetObjectItem(trinket_node, "passive_trigger_2");
     if (trigger_2_node && trigger_2_node->value_string) {
-        out_trinket->passive_trigger_2 = GameEventFromString(trigger_2_node->value_string);
-
-        // Handle ON_EQUIP for secondary trigger too
+        // Handle ON_EQUIP for secondary trigger (check BEFORE calling GameEventFromString)
         if (strcmp(trigger_2_node->value_string, "ON_EQUIP") == 0) {
             out_trinket->passive_trigger_2 = 999;
+        } else {
+            out_trinket->passive_trigger_2 = GameEventFromString(trigger_2_node->value_string);
         }
     }
 
@@ -345,18 +360,56 @@ bool PopulateTrinketTemplates(dDUFValue_t* trinkets_db) {
     return loaded_count > 0;
 }
 
-bool MergeTrinketDatabases(dDUFValue_t* combat_db, dDUFValue_t* event_db) {
-    bool success = true;
+/**
+ * PopulateAllTrinketTemplates - Load all trinket DUFs into global registry
+ *
+ * @param databases - Array of dDUFValue_t* (trinket DUF files)
+ * @return bool - Success/failure
+ *
+ * Replaces old MergeTrinketDatabases approach with extensible multi-DUF system.
+ */
+bool PopulateAllTrinketTemplates(dArray_t* databases) {
+    if (!databases) {
+        d_LogError("PopulateAllTrinketTemplates: NULL databases array");
+        return false;
+    }
 
-    // Store event db reference for lookup
-    g_event_trinkets_db = event_db;
+    // Store global reference for on-demand loading
+    g_trinket_databases = databases;
+
+    // Set legacy g_trinkets_db to first database (for backward compatibility)
+    if (databases->count > 0) {
+        dDUFValue_t** first_db = (dDUFValue_t**)d_ArrayGet(databases, 0);
+        if (first_db && *first_db) {
+            g_trinkets_db = *first_db;
+        }
+    }
+
+    // Populate trinket templates from each DUF file
+    bool success = true;
+    for (size_t i = 0; i < databases->count; i++) {
+        dDUFValue_t** db_ptr = (dDUFValue_t**)d_ArrayGet(databases, i);
+        if (!db_ptr || !*db_ptr) continue;
+
+        if (!PopulateTrinketTemplates(*db_ptr)) {
+            d_LogErrorF("Failed to populate trinket templates from DUF #%zu", i);
+            success = false;
+        }
+    }
+
+    return success;
+}
+
+// DEPRECATED: Use PopulateAllTrinketTemplates instead
+bool MergeTrinketDatabases(dDUFValue_t* combat_db, dDUFValue_t* other_db) {
+    bool success = true;
 
     if (combat_db) {
         success = PopulateTrinketTemplates(combat_db) && success;
     }
 
-    if (event_db) {
-        success = PopulateTrinketTemplates(event_db) && success;
+    if (other_db) {
+        success = PopulateTrinketTemplates(other_db) && success;
     }
 
     return success;
@@ -390,8 +443,7 @@ bool ValidateTrinketDatabase(dDUFValue_t* trinkets_db, char* out_error_msg, size
             // Validation failed - write error message
             snprintf(out_error_msg, error_msg_size,
                     "Trinket DUF Validation Failed\n\n"
-                    "Trinket: %s\n"
-                    "File: data/trinkets/combat_trinkets.duf\n\n"
+                    "Trinket: %s\n\n"
                     "Check console logs for details.\n\n"
                     "Common issues:\n"
                     "- Invalid effect type\n"
@@ -434,12 +486,21 @@ TrinketTemplate_t* LoadTrinketTemplateFromDUF(const char* trinket_key) {
         return NULL;
     }
 
-    // Try combat trinkets first
-    dDUFValue_t* trinket_node = d_DUFGetObjectItem(g_trinkets_db, trinket_key);
+    // Search through all loaded trinket DUFs (extensible for modular packs)
+    dDUFValue_t* trinket_node = NULL;
 
-    // If not found in combat, try event trinkets
-    if (!trinket_node && g_event_trinkets_db) {
-        trinket_node = d_DUFGetObjectItem(g_event_trinkets_db, trinket_key);
+    if (g_trinket_databases) {
+        // New system: iterate through all loaded DUF files
+        for (size_t i = 0; i < g_trinket_databases->count; i++) {
+            dDUFValue_t** db_ptr = (dDUFValue_t**)d_ArrayGet(g_trinket_databases, i);
+            if (!db_ptr || !*db_ptr) continue;
+
+            trinket_node = d_DUFGetObjectItem(*db_ptr, trinket_key);
+            if (trinket_node) break;  // Found it!
+        }
+    } else if (g_trinkets_db) {
+        // Fallback: legacy single-DB system
+        trinket_node = d_DUFGetObjectItem(g_trinkets_db, trinket_key);
     }
 
     if (!trinket_node) {
@@ -508,6 +569,10 @@ void CleanupTrinketTemplate(TrinketTemplate_t* trinket) {
     if (trinket->passive_stack_stat) {
         d_StringDestroy(trinket->passive_stack_stat);
         trinket->passive_stack_stat = NULL;
+    }
+    if (trinket->passive_stack_on_max) {
+        d_StringDestroy(trinket->passive_stack_on_max);
+        trinket->passive_stack_on_max = NULL;
     }
     if (trinket->passive_tag) {
         d_StringDestroy(trinket->passive_tag);

@@ -195,11 +195,12 @@ void TickStatusEffectDurations(StatusEffectManager_t* manager);
  * ClearAllStatusEffects - Remove all active status effects
  *
  * @param manager - Status effect manager
+ * @return size_t - Number of effects that were cleared
  *
  * Called on combat victory to ensure victory screen shows clean rewards
  * without chip drain from status effects
  */
-void ClearAllStatusEffects(StatusEffectManager_t* manager);
+size_t ClearAllStatusEffects(StatusEffectManager_t* manager);
 
 // ============================================================================
 // OUTCOME MODIFIERS (ADR-002: Status effects modify outcomes only)

@@ -70,6 +70,7 @@ SettingsMenuSection_t* CreateSettingsMenuSection(Settings_t* settings) {
     }
 
     // Create FlexBox for resolution dropdown (positioned below resolution row)
+    // NOTE: Will be recreated on resolution change to fix positioning
     section->resolution_dropdown_layout = a_FlexBoxCreate(
         GetSettingsValueX(),               // X: Align with resolution value
         GetSettingsGraphicsStartY() + 40,  // Y: Below resolution row
@@ -116,6 +117,45 @@ void DestroySettingsMenuSection(SettingsMenuSection_t** section) {
     free(*section);
     *section = NULL;
     d_LogInfo("SettingsMenuSection destroyed");
+}
+
+// ============================================================================
+// DROPDOWN POSITIONING FIX
+// ============================================================================
+
+/**
+ * RecreateResolutionDropdown - Fix dropdown position after resolution change
+ *
+ * Bug: Dropdown FlexBox was created at init time with old window dimensions.
+ * When resolution changes, GetSettingsValueX() returns NEW pixel coordinates,
+ * but FlexBox still has OLD coordinates baked in.
+ *
+ * Solution: Destroy and recreate the dropdown with current window dimensions.
+ */
+static void RecreateResolutionDropdown(SettingsMenuSection_t* section) {
+    if (!section) return;
+
+    // Destroy old dropdown
+    if (section->resolution_dropdown_layout) {
+        a_FlexBoxDestroy(&section->resolution_dropdown_layout);
+    }
+
+    // Recreate with CURRENT window dimensions
+    section->resolution_dropdown_layout = a_FlexBoxCreate(
+        GetSettingsValueX(),               // X: Current resolution's value position
+        GetSettingsGraphicsStartY() + 40,  // Y: Current resolution's row position
+        300,                                // Width: Fits "1600x900 (HD+)"
+        RESOLUTION_COUNT * 40              // Height: 5 items × 40px
+    );
+    a_FlexConfigure(section->resolution_dropdown_layout,
+                   FLEX_DIR_COLUMN,
+                   FLEX_JUSTIFY_START,
+                   2);
+
+    // Re-populate items
+    for (int i = 0; i < RESOLUTION_COUNT; i++) {
+        a_FlexAddItem(section->resolution_dropdown_layout, 280, 35, NULL);
+    }
 }
 
 // ============================================================================
@@ -334,6 +374,7 @@ void HandleSettingsInput(SettingsMenuSection_t* section) {
             Settings_SetResolution(section->settings, section->dropdown_hovered_index);
             section->resolution_dropdown_open = false;  // Close dropdown
             section->dropdown_hovered_index = -1;
+            RecreateResolutionDropdown(section);  // Fix positioning after resolution change
         }
         // Then check main UI clicks
         else if (section->hovered_index >= 0) {
@@ -432,6 +473,7 @@ void HandleSettingsInput(SettingsMenuSection_t* section) {
             case 3:  // Resolution
                 Settings_SetResolution(section->settings,
                                        section->settings->resolution_index - 1);
+                RecreateResolutionDropdown(section);  // Fix positioning
                 StartArrowBlink(section, 3);
                 PlayUIHoverSound();  // Audio feedback on value change
                 break;
@@ -464,6 +506,7 @@ void HandleSettingsInput(SettingsMenuSection_t* section) {
             case 3:  // Resolution
                 Settings_SetResolution(section->settings,
                                        section->settings->resolution_index + 1);
+                RecreateResolutionDropdown(section);  // Fix positioning
                 StartArrowBlink(section, 3);
                 PlayUIHoverSound();  // Audio feedback on value change
                 break;
@@ -483,6 +526,7 @@ void HandleSettingsInput(SettingsMenuSection_t* section) {
                              ? section->dropdown_hovered_index
                              : section->settings->resolution_index;
             Settings_SetResolution(section->settings, target_index);
+            RecreateResolutionDropdown(section);  // Fix positioning
             section->resolution_dropdown_open = false;
             section->dropdown_hovered_index = -1;
         } else {
@@ -518,16 +562,19 @@ void HandleSettingsInput(SettingsMenuSection_t* section) {
 void RenderSettingsMenuSection(SettingsMenuSection_t* section) {
     if (!section || !section->settings) return;
 
+    // Get UI scale from settings (100%, 125%, or 150%)
+    float ui_scale = GetUIScale();
+
     aTextStyle_t title_style = {.type=FONT_ENTER_COMMAND, .fg=COLOR_TITLE, .bg={0,0,0,0},
-                                .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0};
+                                .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=ui_scale, .padding=0};
     aTextStyle_t header_style = {.type=FONT_GAME, .fg=COLOR_TITLE, .bg={0,0,0,0},
-                                 .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0};
+                                 .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=ui_scale, .padding=0};
     aTextStyle_t label_style = {.type=FONT_GAME, .fg=COLOR_LABEL, .bg={0,0,0,0},
-                                .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0};
+                                .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=ui_scale, .padding=0};
     aTextStyle_t value_style = {.type=FONT_GAME, .fg=COLOR_VALUE, .bg={0,0,0,0},
-                                .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0};
+                                .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=ui_scale, .padding=0};
     aTextStyle_t selected_style = {.type=FONT_GAME, .fg=COLOR_SELECTED, .bg={0,0,0,0},
-                                   .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0};
+                                   .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=ui_scale, .padding=0};
 
     // Title
     a_DrawText(section->title, GetWindowWidth() / 2, GetSettingsTitleY(), title_style);
@@ -561,7 +608,7 @@ void RenderSettingsMenuSection(SettingsMenuSection_t* section) {
             .type = FONT_GAME,
             .fg = {COLOR_SELECTED.r, COLOR_SELECTED.g, COLOR_SELECTED.b, (Uint8)(255 * section->arrow_alpha[0])},
             .align = TEXT_ALIGN_LEFT,
-            .scale = 1.0f
+            .scale = ui_scale
         };
 
         // Only show left arrow if not at minimum (0)
@@ -608,7 +655,7 @@ void RenderSettingsMenuSection(SettingsMenuSection_t* section) {
             .type = FONT_GAME,
             .fg = {COLOR_SELECTED.r, COLOR_SELECTED.g, COLOR_SELECTED.b, (Uint8)(255 * section->arrow_alpha[1])},
             .align = TEXT_ALIGN_LEFT,
-            .scale = 1.0f
+            .scale = ui_scale
         };
 
         // Only show left arrow if not at minimum (0)
@@ -653,7 +700,7 @@ void RenderSettingsMenuSection(SettingsMenuSection_t* section) {
             .type = FONT_GAME,
             .fg = {COLOR_SELECTED.r, COLOR_SELECTED.g, COLOR_SELECTED.b, (Uint8)(255 * section->arrow_alpha[2])},
             .align = TEXT_ALIGN_LEFT,
-            .scale = 1.0f
+            .scale = ui_scale
         };
 
         // Only show left arrow if not at minimum (0)
@@ -706,7 +753,7 @@ void RenderSettingsMenuSection(SettingsMenuSection_t* section) {
             .type = FONT_GAME,
             .fg = {COLOR_SELECTED.r, COLOR_SELECTED.g, COLOR_SELECTED.b, (Uint8)(255 * section->arrow_alpha[3])},
             .align = TEXT_ALIGN_LEFT,
-            .scale = 1.0f
+            .scale = ui_scale
         };
 
         // Only show left arrow if there's a valid resolution to the left
@@ -834,7 +881,7 @@ void RenderSettingsMenuSection(SettingsMenuSection_t* section) {
                 .type = FONT_GAME,
                 .fg = text_color,
                 .align = TEXT_ALIGN_LEFT,
-                .scale = 1.0f
+                .scale = ui_scale
             };
 
             // Build label with "(Too Large)" suffix if invalid

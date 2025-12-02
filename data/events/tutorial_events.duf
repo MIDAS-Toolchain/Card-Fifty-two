@@ -1,0 +1,137 @@
+# Tutorial Events for Card Fifty-Two
+# Post-combat encounters that teach tag synergies and enemy modification
+#
+# Design Pattern: Every event has EXACTLY 3 choices
+# - Choice A: Safe option
+# - Choice B: Risky option 
+# - Choice C: Power option (ALWAYS LOCKED behind requirement)
+
+@system_maintenance {
+    title: "System Maintenance"
+    description: """The Didact's body sits motionless at the table.
+
+A maintenance panel opens in the wall. You hear mechanical sounds—grinding, clicking, rebuilding."""
+    type: "choice"
+
+    choices: [
+        {
+            # Choice A: Safe option - Get trinket, lose sanity
+            text: "Investigate the panel"
+            result_text: """> DIAGNOSTIC_MODE_ACTIVE
+
+You dig through cascading error logs. Corruption spreads through every subroutine—the machine is dying, and it knows it.
+
+A diagnostic tool ejects from the wreckage. Every crash leaves a trace. Now you can read them."""
+            chips_delta: 0
+            sanity_delta: -10
+            trinket_reward: "stack_trace"
+        },
+        {
+            # Choice B: Risky option - Gain chips, curse 3 cards (unlocks Choice C)
+            text: "Walk away"
+            result_text: """> REBUILD_CANCELLED
+
+You pocket loose chips scattered near the panel. The maintenance cycle aborts. Something in the static reaches out—three cards in your deck pulse with wrongness.
+
+The corruption has spread to you."""
+            chips_delta: 20
+            sanity_delta: 0
+            granted_tags: [
+                { 
+                    tag: "CURSED"
+                    strategy: "RANDOM_CARD" 
+                },
+                {   
+                    tag: "CURSED" 
+                    strategy: "RANDOM_CARD" 
+                },
+                { 
+                    tag: "CURSED"
+                    strategy: "RANDOM_CARD" 
+                }
+            ]
+        },
+        {
+            # Choice C: Power option - LOCKED behind CURSED requirement
+            text: "Sabotage the maintenance"
+            result_text: """> MANUAL_OVERRIDE_ACCEPTED
+
+Your cursed cards interface directly with the corrupted system. Feedback screeches through your skull as you accelerate the decay.
+
+The Daemon will boot incomplete. Weakened. Your mind pays the price."""
+            chips_delta: 0
+            sanity_delta: -20
+            enemy_hp_multiplier: 0.75
+            requirement: {
+                type: "TAG_COUNT"
+                tag: "CURSED"
+                min_count: 1
+            }
+        }
+    ]
+}
+
+@house_odds {
+    title: "House Odds"
+    description: """A screen flickers to life above the table.
+
+CONGRATULATIONS - YOU'VE BEEN UPGRADED TO ELITE STATUS.
+
+Your next opponent has been selected for maximum engagement."""
+    type: "choice"
+
+    choices: [
+        {
+            # Choice A: Accept - Get trinket, harder enemy
+            text: "Accept the upgrade"
+            result_text: """"Excellent choice."
+
+The dealer slides a black card across the table. Your fingers tingle as you accept it. The card hums with probability manipulation.
+
+Elite Status granted. The casino's algorithms now favor you... but the Daemon has been enhanced to match."""
+            chips_delta: 0
+            sanity_delta: 0
+            trinket_reward: "elite_membership"
+            next_enemy_hp_multi: 1.3
+        },
+        {
+            # Choice B: Refuse - Lose sanity, gain LUCKY aces (unlocks Choice C)
+            text: "Refuse the upgrade"
+            result_text: """"Disappointing."
+
+The dealer's smile freezes. Reality hiccups. When the world stabilizes, your Aces shimmer with stolen luck. The House's punishment backfired.
+
+You feel the sanity drain, but your deck pulses with new power."""
+            chips_delta: 0
+            sanity_delta: -15
+            granted_tags: [
+                { 
+                    tag: "LUCKY"
+                    strategy: "RANK_ACES" 
+                }
+            ]
+        },
+        {
+            # Choice C: Negotiate - LOCKED behind LUCKY requirement
+            text: "Negotiate terms"
+            result_text: """"Ah, you have luck on your side." The dealer inclines their head.
+
+Your lucky card catches the light as leverage. The terms shift in your favor. Face cards darken with brutal intent.
+
+The deal is struck. The Daemon awaits at standard strength."""
+            chips_delta: 30
+            sanity_delta: 0
+            granted_tags: [
+                { 
+                    tag: "BRUTAL"
+                    strategy: "RANK_FACE_CARDS" 
+                }
+            ]
+            requirement: {
+                type: "TAG_COUNT"
+                tag: "LUCKY"
+                min_count: 1
+            }
+        }
+    ]
+}

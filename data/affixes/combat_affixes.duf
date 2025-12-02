@@ -30,7 +30,7 @@
     weight: 90
 }
 
-@flat_damage {
+@damage_flat {
     name: "Brutal"
     description: "+{value} flat damage"
     min_value: 5
@@ -73,15 +73,15 @@
 @flat_chips_on_loss {
     name: "Cushioned"
     description: "+{value} chips on loss"
-    min_value: 2
-    max_value: 6
-    weight: 30
+    min_value: 1
+    max_value: 3
+    weight: 20
 }
 
 @flat_chips_on_win {
     name: "Prosperous"
     description: "+{value} chips on win"
-    min_value: 3
-    max_value: 9
-    weight: 25
+    min_value: 1
+    max_value: 3
+    weight: 30
 }

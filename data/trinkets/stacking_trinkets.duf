@@ -1,0 +1,80 @@
+# Stacking Trinkets - Trinkets that gain/lose stacks over time
+# Each trinket uses the trinket_stack system for persistent counters
+
+# =============================================================================
+# COMMON STACKERS
+# =============================================================================
+
+@streak_counter {
+    name: "Streak Counter"
+    rarity: "common"
+    base_value: 30
+    flavor: "Ride the streak or lose it all."
+
+    # On win: +1 stack (infinite scaling!)
+    # Each stack = +4% crit chance
+    passive_trigger: "PLAYER_WIN"
+    passive_effect_type: "trinket_stack"
+    passive_stack_stat: "crit_chance"
+    passive_stack_value: 4
+    passive_stack_max: 0  # 0 = infinite (no cap)
+
+    # On loss: RESET all stacks to 0 (lose streak!)
+    passive_trigger_2: "PLAYER_LOSS"
+    passive_effect_type_2: "trinket_stack_reset"
+}
+
+@broken_watch {
+    name: "Broken Watch"
+    rarity: "common"
+    base_value: 25
+    flavor: "Time moves forward, even when the hands don't."
+
+    # On hand start: +1 stack (persists forever on this trinket)
+    # Each stack = +2% damage, max 12 stacks (24% total)
+    # On reaching max: loop back to 1 stack (time loops!)
+    passive_trigger: "HAND_START"
+    passive_effect_type: "trinket_stack"
+    passive_stack_stat: "damage_bonus_percent"
+    passive_stack_value: 2
+    passive_stack_max: 12
+    passive_stack_on_max: "reset_to_one"  # Loop mechanic
+}
+
+# =============================================================================
+# UNCOMMON STACKERS
+# =============================================================================
+
+@iron_knuckles {
+    name: "Iron Knuckles"
+    rarity: "uncommon"
+    base_value: 55
+    flavor: "Every fight makes them heavier."
+
+    # On combat start: +1 stack (persists forever on this trinket)
+    # Each stack = +5 flat damage, max 10 stacks (50 total)
+    passive_trigger: "COMBAT_START"
+    passive_effect_type: "trinket_stack"
+    passive_stack_stat: "damage_flat"
+    passive_stack_value: 5
+    passive_stack_max: 10
+}
+
+# =============================================================================
+# RARE STACKERS
+# =============================================================================
+
+@cold_deck {
+    name: "Cold Deck"
+    rarity: "rare"
+    base_value: 100
+    flavor: "The cards were stacked from the start."
+
+    # On combat start: +3 stacks of damage
+    # Each stack = +3% damage, max 15 stacks (45% total)
+    passive_trigger: "COMBAT_START"
+    passive_effect_type: "trinket_stack"
+    passive_stack_stat: "damage_bonus_percent"
+    passive_stack_value: 3
+    passive_stack_max: 15
+}

@@ -13,6 +13,56 @@
 #include <string.h>
 
 // ============================================================================
+// STRING-TO-ENUM CONVERTERS (for DUF loading)
+// ============================================================================
+
+EventType_t EventTypeFromString(const char* str) {
+    if (!str) return EVENT_TYPE_CHOICE;  // Default
+
+    if (strcmp(str, "dialogue") == 0) return EVENT_TYPE_DIALOGUE;
+    if (strcmp(str, "choice") == 0) return EVENT_TYPE_CHOICE;
+    if (strcmp(str, "shop") == 0) return EVENT_TYPE_SHOP;
+    if (strcmp(str, "rest") == 0) return EVENT_TYPE_REST;
+    if (strcmp(str, "blessing") == 0) return EVENT_TYPE_BLESSING;
+    if (strcmp(str, "curse") == 0) return EVENT_TYPE_CURSE;
+
+    d_LogWarningF("Unknown event type: %s (defaulting to CHOICE)", str);
+    return EVENT_TYPE_CHOICE;
+}
+
+TagTargetStrategy_t TagTargetStrategyFromString(const char* str) {
+    if (!str) return TAG_TARGET_RANDOM_CARD;  // Default
+
+    if (strcmp(str, "RANDOM_CARD") == 0) return TAG_TARGET_RANDOM_CARD;
+    if (strcmp(str, "HIGHEST_UNTAGGED") == 0) return TAG_TARGET_HIGHEST_UNTAGGED;
+    if (strcmp(str, "LOWEST_UNTAGGED") == 0) return TAG_TARGET_LOWEST_UNTAGGED;
+    if (strcmp(str, "SUIT_HEARTS") == 0) return TAG_TARGET_SUIT_HEARTS;
+    if (strcmp(str, "SUIT_DIAMONDS") == 0) return TAG_TARGET_SUIT_DIAMONDS;
+    if (strcmp(str, "SUIT_CLUBS") == 0) return TAG_TARGET_SUIT_CLUBS;
+    if (strcmp(str, "SUIT_SPADES") == 0) return TAG_TARGET_SUIT_SPADES;
+    if (strcmp(str, "RANK_ACES") == 0) return TAG_TARGET_RANK_ACES;
+    if (strcmp(str, "RANK_FACE_CARDS") == 0) return TAG_TARGET_RANK_FACE_CARDS;
+    if (strcmp(str, "ALL_CARDS") == 0) return TAG_TARGET_ALL_CARDS;
+
+    d_LogWarningF("Unknown tag target strategy: %s (defaulting to RANDOM_CARD)", str);
+    return TAG_TARGET_RANDOM_CARD;
+}
+
+RequirementType_t RequirementTypeFromString(const char* str) {
+    if (!str) return REQUIREMENT_NONE;  // Default
+
+    if (strcmp(str, "NONE") == 0) return REQUIREMENT_NONE;
+    if (strcmp(str, "TAG_COUNT") == 0) return REQUIREMENT_TAG_COUNT;
+    if (strcmp(str, "TRINKET") == 0) return REQUIREMENT_TRINKET;
+    if (strcmp(str, "HP_THRESHOLD") == 0) return REQUIREMENT_HP_THRESHOLD;
+    if (strcmp(str, "SANITY_THRESHOLD") == 0) return REQUIREMENT_SANITY_THRESHOLD;
+    if (strcmp(str, "CHIPS_THRESHOLD") == 0) return REQUIREMENT_CHIPS_THRESHOLD;
+
+    d_LogWarningF("Unknown requirement type: %s (defaulting to NONE)", str);
+    return REQUIREMENT_NONE;
+}
+
+// ============================================================================
 // INTERNAL HELPERS
 // ============================================================================
 
@@ -149,7 +199,7 @@ void AddEventChoice(EventEncounter_t* event, const char* text, const char* resul
     choice.requirement.type = REQUIREMENT_NONE;
 
     // Initialize enemy modifiers to defaults
-    choice.enemy_hp_multiplier = 1.0f;  // Normal HP (no modification)
+    choice.next_enemy_hp_multi = 1.0f;  // Normal HP (no modification)
 
     // Initialize trinket reward to none
     choice.trinket_reward_key[0] = '\0';
@@ -245,9 +295,9 @@ void SetChoiceEnemyHPMultiplier(EventEncounter_t* event, int choice_index, float
     }
 
     EventChoice_t* choice = (EventChoice_t*)d_ArrayGet(event->choices, choice_index);
-    choice->enemy_hp_multiplier = multiplier;
+    choice->next_enemy_hp_multi = multiplier;
 
-    d_LogInfoF("Choice %d: Set enemy HP multiplier to %.2f", choice_index, multiplier);
+    d_LogInfoF("Choice %d: Set next enemy HP multiplier to %.2f (one-time)", choice_index, multiplier);
 }
 
 void SelectEventChoice(EventEncounter_t* event, int choice_index) {
@@ -528,6 +578,7 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
             dest->total_damage_dealt = 0;
             dest->total_bonus_chips = 0;
             dest->total_refunded_chips = 0;
+            dest->highest_streak = 0;
             dest->buffed_tag = -1;
             dest->tag_buff_value = 0;
             dest->shake_offset_x = 0.0f;
@@ -726,141 +777,9 @@ const EventRegistryEntry_t* GetEventRegistry(int* out_count) {
 }
 
 // ============================================================================
-// TUTORIAL EVENTS
+// TUTORIAL EVENTS (Now loaded from DUF - see src/eventPool.c)
 // ============================================================================
 
-/**
- * CreateSystemMaintenanceEvent - "System Maintenance" event
- *
- * Theme: System corruption with choice to accelerate/sabotage
- * Demonstrates locked choice requiring CURSED cards + enemy HP modification
- */
-EventEncounter_t* CreateSystemMaintenanceEvent(void) {
-    EventEncounter_t* event = CreateEvent(
-        "System Maintenance",
-        "The Didact's body sits motionless at the table.\n\n"
-        "A maintenance panel opens in the wall. You hear mechanical sounds—grinding, clicking, rebuilding.",
-        EVENT_TYPE_CHOICE
-    );
-
-    if (!event) {
-        d_LogError("Failed to create SystemMaintenanceEvent");
-        return NULL;
-    }
-
-    // Choice A: Investigate panel (-10 sanity, Stack Trace trinket)
-    AddEventChoice(event,
-                   "Investigate the panel",
-                   "> DIAGNOSTIC_MODE_ACTIVE\n\n"
-                   "You dig through cascading error logs. Corruption spreads through "
-                   "every subroutine—the machine is dying, and it knows it.\n\n"
-                   "A diagnostic tool ejects from the wreckage. Every crash leaves "
-                   "a trace. Now you can read them.",
-                   0,    // No chips
-                   -10); // -10 sanity
-    SetChoiceTrinketReward(event, 0, "stack_trace");  // Grant Stack Trace from event_trinkets.duf
-
-    // Choice B: Walk away (+20 chips, 3 random cards CURSED)
-    AddEventChoice(event,
-                   "Walk away",
-                   "> REBUILD_CANCELLED\n\n"
-                   "You pocket loose chips scattered near the panel. The maintenance "
-                   "cycle aborts. Something in the static reaches out—three cards in "
-                   "your deck pulse with wrongness.\n\n"
-                   "The corruption has spread to you.",
-                   20,  // +20 chips
-                   0);  // No sanity change
-    // Tag 3 random cards as CURSED
-    AddCardTagToChoiceWithStrategy(event, 1, CARD_TAG_CURSED, TAG_TARGET_RANDOM_CARD);
-    AddCardTagToChoiceWithStrategy(event, 1, CARD_TAG_CURSED, TAG_TARGET_RANDOM_CARD);
-    AddCardTagToChoiceWithStrategy(event, 1, CARD_TAG_CURSED, TAG_TARGET_RANDOM_CARD);
-
-    // Choice C: Sabotage maintenance [REQUIRES 1 CURSED CARD]
-    AddEventChoice(event,
-                   "Sabotage the maintenance",
-                   "> MANUAL_OVERRIDE_ACCEPTED\n\n"
-                   "Your cursed cards interface directly with the corrupted system. "
-                   "Feedback screeches through your skull as you accelerate the decay.\n\n"
-                   "The Daemon will boot incomplete. Weakened. Your mind pays the price.",
-                   0,    // No chips
-                   -20); // -20 sanity
-    // Set requirement: needs at least 1 CURSED card
-    ChoiceRequirement_t req = {.type = REQUIREMENT_TAG_COUNT};
-    req.data.tag_req.required_tag = CARD_TAG_CURSED;
-    req.data.tag_req.min_count = 1;
-    SetChoiceRequirement(event, 2, req);
-    // Set enemy HP multiplier: Daemon starts at 75% HP
-    SetChoiceEnemyHPMultiplier(event, 2, 0.75f);
-
-    d_LogInfo("Created SystemMaintenanceEvent");
-    return event;
-}
-
-/**
- * CreateHouseOddsEvent - "House Odds" event
- *
- * Theme: Casino elite membership with tag-based conditional unlock
- * Demonstrates multiple strategies and enemy HP scaling
- */
-EventEncounter_t* CreateHouseOddsEvent(void) {
-    EventEncounter_t* event = CreateEvent(
-        "House Odds",
-        "A screen flickers to life above the table.\n\n"
-        "CONGRATULATIONS - YOU'VE BEEN UPGRADED TO ELITE STATUS.\n\n"
-        "Your next opponent has been selected for maximum engagement.",
-        EVENT_TYPE_CHOICE
-    );
-
-    if (!event) {
-        d_LogError("Failed to create HouseOddsEvent");
-        return NULL;
-    }
-
-    // Choice A: Accept upgrade (Daemon +50% HP, Elite Membership trinket)
-    AddEventChoice(event,
-                   "Accept the upgrade",
-                   "\"Excellent choice.\"\n\n"
-                   "The dealer slides a black card across the table. Your fingers tingle "
-                   "as you accept it. The card hums with probability manipulation.\n\n"
-                   "Elite Status granted. The casino's algorithms now favor you... "
-                   "but the Daemon has been enhanced to match.",
-                   0,  // No chips (rewards come later via trinket)
-                   0); // No sanity change
-    // Grant Elite Membership trinket from event_trinkets.duf
-    SetChoiceTrinketReward(event, 0, "elite_membership");
-    // Set enemy HP multiplier: Daemon starts at 130% HP
-    SetChoiceEnemyHPMultiplier(event, 0, 1.3f);
-
-    // Choice B: Refuse (-15 sanity, all Aces → LUCKY)
-    AddEventChoice(event,
-                   "Refuse the upgrade",
-                   "\"Disappointing.\"\n\n"
-                   "The dealer's smile freezes. Reality hiccups. When the world stabilizes, "
-                   "your Aces shimmer with stolen luck. The House's punishment backfired.\n\n"
-                   "You feel the sanity drain, but your deck pulses with new power.",
-                   0,    // No chips
-                   -15); // -15 sanity
-    // Tag all 4 Aces as LUCKY
-    AddCardTagToChoiceWithStrategy(event, 1, CARD_TAG_LUCKY, TAG_TARGET_RANK_ACES);
-
-    // Choice C: Negotiate terms [REQUIRES 1 LUCKY CARD]
-    AddEventChoice(event,
-                   "Negotiate terms",
-                   "\"Ah, you have luck on your side.\" The dealer inclines their head.\n\n"
-                   "Your lucky card catches the light as leverage. The terms shift in your favor. "
-                   "Face cards darken with brutal intent.\n\n"
-                   "The deal is struck. The Daemon awaits at standard strength.",
-                   30,  // +30 chips
-                   0);  // No sanity change
-    // Set requirement: needs at least 1 LUCKY card
-    ChoiceRequirement_t req2 = {.type = REQUIREMENT_TAG_COUNT};
-    req2.data.tag_req.required_tag = CARD_TAG_LUCKY;
-    req2.data.tag_req.min_count = 1;
-    SetChoiceRequirement(event, 2, req2);
-    // Tag all face cards (J, Q, K = 12 cards) as BRUTAL
-    AddCardTagToChoiceWithStrategy(event, 2, CARD_TAG_BRUTAL, TAG_TARGET_RANK_FACE_CARDS);
-    // No HP multiplier (normal Daemon HP)
-
-    d_LogInfo("Created HouseOddsEvent");
-    return event;
-}
+// CreateSystemMaintenanceEvent and CreateHouseOddsEvent are now DUF-based.
+// They are implemented in src/eventPool.c as wrappers around LoadEventFromDUF().
+// See data/events/tutorial_events.duf for event definitions.

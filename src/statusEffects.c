@@ -274,6 +274,8 @@ void ProcessStatusEffectsRoundStart(StatusEffectManager_t* manager, Player_t* pl
         // Track drain amount for result screen animation
         SetStatusEffectDrainAmount(drain_amount, STATUS_CHIP_DRAIN);
 
+        // IMPORTANT: Caller MUST check for game over (chips <= 0) after this function!
+
         // Trigger flash animation (icon flashes red in sidebar!)
         // SAFE: Use TweenFloatInArray to avoid dangling pointer from array reallocation
         TweenManager_t* tween_mgr = GetTweenManager();
@@ -293,14 +295,15 @@ void ProcessStatusEffectsRoundEnd(StatusEffectManager_t* manager, Player_t* play
     (void)player;
 }
 
-void ClearAllStatusEffects(StatusEffectManager_t* manager) {
-    if (!manager || !manager->active_effects) return;
+size_t ClearAllStatusEffects(StatusEffectManager_t* manager) {
+    if (!manager || !manager->active_effects) return 0;
 
     size_t count = manager->active_effects->count;
     if (count > 0) {
         d_LogInfoF("Clearing all status effects (%zu effects removed)", count);
         manager->active_effects->count = 0;  // Clear all effects instantly
     }
+    return count;
 }
 
 void TickStatusEffectDurations(StatusEffectManager_t* manager) {

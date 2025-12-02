@@ -30,6 +30,11 @@ typedef struct TrinketUI {
     // Hover state
     int hovered_trinket_slot;      // -1 = none, 0-5 = regular slot index
     bool hovered_class_trinket;    // true if hovering over class trinket
+
+    // Affix template caching (for tooltip rendering)
+    AffixTemplate_t* cached_affix_templates[3];  // Max 3 affixes per trinket
+    int cached_affix_count;                      // Number of cached templates
+    int cached_slot_index;                       // Which slot is cached (-2 = none, -1 = class, 0-5 = regular)
 } TrinketUI_t;
 
 // ============================================================================

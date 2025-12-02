@@ -71,9 +71,9 @@ Terminal_t* InitTerminal(void) {
     }
 
     // Create FlexBox for output layout (vertical column)
-    int term_height = (int)(SCREEN_HEIGHT * TERMINAL_HEIGHT_RATIO);
+    int term_height = (int)(GetWindowHeight() * TERMINAL_HEIGHT_RATIO);
     terminal->output_layout = a_FlexBoxCreate(10, 10,  // 10px margin from edges
-                                               SCREEN_WIDTH - 20,
+                                               GetWindowWidth() - 20,
                                                term_height - 60);  // Leave room for input line
     if (!terminal->output_layout) {
         d_StringDestroy(terminal->input_buffer);
@@ -616,7 +616,7 @@ void HandleTerminalInput(Terminal_t* terminal) {
     if (!terminal || !terminal->is_visible) return;
 
     // Calculate scroll parameters
-    int term_height = (int)(SCREEN_HEIGHT * TERMINAL_HEIGHT_RATIO);
+    int term_height = (int)(GetWindowHeight() * TERMINAL_HEIGHT_RATIO);
     int visible_height = term_height - 60;
     int line_height = 24 + 8;  // Item height + gap
     int total_content_height = (int)(terminal->output_log->count * line_height);
@@ -637,7 +637,7 @@ void HandleTerminalInput(Terminal_t* terminal) {
     if (total_content_height > visible_height) {
         // Scrollbar dimensions
         int scrollbar_width = 8;
-        int scrollbar_x = SCREEN_WIDTH - scrollbar_width - 5;
+        int scrollbar_x = GetWindowWidth() - scrollbar_width - 5;
         int scrollbar_y = 10;
         int scrollbar_height = visible_height;
 
@@ -1015,10 +1015,11 @@ void HandleTerminalInput(Terminal_t* terminal) {
 void RenderTerminal(Terminal_t* terminal) {
     if (!terminal || !terminal->is_visible) return;
 
-    int term_height = (int)(SCREEN_HEIGHT * TERMINAL_HEIGHT_RATIO);
+    // Use runtime window size (not hardcoded SCREEN_HEIGHT!)
+    int term_height = (int)(GetWindowHeight() * TERMINAL_HEIGHT_RATIO);
 
-    // Draw background
-    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, term_height},
+    // Draw background (use runtime window width too!)
+    a_DrawFilledRect((aRectf_t){0, 0, GetWindowWidth(), term_height},
                      (aColor_t){TERMINAL_BG_COLOR.r, TERMINAL_BG_COLOR.g,
                      TERMINAL_BG_COLOR.b, TERMINAL_BG_COLOR.a});
 
@@ -1120,7 +1121,7 @@ void RenderTerminal(Terminal_t* terminal) {
         // Set dropdown width with padding (20px total: 10px left + 10px right)
         int dropdown_width = (int)(max_text_width) + 20;
         if (dropdown_width < 200) dropdown_width = 200;  // Minimum width
-        if (dropdown_width > SCREEN_WIDTH - 20) dropdown_width = SCREEN_WIDTH - 20;  // Max width
+        if (dropdown_width > GetWindowWidth() - 20) dropdown_width = GetWindowWidth() - 20;  // Max width
 
         // Draw dropdown background
         a_DrawFilledRect((aRectf_t){dropdown_x, dropdown_y - dropdown_height, dropdown_width, dropdown_height},
@@ -1200,7 +1201,7 @@ void RenderTerminal(Terminal_t* terminal) {
     if (total_content_height > visible_height) {
         // Scrollbar dimensions
         int scrollbar_width = 8;
-        int scrollbar_x = SCREEN_WIDTH - scrollbar_width - 5;  // 5px from right edge
+        int scrollbar_x = GetWindowWidth() - scrollbar_width - 5;  // 5px from right edge
         int scrollbar_y = 10;
         int scrollbar_height = visible_height;
 
@@ -1250,12 +1251,12 @@ void TerminalPrint(Terminal_t* terminal, const char* format, ...) {
 
     // Add FlexBox item for this line (24px height per line)
     if (terminal->output_layout) {
-        a_FlexAddItem(terminal->output_layout, SCREEN_WIDTH - 20, 24, line);
+        a_FlexAddItem(terminal->output_layout, GetWindowWidth() - 20, 24, line);
         a_FlexLayout(terminal->output_layout);  // Recalculate positions
     }
 
     // Auto-scroll to bottom (keep terminal "sticky" to latest output)
-    int term_height = (int)(SCREEN_HEIGHT * TERMINAL_HEIGHT_RATIO);
+    int term_height = (int)(GetWindowHeight() * TERMINAL_HEIGHT_RATIO);
     int visible_height = term_height - 60;  // Leave room for input line
     int line_height = 24 + 8;  // Item height + gap
     int total_content_height = (int)(terminal->output_log->count * line_height);
@@ -1285,9 +1286,9 @@ void TerminalPrint(Terminal_t* terminal, const char* format, ...) {
         // Rebuild FlexBox layout with remaining lines
         if (terminal->output_layout) {
             a_FlexBoxDestroy(&terminal->output_layout);
-            int term_height = (int)(SCREEN_HEIGHT * TERMINAL_HEIGHT_RATIO);
+            int term_height = (int)(GetWindowHeight() * TERMINAL_HEIGHT_RATIO);
             terminal->output_layout = a_FlexBoxCreate(10, 10,
-                                                       SCREEN_WIDTH - 20,
+                                                       GetWindowWidth() - 20,
                                                        term_height - 60);
             a_FlexConfigure(terminal->output_layout, FLEX_DIR_COLUMN, FLEX_JUSTIFY_START, 8);
             a_FlexSetPadding(terminal->output_layout, 0);
@@ -1296,7 +1297,7 @@ void TerminalPrint(Terminal_t* terminal, const char* format, ...) {
             for (size_t i = 0; i < terminal->output_log->count; i++) {
                 dString_t** line_ptr = (dString_t**)d_ArrayGet(terminal->output_log, i);
                 if (line_ptr && *line_ptr) {
-                    a_FlexAddItem(terminal->output_layout, SCREEN_WIDTH - 20, 24, *line_ptr);
+                    a_FlexAddItem(terminal->output_layout, GetWindowWidth() - 20, 24, *line_ptr);
                 }
             }
             a_FlexLayout(terminal->output_layout);
@@ -1323,9 +1324,9 @@ void TerminalClear(Terminal_t* terminal) {
     // Recreate FlexBox layout (clears all items)
     if (terminal->output_layout) {
         a_FlexBoxDestroy(&terminal->output_layout);
-        int term_height = (int)(SCREEN_HEIGHT * TERMINAL_HEIGHT_RATIO);
+        int term_height = (int)(GetWindowHeight() * TERMINAL_HEIGHT_RATIO);
         terminal->output_layout = a_FlexBoxCreate(10, 10,
-                                                   SCREEN_WIDTH - 20,
+                                                   GetWindowWidth() - 20,
                                                    term_height - 60);
         a_FlexConfigure(terminal->output_layout, FLEX_DIR_COLUMN, FLEX_JUSTIFY_START, 8);
         a_FlexSetPadding(terminal->output_layout, 0);

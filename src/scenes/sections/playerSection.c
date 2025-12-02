@@ -22,14 +22,18 @@ extern GameContext_t g_game;  // For checking targeting state
 // ============================================================================
 
 /**
- * IsCardHovered - Check if mouse is over a card
+ * IsCardHovered - Check if mouse is over a card (accounts for card scaling!)
  */
 static bool IsCardHovered(int card_x, int card_y) {
     int mouse_x, mouse_y;
     SDL_GetMouseState(&mouse_x, &mouse_y);
 
-    return (mouse_x >= card_x && mouse_x < card_x + CARD_WIDTH &&
-            mouse_y >= card_y && mouse_y < card_y + CARD_HEIGHT);
+    float card_scale = GetCardScale();
+    int scaled_width = (int)(CARD_WIDTH * card_scale);
+    int scaled_height = (int)(CARD_HEIGHT * card_scale);
+
+    return (mouse_x >= card_x && mouse_x < card_x + scaled_width &&
+            mouse_y >= card_y && mouse_y < card_y + scaled_height);
 }
 
 // ============================================================================
@@ -101,11 +105,11 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                    player->hand.is_bust ? " (BUST)" : "");
 
     int name_y = y + SECTION_PADDING;
-    int player_score_x = GetGameAreaX() + (SIDEBAR_WIDTH / 2);
+    int player_score_x = GetGameAreaX() + HAND_LEFT_PADDING;
 
-    // Draw main score (yellow)
+    float ui_scale = GetUIScale();
     a_DrawText((char*)d_StringPeek(info), player_score_x, name_y,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,0,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={255,255,0,255}, .bg={0,0,0,180}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=ui_scale, .padding=4});
 
     d_StringDestroy(info);
 
@@ -183,17 +187,21 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
             CalculateCardFanPosition(i, hand_size, cards_y, &x, &y);
         }
 
+        float card_scale = GetCardScale();
+        float scaled_width = CARD_WIDTH * card_scale;
+        float scaled_height = CARD_HEIGHT * card_scale;
+
         if (card->face_up && card->texture && card->texture->surface) {
             aRectf_t src = {0, 0, card->texture->surface->w, card->texture->surface->h};
-            aRectf_t dest = {x, y, CARD_WIDTH, CARD_HEIGHT};
+            aRectf_t dest = {x, y, scaled_width, scaled_height};
             a_BlitRect(card->texture, &src, &dest, 1.0f);
         } else if (!card->face_up && g_card_back_texture && g_card_back_texture->surface) {
             aRectf_t src = {0, 0, g_card_back_texture->surface->w, g_card_back_texture->surface->h};
-            aRectf_t dest = {x, y, CARD_WIDTH, CARD_HEIGHT};
+            aRectf_t dest = {x, y, scaled_width, scaled_height};
             a_BlitRect(g_card_back_texture, &src, &dest, 1.0f);
         } else {
-            a_DrawFilledRect((aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){200, 200, 200, 255});
-            a_DrawRect((aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){100, 100, 100, 255});
+            a_DrawFilledRect((aRectf_t){x, y, scaled_width, scaled_height}, (aColor_t){200, 200, 200, 255});
+            a_DrawRect((aRectf_t){x, y, scaled_width, scaled_height}, (aColor_t){100, 100, 100, 255});
         }
 
         // Draw ace value text (1 or 11) on the card itself
@@ -222,12 +230,17 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                 // Use centralized validity check from sceneBlackjack.h
                 bool is_valid = IsCardValidTarget(card, trinket_slot);
 
+                // Apply card scaling for proper overlay size
+                float card_scale = GetCardScale();
+                float scaled_width = CARD_WIDTH * card_scale;
+                float scaled_height = CARD_HEIGHT * card_scale;
+
                 if (is_valid) {
                     // Green overlay for valid targets
-                    a_DrawFilledRect((aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){0, 255, 0, 80});
+                    a_DrawFilledRect((aRectf_t){x, y, scaled_width, scaled_height}, (aColor_t){0, 255, 0, 80});
                 } else {
                     // Dimmed overlay for invalid targets
-                    a_DrawFilledRect((aRectf_t){x, y, CARD_WIDTH, CARD_HEIGHT}, (aColor_t){128, 128, 128, 80});
+                    a_DrawFilledRect((aRectf_t){x, y, scaled_width, scaled_height}, (aColor_t){128, 128, 128, 80});
                 }
             }
         }
@@ -286,15 +299,19 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                 CalculateCardFanPosition((size_t)hovered_index, hand_size, cards_y, &x, &y);
             }
 
-            // Apply hover effects
-            float hover_t = section->hover_state.hover_amount;
-            float scale = 1.0f + (0.15f * hover_t);  // 1.0 → 1.15
-            int lift = (int)(-20.0f * hover_t);      // 0 → -20px
+            // Apply hover effects (on top of base card scale!)
+            float card_scale = GetCardScale();  // Base scale (1.0 or 1.2 at 1600x900)
+            float base_width = CARD_WIDTH * card_scale;
+            float base_height = CARD_HEIGHT * card_scale;
 
-            int scaled_width = (int)(CARD_WIDTH * scale);
-            int scaled_height = (int)(CARD_HEIGHT * scale);
-            int scaled_x = x - (scaled_width - CARD_WIDTH) / 2;  // Center scaling
-            int scaled_y = y + lift - (scaled_height - CARD_HEIGHT) / 2;
+            float hover_t = section->hover_state.hover_amount;
+            float hover_scale = 1.0f + (0.15f * hover_t);  // 1.0 → 1.15
+            int lift = (int)(-20.0f * hover_t);             // 0 → -20px
+
+            int scaled_width = (int)(base_width * hover_scale);
+            int scaled_height = (int)(base_height * hover_scale);
+            int scaled_x = x - (scaled_width - (int)base_width) / 2;  // Center scaling
+            int scaled_y = y + lift - (scaled_height - (int)base_height) / 2;
 
             // Use Archimedes image blitting
             if (card->face_up && card->texture && card->texture->surface) {
@@ -317,8 +334,8 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                 d_StringFormat(ace_text, "(%d)", ace_value);
 
                 // Top-left corner, 20px down from top (scaled)
-                int text_x = scaled_x + (int)(4 * scale);
-                int text_y = scaled_y + (int)(20 * scale);
+                int text_x = scaled_x + (int)(4 * hover_scale);
+                int text_y = scaled_y + (int)(20 * hover_scale);
 
                 // Lighter blue text (dodger blue)
                 a_DrawText((char*)d_StringPeek(ace_text), text_x, text_y,
@@ -333,7 +350,7 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                     bool is_valid = IsCardValidTarget(card, trinket_slot);
 
                     // Draw bright border to indicate this card will be selected on click
-                    int border_thickness = (int)(3 * scale);  // Thicker border for visibility
+                    int border_thickness = (int)(3 * hover_scale);  // Thicker border for visibility
                     if (is_valid) {
                         // Bright green border (valid target + hovered = selectable)
                         for (int i = 0; i < border_thickness; i++) {
@@ -355,16 +372,16 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                 const dArray_t* tags = GetCardTags(card->card_id);
 
                 if (tags && tags->count > 0) {
-                    const int badge_w = (int)(64 * scale);  // Scaled width
-                    const int badge_h = (int)(25 * scale);
+                    const int badge_w = (int)(64 * hover_scale);  // Scaled width
+                    const int badge_h = (int)(25 * hover_scale);
 
                     for (size_t t = 0; t < tags->count; t++) {
                         CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, t);
                         if (!tag) continue;
 
                         // Position from top-right, offset by 12px right and 24px down (scaled)
-                        int badge_x = scaled_x + scaled_width - badge_w - (int)(3 * scale) + (int)(12 * scale);
-                        int badge_y = scaled_y - badge_h - (int)(3 * scale) + (int)(24 * scale) + ((int)t * (badge_h + (int)(2 * scale)));
+                        int badge_x = scaled_x + scaled_width - badge_w - (int)(3 * hover_scale) + (int)(12 * hover_scale);
+                        int badge_y = scaled_y - badge_h - (int)(3 * hover_scale) + (int)(24 * hover_scale) + ((int)t * (badge_h + (int)(2 * hover_scale)));
 
                         // Get tag color
                         int r, g, b;
@@ -383,9 +400,9 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                             .type = FONT_ENTER_COMMAND,
                             .fg = {0, 0, 0, 255},
                             .align = TEXT_ALIGN_CENTER,
-                            .scale = 0.7f * scale
+                            .scale = 0.7f * hover_scale
                         };
-                        a_DrawText(truncated, badge_x + badge_w / 2, badge_y + (int)(3 * scale) - 8, tag_config);
+                        a_DrawText(truncated, badge_x + badge_w / 2, badge_y + (int)(3 * hover_scale) - 8, tag_config);
                     }
                 }
             }

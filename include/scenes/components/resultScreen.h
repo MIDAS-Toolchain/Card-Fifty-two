@@ -96,13 +96,14 @@ void DestroyResultScreen(ResultScreen_t** screen);
  * @param old_chips - Player chips before round (for slot animation)
  * @param chip_delta - Bet outcome delta (win/loss amount)
  * @param status_drain - Status effect drain amount (0 if none)
- * @param is_victory - true if STATE_COMBAT_VICTORY (shows "Cleansed!" bonus)
+ * @param is_victory - true if STATE_COMBAT_VICTORY
+ * @param cleared_effects_count - Number of status effects cleared on victory
  *
  * Call this when entering STATE_ROUND_END or STATE_COMBAT_VICTORY.
  * Resets timers and animation flags, generates random offsets.
- * If is_victory=true and status_drain=0, shows "Cleansed of all status effects!" message.
+ * Shows "Status Cleansed" message if cleared_effects_count > 0 on victory.
  */
-void ShowResultScreen(ResultScreen_t* screen, int old_chips, int chip_delta, int status_drain, bool is_victory);
+void ShowResultScreen(ResultScreen_t* screen, int old_chips, int chip_delta, int status_drain, bool is_victory, int cleared_effects_count);
 
 // ============================================================================
 // UPDATE & RENDERING

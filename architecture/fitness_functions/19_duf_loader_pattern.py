@@ -41,17 +41,23 @@ def discover_duf_loaders(project_root: Path) -> List[Dict[str, any]]:
         return loaders
 
     for header_file in loader_dir.glob("*Loader.h"):
-        loader_name = header_file.stem.replace("Loader", "").lower()
+        # Extract loader name while preserving camelCase (e.g., "cardTag" from "cardTagLoader.h")
+        stem_original = header_file.stem.replace("Loader", "")
+        loader_name = stem_original.lower()  # Display name (lowercase for messages)
 
-        # Find corresponding .c file
+        # Find corresponding .c file (use original stem for case-sensitive filesystem)
         impl_path = project_root / "src" / "loaders" / f"{header_file.stem}.c"
 
         if impl_path.exists():
+            # Capitalize first letter while preserving rest of camelCase
+            # "cardTag" → "CardTag" (not "Cardtag")
+            capitalized_name = stem_original[0].upper() + stem_original[1:] if stem_original else ""
+
             loaders.append({
                 'name': loader_name,
                 'header_path': header_file,
                 'impl_path': impl_path,
-                'capitalized': loader_name.capitalize()
+                'capitalized': capitalized_name  # Preserve camelCase: "CardTag" not "Cardtag"
             })
 
     return loaders
@@ -137,13 +143,16 @@ def check_ondemand_loader_function(loader: Dict) -> Tuple[bool, Optional[str]]:
 
     # Pattern 1: LoadXTemplateFromDUF (trinket, affix)
     # Pattern 2: LoadXFromDUF (enemy)
+    # Pattern 3: LoadX.*FromDUF with flexible return type (event: EventEncounter_t* LoadEventFromDUF)
     pattern1 = rf'{capitalized}Template_t\*\s+Load{capitalized}TemplateFromDUF\s*\('
     pattern2 = rf'{capitalized}_t\*\s+Load{capitalized}FromDUF\s*\('
+    pattern3 = rf'\w+\*\s+Load{capitalized}.*FromDUF\s*\('  # Flexible return type
 
     line1 = find_function_definition(impl_path, pattern1)
     line2 = find_function_definition(impl_path, pattern2)
+    line3 = find_function_definition(impl_path, pattern3)
 
-    if line1 or line2:
+    if line1 or line2 or line3:
         return (True, None)
     else:
         error = f"Missing: Load{capitalized}TemplateFromDUF() or Load{capitalized}FromDUF() in {impl_path.name}"
@@ -152,7 +161,7 @@ def check_ondemand_loader_function(loader: Dict) -> Tuple[bool, Optional[str]]:
 
 def check_cleanup_function(loader: Dict) -> Tuple[bool, Optional[str]]:
     """
-    Check 4: CleanupXTemplate() or DestroyX() function exists
+    Check 4: CleanupXTemplate() or DestroyX() or CleanupXSystem() function exists
 
     Returns: (success, error_message)
     """
@@ -161,13 +170,16 @@ def check_cleanup_function(loader: Dict) -> Tuple[bool, Optional[str]]:
 
     # Pattern 1: void CleanupXTemplate(...) (trinket, affix)
     # Pattern 2: void DestroyX(...) (enemy)
+    # Pattern 3: void CleanupXSystem(...) (event, cardTag - cleans entire system not individual items)
     pattern1 = rf'void\s+Cleanup{capitalized}Template\s*\('
     pattern2 = rf'void\s+Destroy{capitalized}\s*\('
+    pattern3 = rf'void\s+Cleanup{capitalized}System\s*\('
 
     line1 = find_function_definition(impl_path, pattern1)
     line2 = find_function_definition(impl_path, pattern2)
+    line3 = find_function_definition(impl_path, pattern3)
 
-    if line1 or line2:
+    if line1 or line2 or line3:
         return (True, None)
     else:
         # EXCEPTION: DestroyEnemy is in enemy.c, not enemyLoader.c
@@ -178,8 +190,8 @@ def check_cleanup_function(loader: Dict) -> Tuple[bool, Optional[str]]:
             enemy_c = project_root / "src" / "enemy.c"
 
             if enemy_c.exists():
-                line3 = find_function_definition(enemy_c, pattern2)
-                if line3:
+                line4 = find_function_definition(enemy_c, pattern2)
+                if line4:
                     return (True, None)  # Found in enemy.c
 
         error = f"Missing: Cleanup{capitalized}Template() or Destroy{capitalized}() in {impl_path.name}"

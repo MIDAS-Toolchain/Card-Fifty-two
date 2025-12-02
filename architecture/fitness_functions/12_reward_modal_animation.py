@@ -46,7 +46,7 @@ PALETTE_COLORS = {
     "CARD_TAG_CURSED": (165, 48, 48),      # #a53030
     "CARD_TAG_VAMPIRIC": (207, 87, 60),    # #cf573c
     "CARD_TAG_LUCKY": (117, 167, 67),      # #75a743
-    "CARD_TAG_BRUTAL": (222, 158, 65),     # #de9e41
+    "CARD_TAG_JAGGED": (222, 158, 65),     # #de9e41
     "CARD_TAG_DOUBLED": (232, 193, 112)    # #e8c170
 }
 

@@ -1,0 +1,131 @@
+# Card Tag Definitions
+# Player-side abilities that modify card behavior
+# Pattern matches enemy abilities (trigger → effects)
+
+# ============================================================================
+# ON-DRAW TAGS (trigger when card is drawn)
+# ============================================================================
+
+@cursed {
+    display_name: "Cursed"
+    description: "10 damage to enemy when drawn"
+    color_r: 165
+    color_g: 48
+    color_b: 48
+
+    # Trigger: fires when THIS specific card is drawn
+    trigger: {
+        type: "on_draw"
+    }
+
+    # Effect: deal 10 damage to current enemy
+    effects: [
+        {
+            type: "damage_enemy"
+            value: 10
+        }
+    ]
+}
+
+@vampiric {
+    display_name: "Vampiric"
+    description: "5 damage + 5 chips when drawn"
+    color_r: 207
+    color_g: 87
+    color_b: 60
+
+    trigger: {
+        type: "on_draw"
+    }
+
+    # Effects: deal damage AND gain chips
+    effects: [
+        {
+            type: "damage_enemy"
+            value: 5
+        },
+        {
+            type: "add_chips"
+            value: 5
+        }
+    ]
+}
+
+# ============================================================================
+# PASSIVE TAGS (global bonuses while in any hand)
+# ============================================================================
+
+@lucky {
+    display_name: "Lucky"
+    description: "+10% crit while in any hand"
+    color_r: 117
+    color_g: 167
+    color_b: 67
+
+    # Trigger: passive (always active while card is in play)
+    # Scope: global (ALL cards with LUCKY tag contribute)
+    trigger: {
+        type: "passive"
+        scope: "global"
+    }
+
+    # Effect: +10% crit per LUCKY card in play
+    # Stacking: 3 LUCKY cards = +30% total (additive)
+    effects: [
+        {
+            type: "add_crit_percent"
+            value: 10
+            stacking: "multiply"
+        }
+    ]
+}
+
+@jagged {
+    display_name: "Jagged"
+    description: "+10% damage while in any hand"
+    color_r: 222
+    color_g: 158
+    color_b: 65
+
+    trigger: {
+        type: "passive"
+        scope: "global"
+    }
+
+    # Effect: +10% damage per JAGGED card in play
+    effects: [
+        {
+            type: "add_damage_percent"
+            value: 10
+            stacking: "multiply"
+        }
+    ]
+}
+
+# ============================================================================
+# ONE-TIME TAGS (removed after use)
+# ============================================================================
+
+@doubled {
+    display_name: "Doubled"
+    description: "Counts twice for hand value"
+    color_r: 232
+    color_g: 193
+    color_b: 112
+
+    # Trigger: passive, but only affects THIS card (not global)
+    # Duration: one_turn (auto-removed after hand resolution)
+    trigger: {
+        type: "passive"
+        scope: "single_card"
+        duration: "one_turn"
+    }
+
+    # Effect: multiply card value by 2 for hand calculation
+    effects: [
+        {
+            type: "multiply_card_value"
+            multiplier: 2
+        }
+    ]
+}

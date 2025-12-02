@@ -80,10 +80,16 @@ static void ApplyDefaultSettings(Settings_t* settings) {
     // UI tab
     settings->show_fps = false;
     settings->screen_shake = true;
-    settings->ui_scale = 0;  // 100%
+    settings->ui_scale = 0;  // 100% (will auto-adjust based on resolution)
 
     // Graphics tab
     settings->resolution_index = 1;  // 1366x768 - index 1
+
+    // Auto-adjust UI scale based on resolution
+    // 1600x900 gets 125% scale by default for better readability
+    if (settings->resolution_index == 2) {  // 1600x900
+        settings->ui_scale = 1;  // 125%
+    }
 }
 
 // ============================================================================

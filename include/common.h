@@ -40,7 +40,7 @@
 // Player registry: Key = int (player_id), Value = Player_t*
 extern dTable_t* g_players;
 
-// Surface cache: Key = int (card_id), Value = SDL_Surface*
+// Archimedes image cache: Key = int (card_id), Value = aImage_t* (managed by Archimedes, auto-cleanup)
 extern dTable_t* g_card_textures;
 
 // Portrait surface cache: Key = int (player_id), Value = SDL_Surface*
@@ -78,6 +78,20 @@ int GetWindowWidth(void);
  * Use this instead of SCREEN_HEIGHT for resolution-independent layouts
  */
 int GetWindowHeight(void);
+
+/**
+ * Get UI scale multiplier based on current settings
+ * Returns: 1.0f (100%), 1.25f (125%), or 1.5f (150%)
+ * Use this to scale text and UI elements for better readability
+ */
+float GetUIScale(void);
+
+/**
+ * Get card scale multiplier based on resolution
+ * Returns: 1.0f for 720p/768p, 1.2f for 900p (20% bigger cards)
+ * Use this to scale card rendering on larger screens
+ */
+float GetCardScale(void);
 
 // ============================================================================
 // GLOBAL UI SOUND EFFECTS (defined in main.c)

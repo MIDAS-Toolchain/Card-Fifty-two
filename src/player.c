@@ -9,7 +9,7 @@
 #include "statusEffects.h"
 #include "stats.h"
 #include "scenes/sceneBlackjack.h"
-#include "cardTags.h"  // For HasCardTag, CARD_TAG_LUCKY, CARD_TAG_BRUTAL
+#include "cardTags.h"  // For HasCardTag, CARD_TAG_LUCKY, CARD_TAG_JAGGED
 
 // ============================================================================
 // PLAYER LIFECYCLE
@@ -108,71 +108,70 @@ void DestroyPlayer(int player_id) {
         return;
     }
 
+    // CRITICAL: Copy player data to stack BEFORE removing from table
+    // This prevents double-free when d_TableRemove() frees the table entry
+    Player_t player_copy = *player;
+
+    // Remove from global players table FIRST (Daedalus frees the Player_t value memory)
+    d_LogDebug("DestroyPlayer: Removing from g_players table");
+    d_TableRemove(g_players, &player_id);
+
+    // NOW cleanup internal heap resources using stack copy
+    // (player pointer is now INVALID - use player_copy)
+
     // Destroy name string (heap-allocated resource)
     d_LogDebug("DestroyPlayer: Destroying player name");
-    if (player->name) {
-        d_StringDestroy(player->name);
-        player->name = NULL;
+    if (player_copy.name) {
+        d_StringDestroy(player_copy.name);
     }
 
     // Cleanup hand (value type - only cleanup internal resources)
     d_LogDebug("DestroyPlayer: Cleaning up hand");
-    CleanupHand(&player->hand);
+    CleanupHand(&player_copy.hand);
 
     // Destroy portrait surface and texture (owned by player)
     d_LogDebug("DestroyPlayer: Destroying portrait");
-    if (player->portrait_surface) {
-        SDL_FreeSurface(player->portrait_surface);
-        player->portrait_surface = NULL;
+    if (player_copy.portrait_surface) {
+        SDL_FreeSurface(player_copy.portrait_surface);
     }
 
-    if (player->portrait_texture) {
-        SDL_DestroyTexture(player->portrait_texture);
-        player->portrait_texture = NULL;
+    if (player_copy.portrait_texture) {
+        SDL_DestroyTexture(player_copy.portrait_texture);
     }
 
     // Destroy status effects manager (heap-allocated)
     d_LogDebug("DestroyPlayer: Destroying status effects");
-    if (player->status_effects) {
-        DestroyStatusEffectManager(&player->status_effects);
+    if (player_copy.status_effects) {
+        DestroyStatusEffectManager(&player_copy.status_effects);
     }
 
     // Cleanup class trinket (VALUE semantics - only cleanup internal dStrings, not struct)
     d_LogDebug("DestroyPlayer: Cleaning up class trinket");
-    if (player->has_class_trinket) {
-        CleanupTrinketValue(&player->class_trinket);
-        player->has_class_trinket = false;
+    if (player_copy.has_class_trinket) {
+        CleanupTrinketValue(&player_copy.class_trinket);
     }
 
     // Cleanup trinket instance slots (Constitutional: cleanup each instance's dStrings)
     // TrinketInstance_t contains dString_t* fields that need cleanup
     d_LogDebug("DestroyPlayer: Cleaning up trinket instance slots");
     for (int i = 0; i < 6; i++) {
-        if (player->trinket_slot_occupied[i]) {
-            TrinketInstance_t* instance = &player->trinket_slots[i];
+        if (player_copy.trinket_slot_occupied[i]) {
+            TrinketInstance_t* instance = &player_copy.trinket_slots[i];
             // Free internal dString_t fields
             if (instance->base_trinket_key) {
                 d_StringDestroy(instance->base_trinket_key);
-                instance->base_trinket_key = NULL;
             }
             if (instance->trinket_stack_stat) {
                 d_StringDestroy(instance->trinket_stack_stat);
-                instance->trinket_stack_stat = NULL;
             }
             // Free affix stat keys
             for (int j = 0; j < instance->affix_count; j++) {
                 if (instance->affixes[j].stat_key) {
                     d_StringDestroy(instance->affixes[j].stat_key);
-                    instance->affixes[j].stat_key = NULL;
                 }
             }
-            player->trinket_slot_occupied[i] = false;
         }
     }
-
-    // Remove from global players table (Daedalus frees the Player_t value)
-    d_LogDebug("DestroyPlayer: Removing from g_players table");
-    d_TableRemove(g_players, &player_id);
 
     d_LogInfoF("Player ID %d destroyed successfully", player_id);
 }
@@ -478,6 +477,12 @@ void CalculatePlayerCombatStats(Player_t* player) {
     player->crit_chance = 0;
     player->crit_bonus = 0;  // Default crit bonus (no cards give this yet)
 
+    // Reset defensive stats
+    player->win_bonus_percent = 0;
+    player->loss_refund_percent = 0;
+    player->push_damage_percent = 0;
+    player->flat_chips_on_win = 0;
+
     int lucky_count = 0;
     int brutal_count = 0;
 
@@ -507,10 +512,10 @@ void CalculatePlayerCombatStats(Player_t* player) {
                           card->card_id, player_id, card->face_up);
             }
 
-            // Check for BRUTAL tag (+10% damage per card)
-            if (HasCardTag(card->card_id, CARD_TAG_BRUTAL)) {
+            // Check for JAGGED tag (+10% damage per card)
+            if (HasCardTag(card->card_id, CARD_TAG_JAGGED)) {
                 brutal_count++;
-                d_LogInfoF("  Found BRUTAL card: %d (player_id=%d, face_up=%d)",
+                d_LogInfoF("  Found JAGGED card: %d (player_id=%d, face_up=%d)",
                           card->card_id, player_id, card->face_up);
             }
         }

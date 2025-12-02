@@ -135,6 +135,41 @@ dArray_t* SuggestStatusEffects(Terminal_t* terminal, const char* partial_arg) {
     return suggestions;
 }
 
+dArray_t* SuggestTrinketNames(Terminal_t* terminal, const char* partial_arg) {
+    (void)terminal;  // Unused
+
+    // d_ArrayInit(capacity, element_size) - capacity FIRST!
+    dArray_t* suggestions = d_ArrayInit(16, sizeof(char*));
+    if (!suggestions) return NULL;
+
+    // Dynamically get all trinket keys from DUF cache (populated at startup)
+    if (!g_trinket_key_cache) {
+        d_LogWarning("SuggestTrinketNames: g_trinket_key_cache is NULL");
+        return suggestions;  // Return empty array
+    }
+
+    // Filter by partial argument (case-insensitive prefix match)
+    size_t partial_len = partial_arg ? strlen(partial_arg) : 0;
+
+    for (size_t i = 0; i < g_trinket_key_cache->count; i++) {
+        const char** key_ptr = (const char**)d_ArrayGet(g_trinket_key_cache, i);
+        if (!key_ptr || !*key_ptr) continue;
+
+        const char* trinket_key = *key_ptr;
+        size_t candidate_len = strlen(trinket_key);
+
+        // Prefix match AND candidate must be longer than partial (skip exact matches)
+        bool is_prefix_match = (partial_len == 0 || strncasecmp(trinket_key, partial_arg, partial_len) == 0);
+        bool is_longer = (candidate_len > partial_len);
+
+        if (is_prefix_match && (partial_len == 0 || is_longer)) {
+            d_ArrayAppend(suggestions, &trinket_key);
+        }
+    }
+
+    return suggestions;
+}
+
 // ============================================================================
 // COMMAND IMPLEMENTATIONS
 // ============================================================================
@@ -426,8 +461,8 @@ void CMD_AddTag(Terminal_t* terminal, const char* args) {
         tag = CARD_TAG_VAMPIRIC;
     } else if (strcasecmp(tag_name, "lucky") == 0) {
         tag = CARD_TAG_LUCKY;
-    } else if (strcasecmp(tag_name, "brutal") == 0) {
-        tag = CARD_TAG_BRUTAL;
+    } else if (strcasecmp(tag_name, "jagged") == 0) {
+        tag = CARD_TAG_JAGGED;
     } else if (strcasecmp(tag_name, "doubled") == 0) {
         tag = CARD_TAG_DOUBLED;
     } else {
@@ -681,6 +716,191 @@ static void CMD_TestDrop(Terminal_t* terminal, const char* args) {
 }
 
 // ============================================================================
+// GIVE TRINKET (FOR TESTING)
+// ============================================================================
+
+static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
+    if (!args || strlen(args) == 0) {
+        TerminalPrint(terminal, "[Error] Usage: give_trinket <trinket_key> [--tier=N] [--slot=N] [--stacks=N]");
+        TerminalPrint(terminal, "[Error] Example: give_trinket broken_watch");
+        TerminalPrint(terminal, "[Error] Example: give_trinket streak_counter --stacks=5 --tier=2");
+        TerminalPrint(terminal, "[Error] Example: give_trinket elite_membership --slot=2 --tier=3");
+        return;
+    }
+
+    if (!g_human_player) {
+        TerminalPrint(terminal, "[Error] No player found");
+        return;
+    }
+
+    // Parse args: trinket_key [--tier=N] [--slot=N] [--stacks=N]
+    char trinket_key[64] = {0};
+    int tier = 1;    // Default tier 1 (Act 1)
+    int slot = -1;   // -1 = auto-find empty slot
+    int stacks = 0;  // Initial stacks for testing
+
+    // Extract trinket key (first word)
+    sscanf(args, "%63s", trinket_key);
+
+    // Check for --tier=N
+    const char* tier_arg = strstr(args, "--tier=");
+    if (tier_arg) {
+        sscanf(tier_arg, "--tier=%d", &tier);
+        if (tier < 1 || tier > 3) {
+            TerminalPrint(terminal, "[Error] Tier must be 1-3 (Act 1-3)");
+            return;
+        }
+    }
+
+    // Check for --slot=N
+    const char* slot_arg = strstr(args, "--slot=");
+    if (slot_arg) {
+        sscanf(slot_arg, "--slot=%d", &slot);
+        if (slot < 0 || slot >= 6) {
+            TerminalPrint(terminal, "[Error] Slot must be 0-5");
+            return;
+        }
+    }
+
+    // Check for --stacks=N
+    const char* stacks_arg = strstr(args, "--stacks=");
+    if (stacks_arg) {
+        sscanf(stacks_arg, "--stacks=%d", &stacks);
+    }
+
+    // Load trinket template from DUF
+    const TrinketTemplate_t* template = LoadTrinketTemplateFromDUF(trinket_key);
+    if (!template) {
+        TerminalPrint(terminal, "[Error] Trinket '%s' not found in DUF database", trinket_key);
+        TerminalPrint(terminal, "[Error] Try: broken_watch, streak_counter, elite_membership");
+        return;
+    }
+
+    // Find empty slot if not specified
+    if (slot == -1) {
+        bool found_slot = false;
+        for (int i = 0; i < 6; i++) {
+            if (!g_human_player->trinket_slot_occupied[i]) {
+                slot = i;
+                found_slot = true;
+                break;
+            }
+        }
+
+        if (!found_slot) {
+            TerminalPrint(terminal, "[Error] All trinket slots are full");
+            CleanupTrinketTemplate((TrinketTemplate_t*)template);
+            free((void*)template);
+            return;
+        }
+    }
+
+    // Check if slot is already occupied (warn and overwrite)
+    if (g_human_player->trinket_slot_occupied[slot]) {
+        TerminalPrint(terminal, "[Warning] Slot %d already occupied, overwriting...", slot);
+        // TODO: Cleanup existing trinket in slot
+    }
+
+    // Create trinket instance from template
+    TrinketInstance_t instance;
+    memset(&instance, 0, sizeof(TrinketInstance_t));
+
+    // Copy trinket_key
+    instance.base_trinket_key = d_StringInit();
+    if (!instance.base_trinket_key) {
+        TerminalPrint(terminal, "[Error] Failed to allocate base_trinket_key");
+        CleanupTrinketTemplate((TrinketTemplate_t*)template);
+        free((void*)template);
+        return;
+    }
+    d_StringSet(instance.base_trinket_key, d_StringPeek(template->trinket_key), 0);
+
+    // Copy stack stat if exists (Broken Watch, Streak Counter)
+    if (template->passive_stack_stat) {
+        instance.trinket_stack_stat = d_StringInit();
+        if (!instance.trinket_stack_stat) {
+            TerminalPrint(terminal, "[Error] Failed to allocate trinket_stack_stat");
+            d_StringDestroy(instance.base_trinket_key);
+            CleanupTrinketTemplate((TrinketTemplate_t*)template);
+            free((void*)template);
+            return;
+        }
+        d_StringSet(instance.trinket_stack_stat, d_StringPeek(template->passive_stack_stat), 0);
+        instance.trinket_stack_value = template->passive_stack_value;
+        instance.trinket_stack_max = template->passive_stack_max;
+    } else {
+        instance.trinket_stack_stat = NULL;
+        instance.trinket_stack_value = 0;
+        instance.trinket_stack_max = 0;
+    }
+
+    // Set initial stacks for testing
+    instance.trinket_stacks = stacks;
+
+    // Copy basic fields
+    instance.rarity = template->rarity;
+    instance.tier = tier;
+    instance.sell_value = template->base_value;
+
+    // Initialize stat tracking
+    instance.total_damage_dealt = 0;
+    instance.total_bonus_chips = 0;
+    instance.total_refunded_chips = 0;
+    instance.highest_streak = 0;
+
+    // Initialize tag buff tracking (Cursed Skull)
+    instance.buffed_tag = -1;
+    instance.tag_buff_value = 0;
+
+    // Initialize affix array
+    instance.affix_count = 0;
+    for (int i = 0; i < 3; i++) {
+        instance.affixes[i].stat_key = NULL;
+        instance.affixes[i].rolled_value = 0;
+    }
+
+    // Roll affixes based on tier + rarity (same as GenerateTrinketDrop)
+    RollAffixes(tier, template->rarity, &instance);
+
+    // Recalculate sell value (base + affix bonuses)
+    instance.sell_value = template->base_value + (instance.affix_count * 5);
+
+    // Initialize animation state
+    instance.shake_offset_x = 0.0f;
+    instance.shake_offset_y = 0.0f;
+    instance.flash_alpha = 0.0f;
+
+    // Equip to player slot
+    g_human_player->trinket_slots[slot] = instance;
+    g_human_player->trinket_slot_occupied[slot] = true;
+
+    // Mark combat stats dirty for recalculation
+    g_human_player->combat_stats_dirty = true;
+
+    TerminalPrint(terminal, "[Success] Equipped '%s' to slot %d (Tier %d)",
+                  d_StringPeek(template->name), slot, tier);
+    TerminalPrint(terminal, "[Info] Affixes: %d | Sell: %d chips",
+                  instance.affix_count, instance.sell_value);
+
+    // Show rolled affixes
+    for (int i = 0; i < instance.affix_count; i++) {
+        if (instance.affixes[i].stat_key) {
+            TerminalPrint(terminal, "  + %s: %d",
+                        d_StringPeek(instance.affixes[i].stat_key),
+                        instance.affixes[i].rolled_value);
+        }
+    }
+
+    if (stacks > 0) {
+        TerminalPrint(terminal, "[Info] Set initial stacks: %d", stacks);
+    }
+
+    // Cleanup heap-allocated template (ADR-19 pattern)
+    CleanupTrinketTemplate((TrinketTemplate_t*)template);
+    free((void*)template);
+}
+
+// ============================================================================
 // TRINKET REROLL
 // ============================================================================
 
@@ -755,6 +975,7 @@ void RegisterBuiltinCommands(Terminal_t* terminal) {
     RegisterCommand(terminal, "add_tag", CMD_AddTag, "Add tag to card(s) by ID or 'all'", NULL);
     RegisterCommand(terminal, "apply_status", CMD_ApplyStatus, "Apply status effect to player", SuggestStatusEffects);
     RegisterCommand(terminal, "trigger_event", CMD_TriggerEvent, "Trigger specific event by name", SuggestEventNames);
+    RegisterCommand(terminal, "give_trinket", CMD_GiveTrinket, "Equip trinket by DUF key (use --tier=N --slot=N --stacks=N)", SuggestTrinketNames);
     RegisterCommand(terminal, "test_drop", CMD_TestDrop, "Generate trinket drop, equip to inventory (use --no-drop to preview only)", NULL);
     RegisterCommand(terminal, "reroll_trinket", CMD_RerollTrinket, "Reroll affixes on equipped trinket (0-5)", NULL);
 }

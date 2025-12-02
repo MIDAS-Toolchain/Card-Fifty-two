@@ -180,8 +180,6 @@ void StartTutorial(TutorialSystem_t* system, TutorialStep_t* first_step, void* d
     system->active = true;
     system->dialogue_visible = true;
     system->current_step_number = 1;  // Start at step 1
-
-    d_LogInfo("Tutorial started");
 }
 
 void StopTutorial(TutorialSystem_t* system) {
@@ -191,8 +189,6 @@ void StopTutorial(TutorialSystem_t* system) {
     system->dialogue_visible = false;
     system->current_step = NULL;
     system->current_step_number = 0;  // Reset to 0 (inactive)
-
-    d_LogInfo("Tutorial stopped");
 }
 
 void AdvanceTutorial(TutorialSystem_t* system) {
@@ -208,11 +204,9 @@ void AdvanceTutorial(TutorialSystem_t* system) {
     if (!system->current_step) {
         // No more steps - end tutorial
         StopTutorial(system);
-        d_LogInfo("Tutorial completed");
     } else {
         // Show dialogue for next step
         system->dialogue_visible = true;
-        d_LogInfoF("Tutorial advanced to step %d - showing dialogue", system->current_step_number);
     }
 }
 
@@ -245,13 +239,10 @@ void UpdateTutorialListeners(TutorialSystem_t* system, float dt) {
 
                 if (!system->current_step) {
                     StopTutorial(system);
-                    d_LogInfo("Tutorial completed");
                 } else {
                     // Keep dialogue HIDDEN until state is reached
                     system->dialogue_visible = false;
                     system->current_step->listener.triggered = false;
-                    d_LogInfoF("Tutorial advanced to step %d (immediate advance, waiting for state %d to show dialogue)",
-                              system->current_step_number, system->current_step->wait_for_game_state);
                 }
             } else {
                 // Normal behavior: wait for state before advancing
@@ -279,7 +270,6 @@ void UpdateTutorialListeners(TutorialSystem_t* system, float dt) {
         system->waiting_to_advance = true;
         system->advance_delay_timer = 1.0f;
         system->waiting_for_betting_state = true;
-        d_LogInfo("Tutorial event triggered - hiding dialogue, waiting for BETTING state to advance");
     }
 }
 
@@ -293,7 +283,6 @@ void CheckTutorialGameState(TutorialSystem_t* system, int game_state) {
             int required_state = system->current_step->next_step->wait_for_game_state;
             if (required_state == -1 || required_state == game_state) {
                 system->waiting_for_betting_state = false;
-                d_LogInfoF("Tutorial: Ready to advance (required state: %d, current: %d)", required_state, game_state);
             }
         }
     }
@@ -304,7 +293,6 @@ void CheckTutorialGameState(TutorialSystem_t* system, int game_state) {
         if (required_state == -1 || required_state == game_state) {
             // State reached - show dialogue now
             system->dialogue_visible = true;
-            d_LogInfoF("Tutorial: Step %d state reached (%d) - showing dialogue", system->current_step_number, game_state);
         }
     }
 }
@@ -401,7 +389,6 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
 
         if (app.keyboard[SDL_SCANCODE_ESCAPE]) {
             app.keyboard[SDL_SCANCODE_ESCAPE] = 0;
-            PlayUIClickSound();
             // ESC cancels skip (NO)
             system->skip_confirmation.visible = false;
             return true;
@@ -410,7 +397,6 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
         if (app.mouse.pressed) {
             // YES button
             if (yes_hovered) {
-                PlayUIClickSound();
                 // User confirmed skip
                 system->skip_confirmation.skip_confirmed = true;
                 system->skip_confirmation.visible = false;
@@ -420,7 +406,6 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
 
             // NO button
             if (no_hovered) {
-                PlayUIClickSound();
                 // User canceled skip
                 system->skip_confirmation.visible = false;
                 return true;
@@ -454,27 +439,16 @@ bool HandleTutorialInput(TutorialSystem_t* system) {
 
     // Mouse click on skip/finish button
     if (app.mouse.pressed) {
-        // DEBUG: Log click and bounds (rate-limited to once per second)
-        d_LogRateLimitedF(D_LOG_RATE_LIMIT_FLAG_HASH_FORMAT_STRING, D_LOG_LEVEL_INFO, 1, 1.0,
-                         "🖱️ CLICK at (%d,%d) | Dialogue: (%d,%d)-(%d,%d)",
-                         app.mouse.x, app.mouse.y,
-                         dialogue_x, dialogue_y, dialogue_x + dialogue_width, dialogue_y + dialogue_height);
-
         // Check if click is on skip/finish button
         if (skip_hovered) {
             PlayUIClickSound();
-            d_LogInfo("  ➡️ Click on SKIP/FINISH button - consuming");
             button_clicked = true;
             app.mouse.pressed = 0;
         }
         // Check if click is anywhere INSIDE dialogue box
         else if (app.mouse.x >= dialogue_x && app.mouse.x <= dialogue_x + dialogue_width &&
                  app.mouse.y >= dialogue_y && app.mouse.y <= dialogue_y + dialogue_height) {
-            d_LogInfo("  ➡️ Click in DIALOGUE - consuming");
             app.mouse.pressed = 0;
-        }
-        else {
-            d_LogInfo("  ➡️ Click OUTSIDE - passing through to game");
         }
     }
 

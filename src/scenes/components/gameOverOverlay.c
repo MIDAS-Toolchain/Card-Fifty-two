@@ -145,13 +145,17 @@ void UpdateGameOverOverlay(GameOverOverlay_t* overlay, float dt) {
 void RenderGameOverOverlay(const GameOverOverlay_t* overlay) {
     if (!overlay || !overlay->visible) return;
 
-    // Fullscreen overlay (black with animated alpha)
+    // Get UI scale multiplier (100%, 125%, or 150%)
+    float ui_scale = GetUIScale();
+
+    // Fullscreen overlay (black with animated alpha) - use runtime window size!
     Uint8 overlay_alpha_byte = (Uint8)overlay->overlay_alpha;
-    a_DrawFilledRect((aRectf_t){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT},
+    a_DrawFilledRect((aRectf_t){0, 0, GetWindowWidth(), GetWindowHeight()},
                      (aColor_t){0, 0, 0, overlay_alpha_byte});
 
-    int center_x = SCREEN_WIDTH / 2;
-    int center_y = SCREEN_HEIGHT / 2;
+    // Center position based on current window size (not hardcoded!)
+    int center_x = GetWindowWidth() / 2;
+    int center_y = GetWindowHeight() / 2;
 
     // "DEFEAT" title (red-orange, large, centered)
     Uint8 title_alpha = (Uint8)(overlay->title_alpha * 255);
@@ -160,7 +164,7 @@ void RenderGameOverOverlay(const GameOverOverlay_t* overlay) {
         .fg = {COLOR_TITLE.r, COLOR_TITLE.g, COLOR_TITLE.b, title_alpha},
         .align = TEXT_ALIGN_CENTER,
         .wrap_width = 0,
-        .scale = 1.5f
+        .scale = 1.5f * ui_scale  // Apply UI scaling
     };
     a_DrawText("DEFEAT", center_x, center_y - 150, title_style);
 
@@ -173,7 +177,7 @@ void RenderGameOverOverlay(const GameOverOverlay_t* overlay) {
         .fg = {COLOR_MESSAGE.r, COLOR_MESSAGE.g, COLOR_MESSAGE.b, stats_alpha},
         .align = TEXT_ALIGN_CENTER,
         .wrap_width = 0,
-        .scale = 1.0f
+        .scale = 1.0f * ui_scale  // Apply UI scaling
     };
     a_DrawText("You ran out of chips.", center_x, center_y - 80, message_style);
 
@@ -183,14 +187,14 @@ void RenderGameOverOverlay(const GameOverOverlay_t* overlay) {
         .fg = {COLOR_STAT_LABEL.r, COLOR_STAT_LABEL.g, COLOR_STAT_LABEL.b, stats_alpha},
         .align = TEXT_ALIGN_RIGHT,
         .wrap_width = 0,
-        .scale = 0.9f
+        .scale = 0.9f * ui_scale  // Apply UI scaling
     };
     aTextStyle_t value_style = {
         .type = FONT_ENTER_COMMAND,
         .fg = {COLOR_STAT_VALUE.r, COLOR_STAT_VALUE.g, COLOR_STAT_VALUE.b, stats_alpha},
         .align = TEXT_ALIGN_LEFT,
         .wrap_width = 0,
-        .scale = 0.9f
+        .scale = 0.9f * ui_scale  // Apply UI scaling
     };
 
     int label_x = center_x - 20;
@@ -240,7 +244,7 @@ void RenderGameOverOverlay(const GameOverOverlay_t* overlay) {
         .fg = {COLOR_PROMPT.r, COLOR_PROMPT.g, COLOR_PROMPT.b, prompt_alpha},
         .align = TEXT_ALIGN_CENTER,
         .wrap_width = 0,
-        .scale = 0.85f
+        .scale = 0.85f * ui_scale  // Apply UI scaling
     };
     a_DrawText("(Press SPACE to return to menu)", center_x, center_y + 160, prompt_style);
 }

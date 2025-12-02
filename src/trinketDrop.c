@@ -335,8 +335,8 @@ bool GenerateTrinketDrop(int tier, bool is_elite, int* pity_counter, TrinketInst
             out_instance->buffed_tag = 1;  // CARD_TAG_VAMPIRIC
         } else if (strcmp(tag_str, "LUCKY") == 0) {
             out_instance->buffed_tag = 2;  // CARD_TAG_LUCKY
-        } else if (strcmp(tag_str, "BRUTAL") == 0) {
-            out_instance->buffed_tag = 3;  // CARD_TAG_BRUTAL
+        } else if (strcmp(tag_str, "JAGGED") == 0) {
+            out_instance->buffed_tag = 3;  // CARD_TAG_JAGGED
         } else {
             out_instance->buffed_tag = -1;  // No tag
         }
@@ -358,6 +358,7 @@ bool GenerateTrinketDrop(int tier, bool is_elite, int* pity_counter, TrinketInst
     out_instance->total_damage_dealt = 0;
     out_instance->total_bonus_chips = 0;
     out_instance->total_refunded_chips = 0;
+    out_instance->highest_streak = 0;
     out_instance->shake_offset_x = 0.0f;
     out_instance->shake_offset_y = 0.0f;
     out_instance->flash_alpha = 0.0f;

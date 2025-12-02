@@ -1,0 +1,80 @@
+# Combat Trinkets - Base archetypes that drop from normal/elite enemies
+# Each trinket has passive effects defined via DUF
+# Random affixes are rolled ON TOP of these passives
+
+# =============================================================================
+# COMMON TRINKETS (Normal enemy primary drops)
+# =============================================================================
+
+@gamblers_coin {
+    name: "Gambler's Coin"
+    rarity: "common"
+    base_value: 35
+    flavor: "Heads you win, tails you win more."
+
+    # On blackjack: +10 chips
+    passive_trigger: "PLAYER_BLACKJACK"
+    passive_effect_type: "add_chips"
+    passive_effect_value: 10
+}
+
+@tarnished_medal {
+    name: "Tarnished Medal"
+    rarity: "common"
+    base_value: 30
+    flavor: "Glory fades, but the fight never ends."
+
+    # On bust: refund 15% of bet
+    passive_trigger: "PLAYER_BUST"
+    passive_effect_type: "refund_chips_percent"
+    passive_effect_value: 15
+}
+
+# =============================================================================
+# UNCOMMON TRINKETS (Normal enemy pity / Elite enemy occasional)
+# =============================================================================
+
+@pushers_pebble {
+    name: "Pusher's Pebble"
+    rarity: "uncommon"
+    base_value: 60
+    flavor: "Even a push can hurt."
+
+    # On push: deal 50% damage anyway
+    passive_trigger: "PLAYER_PUSH"
+    passive_effect_type: "push_damage_percent"
+    passive_effect_value: 50
+}
+
+# =============================================================================
+# RARE TRINKETS (Elite enemy primary drops)
+# =============================================================================
+
+@high_rollers_chip {
+    name: "High Roller's Chip"
+    rarity: "rare"
+    base_value: 95
+    flavor: "The bigger the bet, the bigger the payoff."
+
+    # On win with bet >= 20: +20 chips bonus
+    passive_trigger: "PLAYER_WIN"
+    passive_effect_type: "add_chips"
+    passive_effect_value: 20
+    passive_condition_bet_gte: 20
+}
+
+# =============================================================================
+# LEGENDARY TRINKETS (Elite enemy pity drops)
+# =============================================================================
+
+@aces_sleeve {
+    name: "Ace's Sleeve"
+    rarity: "legendary"
+    base_value: 120
+    flavor: "Always have one up your sleeve."
+
+    # On blackjack: deal double damage (200% = 2x)
+    passive_trigger: "PLAYER_BLACKJACK"
+    passive_effect_type: "damage_multiplier"
+    passive_effect_value: 200
+}

@@ -190,12 +190,19 @@ int GetEventPoolTotalWeight(const EventPool_t* pool) {
 }
 
 // ============================================================================
-// PRESET POOLS
+// PRESET POOLS (DUF-Based Event Factories)
 // ============================================================================
 
-// Forward declare event factories (will be defined in event.c)
-extern EventEncounter_t* CreateSystemMaintenanceEvent(void);
-extern EventEncounter_t* CreateHouseOddsEvent(void);
+#include "../include/loaders/eventLoader.h"
+
+// DUF-based event factory wrappers (declared in event.h, used by terminal commands)
+EventEncounter_t* CreateSystemMaintenanceEvent(void) {
+    return LoadEventFromDUF("system_maintenance");
+}
+
+EventEncounter_t* CreateHouseOddsEvent(void) {
+    return LoadEventFromDUF("house_odds");
+}
 
 EventPool_t* CreateTutorialEventPool(void) {
     EventPool_t* pool = CreateEventPool();

@@ -33,12 +33,18 @@ static inline int GetGameAreaWidth(void) { return GetWindowWidth() - SIDEBAR_WID
 // Button dimensions
 #define BUTTON_ROW_HEIGHT       100
 #define BUTTON_GAP              20
-#define BET_BUTTON_WIDTH        130  // Increased from 100 to fit "Max (40)" text
-#define BET_BUTTON_HEIGHT       60
-#define ACTION_BUTTON_WIDTH     120
-#define ACTION_BUTTON_HEIGHT    60
+#define BET_BUTTON_WIDTH_BASE        130  // Base width (scales at 1600x900)
+#define BET_BUTTON_HEIGHT_BASE       60   // Base height (scales at 1600x900)
+#define ACTION_BUTTON_WIDTH_BASE     120  // Base width (scales at 1600x900)
+#define ACTION_BUTTON_HEIGHT_BASE    60   // Base height (scales at 1600x900)
 #define DECK_BUTTON_WIDTH       100
 #define DECK_BUTTON_HEIGHT      50
+
+// Helper macros for resolution-scaled buttons
+#define BET_BUTTON_WIDTH        (GetWindowHeight() >= 900 ? (int)(BET_BUTTON_WIDTH_BASE * 1.2f) : BET_BUTTON_WIDTH_BASE)
+#define BET_BUTTON_HEIGHT       (GetWindowHeight() >= 900 ? (int)(BET_BUTTON_HEIGHT_BASE * 1.2f) : BET_BUTTON_HEIGHT_BASE)
+#define ACTION_BUTTON_WIDTH     (GetWindowHeight() >= 900 ? (int)(ACTION_BUTTON_WIDTH_BASE * 1.2f) : ACTION_BUTTON_WIDTH_BASE)
+#define ACTION_BUTTON_HEIGHT    (GetWindowHeight() >= 900 ? (int)(ACTION_BUTTON_HEIGHT_BASE * 1.2f) : ACTION_BUTTON_HEIGHT_BASE)
 
 // Button counts
 #define NUM_BET_BUTTONS         3

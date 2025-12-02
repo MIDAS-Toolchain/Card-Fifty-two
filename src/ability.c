@@ -454,6 +454,7 @@ GameEvent_t GameEventFromString(const char* str) {
     if (!str) return 0;
 
     if (strcmp(str, "COMBAT_START") == 0) return GAME_EVENT_COMBAT_START;
+    if (strcmp(str, "HAND_START") == 0) return GAME_EVENT_HAND_START;
     if (strcmp(str, "HAND_END") == 0) return GAME_EVENT_HAND_END;
     if (strcmp(str, "PLAYER_WIN") == 0) return GAME_EVENT_PLAYER_WIN;
     if (strcmp(str, "PLAYER_LOSS") == 0) return GAME_EVENT_PLAYER_LOSS;

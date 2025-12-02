@@ -151,6 +151,8 @@ void State_Transition(GameContext_t* game, GameState_t new_state) {
             break;
 
         case STATE_DEALING:
+            // Fire hand start event (after betting, before dealing cards)
+            Game_TriggerEvent(game, GAME_EVENT_HAND_START);
             Game_DealInitialHands(game);
             break;
 
