@@ -207,6 +207,7 @@ typedef enum {
     TRINKET_EFFECT_ADD_TAG_TO_CARDS,       // Add card tag to N random cards (on equip)
     TRINKET_EFFECT_BUFF_TAG_DAMAGE,        // Increase damage from tagged cards (value = bonus)
     TRINKET_EFFECT_PUSH_DAMAGE_PERCENT,    // Deal damage on push (value = percent of normal)
+    TRINKET_EFFECT_BLOCK_DEBUFF,           // Block N debuffs this combat (value = count, Warded Charm)
 } TrinketEffectType_t;
 
 /**
@@ -369,6 +370,7 @@ typedef struct Player {
 
     // Status effects system (token manipulation debuffs)
     StatusEffectManager_t* status_effects;  // Heap-allocated status effect manager
+    int debuff_blocks_remaining;            // Number of debuffs to block this combat (Warded Charm trinket)
 
     // Class system
     PlayerClass_t class;           // Character class (Degenerate, Dealer, Detective, Dreamer)

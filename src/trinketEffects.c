@@ -313,6 +313,19 @@ static void ExecuteAddTagToCards(Player_t* player, const TrinketTemplate_t* temp
     // AddTagToRandomCards(player, tag_str, count);
 }
 
+/**
+ * ExecuteBlockDebuff - Grant debuff blocks for this combat
+ *
+ * Example: Warded Charm (block 1 debuff this combat)
+ */
+static void ExecuteBlockDebuff(Player_t* player, int count) {
+    if (!player || count <= 0) return;
+
+    player->debuff_blocks_remaining += count;
+    d_LogInfoF("🛡️ Trinket effect: Block %d debuff(s) this combat (total blocks: %d)",
+               count, player->debuff_blocks_remaining);
+}
+
 // ============================================================================
 // PUBLIC API
 // ============================================================================
@@ -436,6 +449,10 @@ void ExecuteTrinketEffect(
             // (Similar to how Stack Trace tracks at point of damage application)
             // This ensures tooltip shows actual modified damage, not base contribution
             d_LogDebugF("Trinket effect %d deferred to damage application (tracks modified damage)", effect_type);
+            break;
+
+        case TRINKET_EFFECT_BLOCK_DEBUFF:
+            ExecuteBlockDebuff(player, effect_value);
             break;
 
         default:

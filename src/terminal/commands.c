@@ -534,7 +534,7 @@ void CMD_ApplyStatus(Terminal_t* terminal, const char* args) {
     }
 
     // Apply status effect
-    ApplyStatusEffect(g_human_player->status_effects, effect, value, duration);
+    ApplyStatusEffect(g_human_player->status_effects, g_human_player, effect, value, duration);
 
     TerminalPrint(terminal, "[Terminal] Applied %s (value: %d, duration: %d)",
                   GetStatusEffectName(effect), value, duration);

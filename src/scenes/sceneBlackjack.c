@@ -708,7 +708,10 @@ static void StartNextEncounter(void) {
         // Fade in enemy on spawn (0.0 → 1.0 over 1.0 second)
         TweenFloat(&g_tween_manager, &enemy->defeat_fade_alpha, 1.0f, 1.0f, TWEEN_EASE_OUT_CUBIC);
 
-        // Fire COMBAT_START event
+        // Reset debuff blocks at combat start (BEFORE trinket triggers add blocks)
+        g_human_player->debuff_blocks_remaining = 0;
+
+        // Fire COMBAT_START event (triggers trinkets like Warded Charm)
         Game_TriggerEvent(&g_game, GAME_EVENT_COMBAT_START);
 
         d_LogInfoF("New combat: %s (%d/%d HP)",

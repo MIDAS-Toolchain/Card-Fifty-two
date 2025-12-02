@@ -538,6 +538,14 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
             break;
         }
 
+        case TRINKET_EFFECT_BLOCK_DEBUFF:
+            if (effect_value == 1) {
+                d_StringFormat(passive_text, "%s: Block 1 debuff", trigger_str);
+            } else {
+                d_StringFormat(passive_text, "%s: Block %d debuffs", trigger_str, effect_value);
+            }
+            break;
+
         case TRINKET_EFFECT_NONE:
             d_StringFormat(passive_text, "%s: (no effect)", trigger_str);
             break;
@@ -748,12 +756,24 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     tooltip_height += flavor_height + 12;
     tooltip_height += 1 + 12;  // Divider
 
-    // Add passive description height (primary)
-    tooltip_height += 20;  // Primary passive line
+    // Add passive description height (primary) - measured dynamically for text wrapping
+    dString_t* primary_passive = FormatTrinketPassive(template, instance, false);
+    if (primary_passive && d_StringGetLength(primary_passive) > 0) {
+        int passive_height = a_GetWrappedTextHeight((char*)d_StringPeek(primary_passive),
+                                                     FONT_GAME, content_width);
+        tooltip_height += passive_height + 4;  // Measured height + small gap
+    }
+    if (primary_passive) d_StringDestroy(primary_passive);
 
     // Add secondary passive height (if exists)
     if (template->passive_trigger_2 != 0) {
-        tooltip_height += 20;  // Secondary passive line
+        dString_t* secondary_passive = FormatTrinketPassive(template, instance, true);
+        if (secondary_passive && d_StringGetLength(secondary_passive) > 0) {
+            int passive_height = a_GetWrappedTextHeight((char*)d_StringPeek(secondary_passive),
+                                                         FONT_GAME, content_width);
+            tooltip_height += passive_height + 4;  // Measured height + small gap
+        }
+        if (secondary_passive) d_StringDestroy(secondary_passive);
     }
 
     // Add spacing after passives (before bottom padding)
@@ -844,8 +864,10 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
 
     dString_t* passive_text = FormatTrinketPassive(template, instance, false);
     if (passive_text && d_StringGetLength(passive_text) > 0) {
+        int passive_height = a_GetWrappedTextHeight((char*)d_StringPeek(passive_text),
+                                                     FONT_GAME, content_width);
         a_DrawText((char*)d_StringPeek(passive_text), content_x, current_y, passive_config);
-        current_y += 20;
+        current_y += passive_height + 4;  // Dynamic height + small gap
     }
     if (passive_text) d_StringDestroy(passive_text);
 
@@ -853,8 +875,10 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     if (template->passive_trigger_2 != 0) {
         dString_t* passive_text_2 = FormatTrinketPassive(template, instance, true);
         if (passive_text_2 && d_StringGetLength(passive_text_2) > 0) {
+            int passive_height = a_GetWrappedTextHeight((char*)d_StringPeek(passive_text_2),
+                                                         FONT_GAME, content_width);
             a_DrawText((char*)d_StringPeek(passive_text_2), content_x, current_y, passive_config);
-            current_y += 20;
+            current_y += passive_height + 4;  // Dynamic height + small gap
         }
         if (passive_text_2) d_StringDestroy(passive_text_2);
     }

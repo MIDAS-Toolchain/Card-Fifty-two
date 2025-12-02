@@ -295,7 +295,7 @@ void ExecuteEffect(const AbilityEffect_t* effect, Enemy_t* enemy, GameContext_t*
                 d_LogError("ExecuteEffect: Player or status effects manager not found");
                 break;
             }
-            ApplyStatusEffect(player->status_effects, effect->status, effect->value, effect->duration);
+            ApplyStatusEffect(player->status_effects, player, effect->status, effect->value, effect->duration);
             d_LogInfoF("Applied %s for %d rounds (value: %d)",
                       GetStatusEffectName(effect->status), effect->duration, effect->value);
             break;

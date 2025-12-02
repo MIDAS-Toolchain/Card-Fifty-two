@@ -57,6 +57,7 @@ void DestroyStatusEffectManager(StatusEffectManager_t** manager) {
 // ============================================================================
 
 void ApplyStatusEffect(StatusEffectManager_t* manager,
+                      Player_t* player,
                       StatusEffect_t type,
                       int value,
                       int duration) {
@@ -66,6 +67,15 @@ void ApplyStatusEffect(StatusEffectManager_t* manager,
     if (!manager->active_effects) {
         d_LogError("ApplyStatusEffect: manager->active_effects is NULL!");
         return;
+    }
+
+    // Check if this is a debuff and player has blocks remaining (Warded Charm)
+    if (player && IsStatusEffectDebuff(type) && player->debuff_blocks_remaining > 0) {
+        player->debuff_blocks_remaining--;
+        d_LogInfoF("🛡️ Warded Charm blocked %s! (%d blocks remaining)",
+                   GetStatusEffectName(type), player->debuff_blocks_remaining);
+        // TODO: Spawn VFX "BLOCKED!" text above player
+        return;  // Don't apply the debuff
     }
 
     // Check if effect already exists (refresh duration)
@@ -589,5 +599,23 @@ void RenderStatusEffects(const StatusEffectManager_t* manager, int x, int y) {
 
         current_x += ICON_SIZE + ICON_SPACING;
         count++;
+    }
+}
+
+// ============================================================================
+// DEBUFF CLASSIFICATION
+// ============================================================================
+
+bool IsStatusEffectDebuff(StatusEffect_t type) {
+    switch (type) {
+        case STATUS_CHIP_DRAIN:
+        case STATUS_TILT:
+        case STATUS_GREED:
+        case STATUS_RAKE:
+            return true;
+        case STATUS_NONE:
+        case STATUS_MAX:
+        default:
+            return false;
     }
 }

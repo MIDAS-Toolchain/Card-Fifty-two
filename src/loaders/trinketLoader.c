@@ -36,6 +36,7 @@ TrinketEffectType_t TrinketEffectTypeFromString(const char* str) {
     if (strcmp(str, "add_tag_to_cards") == 0) return TRINKET_EFFECT_ADD_TAG_TO_CARDS;
     if (strcmp(str, "buff_tag_damage") == 0) return TRINKET_EFFECT_BUFF_TAG_DAMAGE;
     if (strcmp(str, "push_damage_percent") == 0) return TRINKET_EFFECT_PUSH_DAMAGE_PERCENT;
+    if (strcmp(str, "block_debuff") == 0) return TRINKET_EFFECT_BLOCK_DEBUFF;
 
     d_LogWarningF("Unknown trinket effect type: %s", str);
     return TRINKET_EFFECT_NONE;

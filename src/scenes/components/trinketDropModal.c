@@ -316,6 +316,14 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
             break;
         }
 
+        case TRINKET_EFFECT_BLOCK_DEBUFF:
+            if (effect_value == 1) {
+                d_StringFormat(passive_text, "%s: Block 1 debuff", trigger_str);
+            } else {
+                d_StringFormat(passive_text, "%s: Block %d debuffs", trigger_str, effect_value);
+            }
+            break;
+
         case TRINKET_EFFECT_NONE:
         default:
             d_StringFormat(passive_text, "%s: ???", trigger_str);

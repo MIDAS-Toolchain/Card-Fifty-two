@@ -105,13 +105,16 @@ void DestroyStatusEffectManager(StatusEffectManager_t** manager);
  * ApplyStatusEffect - Apply status effect to player
  *
  * @param manager - Status effect manager
+ * @param player - Player receiving the effect (for debuff blocking)
  * @param type - Effect type
  * @param value - Effect magnitude (chips, multiplier, etc.)
  * @param duration - Rounds remaining
  *
- * If effect already exists, refreshes duration and updates value
+ * If effect already exists, refreshes duration and updates value.
+ * If effect is a debuff and player has debuff_blocks_remaining > 0, blocks it.
  */
 void ApplyStatusEffect(StatusEffectManager_t* manager,
+                      Player_t* player,
                       StatusEffect_t type,
                       int value,
                       int duration);
@@ -300,5 +303,17 @@ aColor_t GetStatusEffectColor(StatusEffect_t type);
  * Draws icons with duration counters and value indicators
  */
 void RenderStatusEffects(const StatusEffectManager_t* manager, int x, int y);
+
+/**
+ * IsStatusEffectDebuff - Check if status effect is a debuff (negative effect)
+ *
+ * @param type - Effect type to check
+ * @return bool - true if effect is a debuff, false otherwise
+ *
+ * Used by Warded Charm trinket to block debuff application.
+ * Currently all status effects are debuffs (CHIP_DRAIN, TILT, GREED, RAKE).
+ * Future buffs would return false here.
+ */
+bool IsStatusEffectDebuff(StatusEffect_t type);
 
 #endif // STATUS_EFFECTS_H
