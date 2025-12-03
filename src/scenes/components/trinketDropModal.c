@@ -95,9 +95,10 @@ static void CopyTrinketInstanceValue(TrinketInstance_t* dest, const TrinketInsta
     dest->trinket_stack_value = src->trinket_stack_value;
     dest->buffed_tag = src->buffed_tag;
     dest->tag_buff_value = src->tag_buff_value;
-    dest->total_damage_dealt = src->total_damage_dealt;
-    dest->total_bonus_chips = src->total_bonus_chips;
-    dest->total_refunded_chips = src->total_refunded_chips;
+
+    // Data-driven stat copy (ONE memcpy replaces N field copies)
+    memcpy(dest->tracked_stats, src->tracked_stats, sizeof(dest->tracked_stats));
+
     dest->shake_offset_x = src->shake_offset_x;
     dest->shake_offset_y = src->shake_offset_y;
     dest->flash_alpha = src->flash_alpha;
@@ -314,6 +315,14 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
                           trigger_str, tag, template->passive_tag_buff_value);
             break;
         }
+
+        case TRINKET_EFFECT_BLOCK_DEBUFF:
+            if (effect_value == 1) {
+                d_StringFormat(passive_text, "%s: Block 1 debuff", trigger_str);
+            } else {
+                d_StringFormat(passive_text, "%s: Block %d debuffs", trigger_str, effect_value);
+            }
+            break;
 
         case TRINKET_EFFECT_NONE:
         default:
@@ -1259,11 +1268,11 @@ void RenderTrinketDropModal(const TrinketDropModal_t* modal, const Player_t* pla
     }
 
     // Total damage dealt (if any)
-    if (modal->trinket_drop.total_damage_dealt > 0) {
+    if (TRINKET_GET_STAT(&modal->trinket_drop, TRINKET_STAT_DAMAGE_DEALT) > 0) {
         content_y += 8;  // Spacing before damage counter
 
         dString_t* dmg_text = d_StringInit();
-        d_StringFormat(dmg_text, "Total Damage Dealt: %d", modal->trinket_drop.total_damage_dealt);
+        d_StringFormat(dmg_text, "Total Damage Dealt: %d", TRINKET_GET_STAT(&modal->trinket_drop, TRINKET_STAT_DAMAGE_DEALT));
 
         aTextStyle_t dmg_config = {
             .type = FONT_GAME,

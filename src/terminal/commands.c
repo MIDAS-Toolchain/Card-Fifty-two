@@ -14,6 +14,7 @@
 #include "../../include/scenes/components/visualEffects.h"
 #include "../../include/trinketDrop.h"  // For RerollTrinketAffixes
 #include "../../include/loaders/trinketLoader.h"  // For GetTrinketTemplate, CleanupTrinketTemplate
+#include "../../include/trinketEffects.h"  // For ExecuteTrinketEffect
 
 // External globals (from sceneBlackjack.c)
 extern Player_t* g_human_player;
@@ -534,7 +535,7 @@ void CMD_ApplyStatus(Terminal_t* terminal, const char* args) {
     }
 
     // Apply status effect
-    ApplyStatusEffect(g_human_player->status_effects, effect, value, duration);
+    ApplyStatusEffect(g_human_player->status_effects, g_human_player, effect, value, duration);
 
     TerminalPrint(terminal, "[Terminal] Applied %s (value: %d, duration: %d)",
                   GetStatusEffectName(effect), value, duration);
@@ -842,11 +843,8 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
     instance.tier = tier;
     instance.sell_value = template->base_value;
 
-    // Initialize stat tracking
-    instance.total_damage_dealt = 0;
-    instance.total_bonus_chips = 0;
-    instance.total_refunded_chips = 0;
-    instance.highest_streak = 0;
+    // Initialize stat tracking (data-driven)
+    memset(instance.tracked_stats, 0, sizeof(instance.tracked_stats));
 
     // Initialize tag buff tracking (Cursed Skull)
     instance.buffed_tag = -1;
@@ -893,6 +891,13 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
 
     if (stacks > 0) {
         TerminalPrint(terminal, "[Info] Set initial stacks: %d", stacks);
+    }
+
+    // If trinket has COMBAT_START trigger and we're in combat, trigger it now
+    extern GameContext_t g_game;
+    if (template->passive_trigger == GAME_EVENT_COMBAT_START && g_game.is_combat_mode) {
+        TerminalPrint(terminal, "[Info] Triggering COMBAT_START effect (Warded Charm blocks, etc)");
+        ExecuteTrinketEffect(template, &g_human_player->trinket_slots[slot], g_human_player, &g_game, slot, false);
     }
 
     // Cleanup heap-allocated template (ADR-19 pattern)

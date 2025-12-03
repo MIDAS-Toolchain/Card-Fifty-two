@@ -652,10 +652,11 @@ void Game_ResolveRound(GameContext_t* game) {
                 Stats_RecordTurnWon();
                 Stats_RecordChipsWon(base_winnings);
 
-                // Fire event BEFORE clearing bet (trinkets need current_bet value)
+                // Fire events BEFORE clearing bet (trinkets need current_bet value)
                 Game_TriggerEvent(game, GAME_EVENT_PLAYER_BLACKJACK);
+                Game_TriggerEvent(game, GAME_EVENT_PLAYER_WIN);  // Blackjack is also a win (for Streak Counter)
 
-                // Clear bet after event (so trinkets can access bet amount)
+                // Clear bet after events (so trinkets can access bet amount)
                 player->current_bet = 0;
             }
         } else if (dealer_bust) {
@@ -866,7 +867,7 @@ void Game_ResolveRound(GameContext_t* game) {
                             // Calculate this trinket's proportional contribution
                             // If multiple trinkets have push_damage_percent, split proportionally
                             int trinket_contribution = (damage_dealt * template->passive_effect_value) / player->push_damage_percent;
-                            instance->total_damage_dealt += trinket_contribution;
+                            TRINKET_ADD_STAT(instance, TRINKET_STAT_DAMAGE_DEALT, trinket_contribution);
                             d_LogDebugF("Pusher's Pebble tracking: +%d modified push damage", trinket_contribution);
 
                             CleanupTrinketTemplate((TrinketTemplate_t*)template);

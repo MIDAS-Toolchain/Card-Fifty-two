@@ -6,6 +6,18 @@
 # COMMON TRINKETS (Normal enemy primary drops)
 # =============================================================================
 
+@warded_charm {
+    name: "Warded Charm"
+    rarity: "common"
+    base_value: 35
+    flavor: "A fleeting ward against misfortune."
+
+    # On combat start: block 1 debuff this combat
+    passive_trigger: "COMBAT_START"
+    passive_effect_type: "block_debuff"
+    passive_effect_value: 1
+}
+
 @gamblers_coin {
     name: "Gambler's Coin"
     rarity: "common"

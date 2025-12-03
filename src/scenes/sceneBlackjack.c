@@ -708,7 +708,10 @@ static void StartNextEncounter(void) {
         // Fade in enemy on spawn (0.0 → 1.0 over 1.0 second)
         TweenFloat(&g_tween_manager, &enemy->defeat_fade_alpha, 1.0f, 1.0f, TWEEN_EASE_OUT_CUBIC);
 
-        // Fire COMBAT_START event
+        // Reset debuff blocks at combat start (BEFORE trinket triggers add blocks)
+        g_human_player->debuff_blocks_remaining = 0;
+
+        // Fire COMBAT_START event (triggers trinkets like Warded Charm)
         Game_TriggerEvent(&g_game, GAME_EVENT_COMBAT_START);
 
         d_LogInfoF("New combat: %s (%d/%d HP)",
@@ -1119,9 +1122,10 @@ static void BlackjackLogic(float dt) {
                 dest->trinket_stack_value = src->trinket_stack_value;
                 dest->buffed_tag = src->buffed_tag;
                 dest->tag_buff_value = src->tag_buff_value;
-                dest->total_damage_dealt = src->total_damage_dealt;
-                dest->total_bonus_chips = src->total_bonus_chips;
-                dest->total_refunded_chips = src->total_refunded_chips;
+
+                // Data-driven stat copy (ONE memcpy replaces N field copies)
+                memcpy(dest->tracked_stats, src->tracked_stats, sizeof(dest->tracked_stats));
+
                 dest->shake_offset_x = src->shake_offset_x;
                 dest->shake_offset_y = src->shake_offset_y;
                 dest->flash_alpha = src->flash_alpha;
@@ -1148,7 +1152,13 @@ static void BlackjackLogic(float dt) {
                 // Clear flag so we don't equip again
                 g_trinket_drop_modal->should_equip_now = false;
 
-                d_LogInfo("Trinket equipped during animation");
+                // DEBUG: Verify trinket was equipped correctly
+                if (dest->base_trinket_key && d_StringGetLength(dest->base_trinket_key) > 0) {
+                    d_LogInfoF("✓ Trinket equipped during animation: slot=%d, key='%s', affixes=%d",
+                               slot, d_StringPeek(dest->base_trinket_key), dest->affix_count);
+                } else {
+                    d_LogErrorF("✗ Trinket equip FAILED: base_trinket_key is NULL or empty!");
+                }
             }
         }
 
@@ -1639,14 +1649,11 @@ static void BlackjackLogic(float dt) {
 bool IsCardValidTarget(const Card_t* card, int trinket_slot) {
     if (!card || !g_human_player) return false;
 
-    // Get trinket (either class trinket or regular slot)
-    Trinket_t* trinket;
-    if (trinket_slot == -1) {
-        trinket = GetClassTrinket(g_human_player);
-    } else {
-        trinket = GetEquippedTrinket(g_human_player, trinket_slot);
-    }
+    // Only class trinkets have active abilities (targeting)
+    // Regular trinkets (TrinketInstance_t) are passive-only
+    if (trinket_slot != -1) return false;
 
+    Trinket_t* trinket = GetClassTrinket(g_human_player);
     if (!trinket) return false;
 
     // For Degenerate's Gambit: card rank 2-9 (excluding Aces and 10+ face cards)
@@ -1686,16 +1693,11 @@ static void HandleTargetingInput(void) {
     int targeting_trinket_slot = StateData_GetInt(&g_game.state_data, "targeting_trinket_slot", -999);
     if (targeting_trinket_slot == -999) return;  // Invalid state
 
-    // Get trinket (either class trinket or regular slot)
-    Trinket_t* trinket;
-    if (targeting_trinket_slot == -1) {
-        trinket = GetClassTrinket(g_human_player);
-    } else if (targeting_trinket_slot >= 0 && targeting_trinket_slot < 6) {
-        trinket = GetEquippedTrinket(g_human_player, targeting_trinket_slot);
-    } else {
-        return;  // Invalid slot
-    }
+    // Only class trinkets have active abilities (targeting)
+    // Regular trinkets (TrinketInstance_t) are passive-only
+    if (targeting_trinket_slot != -1) return;
 
+    Trinket_t* trinket = GetClassTrinket(g_human_player);
     if (!trinket || !trinket->active_effect) return;
 
     // ADR-11: Use hover state as single source of truth for card selection

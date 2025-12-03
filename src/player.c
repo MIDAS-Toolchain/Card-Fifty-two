@@ -61,6 +61,7 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
         CleanupHand(&player.hand);
         return false;
     }
+    player.debuff_blocks_remaining = 0;  // No debuff blocks by default (Warded Charm adds blocks)
 
     // Initialize class system (Constitutional: no class by default)
     player.class = PLAYER_CLASS_NONE;

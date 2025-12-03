@@ -209,31 +209,6 @@ Trinket_t* GetTrinketByID(int trinket_id) {
 // PLAYER TRINKET MANAGEMENT
 // ============================================================================
 
-// TODO Phase 3: Rewrite for TrinketInstance_t system
-bool EquipTrinket(Player_t* player, int slot_index, Trinket_t* trinket_template) {
-    (void)player;
-    (void)slot_index;
-    (void)trinket_template;
-    d_LogWarning("EquipTrinket: Old Trinket_t API - will be replaced with TrinketInstance_t in Phase 3");
-    return false;
-}
-
-// TODO Phase 3: Rewrite for TrinketInstance_t system
-void UnequipTrinket(Player_t* player, int slot_index) {
-    (void)player;
-    (void)slot_index;
-    d_LogWarning("UnequipTrinket: Old Trinket_t API - will be replaced with TrinketInstance_t in Phase 3");
-}
-
-// TODO Phase 3: Rewrite for TrinketInstance_t system
-Trinket_t* GetEquippedTrinket(const Player_t* player, int slot_index) {
-    (void)player;
-    (void)slot_index;
-    d_LogWarning("GetEquippedTrinket: Old Trinket_t API - will be replaced with TrinketInstance_t in Phase 3");
-    return NULL;
-}
-
-// TODO Phase 3: Rewrite for TrinketInstance_t system
 int GetEmptyTrinketSlot(const Player_t* player) {
     if (!player) {
         return -1;
@@ -275,24 +250,7 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
         class_trinket->passive_effect(player, game, class_trinket, 0);
     }
 
-    // Iterate all equipped regular trinkets (OLD SYSTEM - hardcoded Trinket_t*)
-    for (int i = 0; i < 6; i++) {
-        Trinket_t* trinket = GetEquippedTrinket(player, i);
-        if (!trinket) {
-            continue;  // Empty slot
-        }
-
-        // Check if passive triggers on this event
-        if (trinket->passive_trigger == event && trinket->passive_effect) {
-            d_LogInfoF("Triggering trinket passive: %s (event: %d)",
-                       GetTrinketName(trinket), event);
-
-            // Fire passive effect callback with slot_index for safe tweening
-            trinket->passive_effect(player, game, trinket, (size_t)i);
-        }
-    }
-
-    // NEW SYSTEM: Check DUF trinket instances
+    // Check DUF trinket instances (regular trinkets are passive-only)
     for (int i = 0; i < 6; i++) {
         // Skip empty slots
         if (!player->trinket_slot_occupied[i]) {
@@ -358,28 +316,14 @@ void TickTrinketCooldowns(Player_t* player) {
     if (!player) {
         return;
     }
-    // Note: trinket_slots is a fixed-size array embedded in Player_t, not a pointer
 
-    // Tick class trinket cooldown first
+    // Only class trinkets have active abilities with cooldowns
+    // Regular trinkets (TrinketInstance_t) are passive-only
     Trinket_t* class_trinket = GetClassTrinket(player);
     if (class_trinket && class_trinket->active_cooldown_current > 0) {
         class_trinket->active_cooldown_current--;
         d_LogInfoF("CLASS trinket %s cooldown: %d",
                    GetTrinketName(class_trinket), class_trinket->active_cooldown_current);
-    }
-
-    // Decrement all regular trinket cooldowns
-    for (int i = 0; i < 6; i++) {
-        Trinket_t* trinket = GetEquippedTrinket(player, i);
-        if (!trinket) {
-            continue;  // Empty slot
-        }
-
-        if (trinket->active_cooldown_current > 0) {
-            trinket->active_cooldown_current--;
-            d_LogInfoF("Trinket %s cooldown: %d",
-                       GetTrinketName(trinket), trinket->active_cooldown_current);
-        }
     }
 }
 
@@ -401,9 +345,16 @@ void ActivateTrinket(Player_t* player, GameContext_t* game, int slot_index, void
         return;
     }
 
-    Trinket_t* trinket = GetEquippedTrinket(player, slot_index);
+    // Only class trinkets have active abilities (slot_index = -1)
+    // Regular trinkets (TrinketInstance_t) are passive-only
+    if (slot_index != -1) {
+        d_LogErrorF("ActivateTrinket: Regular trinkets don't have active abilities (slot %d)", slot_index);
+        return;
+    }
+
+    Trinket_t* trinket = GetClassTrinket(player);
     if (!trinket) {
-        d_LogError("ActivateTrinket: No trinket in slot");
+        d_LogError("ActivateTrinket: No class trinket equipped");
         return;
     }
 
@@ -420,7 +371,7 @@ void ActivateTrinket(Player_t* player, GameContext_t* game, int slot_index, void
     d_LogInfoF("Activating trinket: %s", GetTrinketName(trinket));
 
     // Fire active effect callback
-    trinket->active_effect(player, game, target, trinket, (size_t)slot_index);
+    trinket->active_effect(player, game, target, trinket, 0);
 
     // Set cooldown
     trinket->active_cooldown_current = trinket->active_cooldown_max;
