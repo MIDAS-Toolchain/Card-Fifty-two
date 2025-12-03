@@ -1152,7 +1152,13 @@ static void BlackjackLogic(float dt) {
                 // Clear flag so we don't equip again
                 g_trinket_drop_modal->should_equip_now = false;
 
-                d_LogInfo("Trinket equipped during animation");
+                // DEBUG: Verify trinket was equipped correctly
+                if (dest->base_trinket_key && d_StringGetLength(dest->base_trinket_key) > 0) {
+                    d_LogInfoF("✓ Trinket equipped during animation: slot=%d, key='%s', affixes=%d",
+                               slot, d_StringPeek(dest->base_trinket_key), dest->affix_count);
+                } else {
+                    d_LogErrorF("✗ Trinket equip FAILED: base_trinket_key is NULL or empty!");
+                }
             }
         }
 
@@ -1643,14 +1649,11 @@ static void BlackjackLogic(float dt) {
 bool IsCardValidTarget(const Card_t* card, int trinket_slot) {
     if (!card || !g_human_player) return false;
 
-    // Get trinket (either class trinket or regular slot)
-    Trinket_t* trinket;
-    if (trinket_slot == -1) {
-        trinket = GetClassTrinket(g_human_player);
-    } else {
-        trinket = GetEquippedTrinket(g_human_player, trinket_slot);
-    }
+    // Only class trinkets have active abilities (targeting)
+    // Regular trinkets (TrinketInstance_t) are passive-only
+    if (trinket_slot != -1) return false;
 
+    Trinket_t* trinket = GetClassTrinket(g_human_player);
     if (!trinket) return false;
 
     // For Degenerate's Gambit: card rank 2-9 (excluding Aces and 10+ face cards)
@@ -1690,16 +1693,11 @@ static void HandleTargetingInput(void) {
     int targeting_trinket_slot = StateData_GetInt(&g_game.state_data, "targeting_trinket_slot", -999);
     if (targeting_trinket_slot == -999) return;  // Invalid state
 
-    // Get trinket (either class trinket or regular slot)
-    Trinket_t* trinket;
-    if (targeting_trinket_slot == -1) {
-        trinket = GetClassTrinket(g_human_player);
-    } else if (targeting_trinket_slot >= 0 && targeting_trinket_slot < 6) {
-        trinket = GetEquippedTrinket(g_human_player, targeting_trinket_slot);
-    } else {
-        return;  // Invalid slot
-    }
+    // Only class trinkets have active abilities (targeting)
+    // Regular trinkets (TrinketInstance_t) are passive-only
+    if (targeting_trinket_slot != -1) return;
 
+    Trinket_t* trinket = GetClassTrinket(g_human_player);
     if (!trinket || !trinket->active_effect) return;
 
     // ADR-11: Use hover state as single source of truth for card selection

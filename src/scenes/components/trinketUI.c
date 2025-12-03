@@ -717,8 +717,12 @@ static void RenderAffixTooltip(TrinketUI_t* ui, TrinketInstance_t* instance, int
  * - Passive trigger/effect
  * - Stats counters
  */
-static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* template, TrinketInstance_t* instance, int slot_index) {
-    if (!template || !instance) return;
+static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* template, TrinketInstance_t* instance, Player_t* player, int slot_index) {
+    if (!template || !instance || !player) return;
+
+    // Check if this trinket has block_debuff effect (Warded Charm)
+    bool has_block_debuff = (template->passive_effect_type == TRINKET_EFFECT_BLOCK_DEBUFF ||
+                             template->passive_effect_type_2 == TRINKET_EFFECT_BLOCK_DEBUFF);
 
     // Calculate tooltip position
     int row = slot_index / 3;
@@ -799,6 +803,16 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     // Show highest streak (if any - for Streak Counter)
     if (TRINKET_GET_STAT(instance, TRINKET_STAT_HIGHEST_STREAK) > 0) {
         tooltip_height += 20;
+    }
+
+    // Show debuffs blocked (if any - for Warded Charm)
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_DEBUFFS_BLOCKED) > 0) {
+        tooltip_height += 20;
+    }
+
+    // Show current blocks remaining (if Warded Charm and has blocks)
+    if (has_block_debuff && player->debuff_blocks_remaining > 0) {
+        tooltip_height += 20;  // "Blocks Remaining: X"
     }
 
     tooltip_height += padding;
@@ -883,6 +897,23 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
         if (passive_text_2) d_StringDestroy(passive_text_2);
     }
 
+    // Show current blocks remaining (Warded Charm - live counter)
+    if (has_block_debuff && player->debuff_blocks_remaining > 0) {
+        dString_t* blocks_text = d_StringInit();
+        d_StringFormat(blocks_text, "Blocks Remaining: %d", player->debuff_blocks_remaining);
+
+        aTextStyle_t blocks_config = {
+            .type = FONT_GAME,
+            .fg = {100, 200, 255, 255},  // Light blue (active protection)
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.0f
+        };
+        a_DrawText((char*)d_StringPeek(blocks_text), content_x, current_y, blocks_config);
+        d_StringDestroy(blocks_text);
+        current_y += 20;
+    }
+
     // Affixes rendered in separate tooltip (see RenderAffixTooltip below)
 
     // Total damage dealt (if any)
@@ -953,6 +984,23 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
         current_y += 20;
     }
 
+    // Debuffs blocked (if any - for Warded Charm)
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_DEBUFFS_BLOCKED) > 0) {
+        dString_t* blocked_text = d_StringInit();
+        d_StringFormat(blocked_text, "Debuffs Blocked: %d", TRINKET_GET_STAT(instance, TRINKET_STAT_DEBUFFS_BLOCKED));
+
+        aTextStyle_t blocked_config = {
+            .type = FONT_GAME,
+            .fg = {255, 255, 255, 255},  // White text (matches other stats)
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.0f
+        };
+        a_DrawText((char*)d_StringPeek(blocked_text), content_x, current_y, blocked_config);
+        d_StringDestroy(blocked_text);
+        current_y += 20;
+    }
+
     // Render separate affix tooltip (if affixes exist)
     if (ui->cached_affix_count > 0) {
         RenderAffixTooltip(ui, instance, slot_index, tooltip_x, tooltip_y, tooltip_height);
@@ -983,7 +1031,7 @@ void RenderTrinketTooltips(TrinketUI_t* ui, Player_t* player) {
             TrinketInstance_t* instance = &player->trinket_slots[ui->hovered_trinket_slot];
             const TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(instance->base_trinket_key));
             if (template) {
-                RenderTrinketTooltip(ui, template, instance, ui->hovered_trinket_slot);
+                RenderTrinketTooltip(ui, template, instance, player, ui->hovered_trinket_slot);
             }
         }
     }
@@ -1052,6 +1100,13 @@ void UpdateTrinketUIHover(TrinketUI_t* ui, Player_t* player) {
 
                 // Load new templates
                 TrinketInstance_t* instance = &player->trinket_slots[slot_index];
+
+                // DEBUG: Log trinket state before accessing
+                d_LogDebugF("UpdateTrinketUIHover: slot=%d, base_trinket_key=%p, occupied=%d",
+                            slot_index,
+                            (void*)instance->base_trinket_key,
+                            player->trinket_slot_occupied[slot_index]);
+
                 if (instance->base_trinket_key && d_StringGetLength(instance->base_trinket_key) > 0) {
                     for (int i = 0; i < instance->affix_count && i < 3; i++) {
                         const char* stat_key = d_StringPeek(instance->affixes[i].stat_key);

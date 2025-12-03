@@ -8,6 +8,7 @@
 #include "../include/scenes/components/visualEffects.h"  // For VFX_SpawnDamageNumber()
 #include "../include/tween/tween.h"
 #include "../include/random.h"
+#include "../include/loaders/trinketLoader.h"  // For GetTrinketTemplate()
 #include <stdlib.h>
 
 // ============================================================================
@@ -74,6 +75,27 @@ void ApplyStatusEffect(StatusEffectManager_t* manager,
         player->debuff_blocks_remaining--;
         d_LogInfoF("🛡️ Warded Charm blocked %s! (%d blocks remaining)",
                    GetStatusEffectName(type), player->debuff_blocks_remaining);
+
+        // Track stat on Warded Charm trinket (find trinket with block_debuff effect)
+        for (int i = 0; i < 6; i++) {
+            if (!player->trinket_slot_occupied[i]) continue;  // Empty slot
+
+            TrinketInstance_t* trinket = &player->trinket_slots[i];
+            if (!trinket->base_trinket_key) continue;  // Safety check
+
+            TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(trinket->base_trinket_key));
+            if (!template) continue;
+
+            // Check if this trinket has block_debuff effect
+            if (template->passive_effect_type == TRINKET_EFFECT_BLOCK_DEBUFF ||
+                template->passive_effect_type_2 == TRINKET_EFFECT_BLOCK_DEBUFF) {
+                TRINKET_INC_STAT(trinket, TRINKET_STAT_DEBUFFS_BLOCKED);
+                d_LogInfoF("📊 Warded Charm stat tracked: %d total blocks",
+                          TRINKET_GET_STAT(trinket, TRINKET_STAT_DEBUFFS_BLOCKED));
+                break;  // Only increment first matching trinket
+            }
+        }
+
         // TODO: Spawn VFX "BLOCKED!" text above player
         return;  // Don't apply the debuff
     }

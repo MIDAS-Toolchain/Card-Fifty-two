@@ -69,35 +69,6 @@ Trinket_t* GetTrinketByID(int trinket_id);
 // ============================================================================
 
 /**
- * EquipTrinket - Equip trinket to player slot
- *
- * @param player - Player to equip trinket to
- * @param slot_index - Slot index (0-5)
- * @param trinket - Trinket to equip (pointer stored, not copied)
- * @return bool - true on success, false if invalid slot or NULL trinket
- */
-bool EquipTrinket(Player_t* player, int slot_index, Trinket_t* trinket);
-
-/**
- * UnequipTrinket - Remove trinket from player slot
- *
- * @param player - Player to unequip from
- * @param slot_index - Slot index (0-5)
- *
- * Sets slot to NULL (trinket still exists in registry)
- */
-void UnequipTrinket(Player_t* player, int slot_index);
-
-/**
- * GetEquippedTrinket - Get trinket in player slot
- *
- * @param player - Player to query
- * @param slot_index - Slot index (0-5)
- * @return Trinket_t* - Pointer to equipped trinket, or NULL if empty/invalid
- */
-Trinket_t* GetEquippedTrinket(const Player_t* player, int slot_index);
-
-/**
  * GetEmptyTrinketSlot - Find first empty slot in player's trinkets
  *
  * @param player - Player to search

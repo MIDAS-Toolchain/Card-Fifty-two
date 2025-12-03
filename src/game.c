@@ -652,10 +652,11 @@ void Game_ResolveRound(GameContext_t* game) {
                 Stats_RecordTurnWon();
                 Stats_RecordChipsWon(base_winnings);
 
-                // Fire event BEFORE clearing bet (trinkets need current_bet value)
+                // Fire events BEFORE clearing bet (trinkets need current_bet value)
                 Game_TriggerEvent(game, GAME_EVENT_PLAYER_BLACKJACK);
+                Game_TriggerEvent(game, GAME_EVENT_PLAYER_WIN);  // Blackjack is also a win (for Streak Counter)
 
-                // Clear bet after event (so trinkets can access bet amount)
+                // Clear bet after events (so trinkets can access bet amount)
                 player->current_bet = 0;
             }
         } else if (dealer_bust) {

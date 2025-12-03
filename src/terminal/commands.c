@@ -14,6 +14,7 @@
 #include "../../include/scenes/components/visualEffects.h"
 #include "../../include/trinketDrop.h"  // For RerollTrinketAffixes
 #include "../../include/loaders/trinketLoader.h"  // For GetTrinketTemplate, CleanupTrinketTemplate
+#include "../../include/trinketEffects.h"  // For ExecuteTrinketEffect
 
 // External globals (from sceneBlackjack.c)
 extern Player_t* g_human_player;
@@ -890,6 +891,13 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
 
     if (stacks > 0) {
         TerminalPrint(terminal, "[Info] Set initial stacks: %d", stacks);
+    }
+
+    // If trinket has COMBAT_START trigger and we're in combat, trigger it now
+    extern GameContext_t g_game;
+    if (template->passive_trigger == GAME_EVENT_COMBAT_START && g_game.is_combat_mode) {
+        TerminalPrint(terminal, "[Info] Triggering COMBAT_START effect (Warded Charm blocks, etc)");
+        ExecuteTrinketEffect(template, &g_human_player->trinket_slots[slot], g_human_player, &g_game, slot, false);
     }
 
     // Cleanup heap-allocated template (ADR-19 pattern)
