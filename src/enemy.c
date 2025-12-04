@@ -200,58 +200,59 @@ void HealEnemy(Enemy_t* enemy, int amount, TweenManager_t* tween_manager) {
     d_LogInfoF("%s healed %d HP (%d -> %d)",
                d_StringPeek(enemy->name), amount, old_hp, enemy->current_hp);
 
-    // Check for Bleeding Heart trinket (punish enemy heals)
+    // Check for heal punish trinkets (each trinket can punish independently)
     extern Player_t* g_human_player;  // From sceneBlackjack.c
-    if (g_human_player && g_human_player->enemy_heal_punishes_remaining > 0) {
-        g_human_player->enemy_heal_punishes_remaining--;
+    if (g_human_player) {
+        bool punished_heal = false;
+        int total_punish_damage = 0;
 
-        // Deal damage equal to heal amount
-        int punish_damage = amount;
-        TakeDamage(enemy, punish_damage);
-
-        d_LogInfoF("💔 Bleeding Heart punished heal! Dealt %d damage (%d punishes remaining)",
-                   punish_damage, g_human_player->enemy_heal_punishes_remaining);
-
-        // Track stat on Bleeding Heart trinket (find trinket with punish_heal effect)
+        // Check ALL trinkets - each can punish independently
         for (int i = 0; i < 6; i++) {
             if (!g_human_player->trinket_slot_occupied[i]) continue;
 
             TrinketInstance_t* trinket = &g_human_player->trinket_slots[i];
             if (!trinket->base_trinket_key) continue;
+            if (trinket->heal_punishes_remaining <= 0) continue;
 
-            TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(trinket->base_trinket_key));
-            if (!template) continue;
+            // Consume one charge from this trinket
+            trinket->heal_punishes_remaining--;
 
-            // Check if this trinket has punish_heal effect
-            if (template->passive_effect_type == TRINKET_EFFECT_PUNISH_HEAL ||
-                template->passive_effect_type_2 == TRINKET_EFFECT_PUNISH_HEAL) {
-                TRINKET_ADD_STAT(trinket, TRINKET_STAT_HEAL_DAMAGE_DEALT, punish_damage);
-                d_LogInfoF("📊 Bleeding Heart stat tracked: %d total heal damage",
-                          TRINKET_GET_STAT(trinket, TRINKET_STAT_HEAL_DAMAGE_DEALT));
-                break;  // Only increment first matching trinket
+            // Deal damage equal to heal amount
+            int punish_damage = amount;
+            TakeDamage(enemy, punish_damage);
+            total_punish_damage += punish_damage;
+
+            // Track stat on this trinket
+            TRINKET_ADD_STAT(trinket, TRINKET_STAT_HEAL_DAMAGE_DEALT, punish_damage);
+
+            d_LogInfoF("💔 Trinket %d punished heal! Dealt %d damage (%d punishes remaining on this trinket)",
+                       i, punish_damage, trinket->heal_punishes_remaining);
+
+            punished_heal = true;
+        }
+
+        if (punished_heal) {
+            // Trigger damage flash (red flash instead of green heal flash)
+            if (tween_manager) {
+                TriggerEnemyDamageEffect(enemy, tween_manager);
             }
+
+            // Show punished heal damage number (red, normal style)
+            VisualEffects_t* vfx = GetVisualEffects();
+            if (vfx) {
+                // Position below enemy HP bar (numbers rise up, so spawn lower)
+                float center_x = SCREEN_WIDTH / 2.0f + ENEMY_HP_BAR_X_OFFSET;
+                float center_y = ENEMY_HP_BAR_Y + 30;  // Below HP bar so it's visible as it rises
+
+                // Spawn red damage number (NOT crit - red is clear enough)
+                VFX_SpawnDamageNumber(vfx, total_punish_damage, center_x, center_y,
+                                     false,  // is_healing = false (red damage)
+                                     false,  // is_crit = false (normal size, not gold)
+                                     false); // is_rake = false
+            }
+
+            return;  // Don't show heal flash if we punished the heal
         }
-
-        // Trigger damage flash (red flash instead of green heal flash)
-        if (tween_manager) {
-            TriggerEnemyDamageEffect(enemy, tween_manager);
-        }
-
-        // Show punished heal damage number (red, normal style)
-        VisualEffects_t* vfx = GetVisualEffects();
-        if (vfx) {
-            // Position below enemy HP bar (numbers rise up, so spawn lower)
-            float center_x = SCREEN_WIDTH / 2.0f + ENEMY_HP_BAR_X_OFFSET;
-            float center_y = ENEMY_HP_BAR_Y + 30;  // Below HP bar so it's visible as it rises
-
-            // Spawn red damage number (NOT crit - red is clear enough)
-            VFX_SpawnDamageNumber(vfx, punish_damage, center_x, center_y,
-                                 false,  // is_healing = false (red damage)
-                                 false,  // is_crit = false (normal size, not gold)
-                                 false); // is_rake = false
-        }
-
-        return;  // Don't show heal flash if we punished the heal
     }
 
     // Trigger heal visual effect (green flash)

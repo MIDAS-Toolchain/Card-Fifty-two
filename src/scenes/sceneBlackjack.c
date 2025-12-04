@@ -710,7 +710,13 @@ static void StartNextEncounter(void) {
 
         // Reset trinket combat counters (BEFORE trinket triggers add charges)
         g_human_player->debuff_blocks_remaining = 0;
-        g_human_player->enemy_heal_punishes_remaining = 0;
+
+        // Reset per-trinket combat charges
+        for (int i = 0; i < 6; i++) {
+            if (g_human_player->trinket_slot_occupied[i]) {
+                g_human_player->trinket_slots[i].heal_punishes_remaining = 0;
+            }
+        }
 
         // Fire COMBAT_START event (triggers trinkets like Warded Charm, Bleeding Heart)
         Game_TriggerEvent(&g_game, GAME_EVENT_COMBAT_START);

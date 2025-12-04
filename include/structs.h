@@ -334,6 +334,9 @@ typedef struct {
     int buffed_tag;                  // Which tag is buffed (CardTag_t stored as int)
     int tag_buff_value;              // Damage bonus for buffed tag (+5)
 
+    // Combat charges (per-trinket counters, reset each combat)
+    int heal_punishes_remaining;     // Enemy heals to punish (Bleeding Heart)
+
     // Stats tracking (data-driven array replaces individual fields)
     int tracked_stats[TRINKET_STAT_COUNT];  // Indexed by TrinketStatType_t
 
@@ -374,7 +377,6 @@ typedef struct Player {
     // Status effects system (token manipulation debuffs)
     StatusEffectManager_t* status_effects;  // Heap-allocated status effect manager
     int debuff_blocks_remaining;            // Number of debuffs to block this combat (Warded Charm trinket)
-    int enemy_heal_punishes_remaining;      // Number of enemy heals to punish this combat (Bleeding Heart trinket)
 
     // Class system
     PlayerClass_t class;           // Character class (Degenerate, Dealer, Detective, Dreamer)

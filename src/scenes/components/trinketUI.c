@@ -831,7 +831,7 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     // Check if this trinket has punish_heal effect (Bleeding Heart)
     bool has_punish_heal = (template->passive_effect_type == TRINKET_EFFECT_PUNISH_HEAL ||
                             template->passive_effect_type_2 == TRINKET_EFFECT_PUNISH_HEAL);
-    if (has_punish_heal && player->enemy_heal_punishes_remaining > 0) {
+    if (has_punish_heal && instance->heal_punishes_remaining > 0) {
         tooltip_height += 20;  // "Punishes Remaining: X"
     }
 
@@ -1039,9 +1039,9 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     }
 
     // Show current punishes remaining (Bleeding Heart - live counter)
-    if (has_punish_heal && player->enemy_heal_punishes_remaining > 0) {
+    if (has_punish_heal && instance->heal_punishes_remaining > 0) {
         dString_t* punishes_text = d_StringInit();
-        d_StringFormat(punishes_text, "Punishes Remaining: %d", player->enemy_heal_punishes_remaining);
+        d_StringFormat(punishes_text, "Punishes Remaining: %d", instance->heal_punishes_remaining);
 
         aTextStyle_t punishes_config = {
             .type = FONT_GAME,
