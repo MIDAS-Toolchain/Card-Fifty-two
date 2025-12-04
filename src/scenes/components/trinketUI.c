@@ -546,6 +546,14 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
             }
             break;
 
+        case TRINKET_EFFECT_PUNISH_HEAL:
+            if (effect_value == 1) {
+                d_StringFormat(passive_text, "%s: Punish 1 enemy heal", trigger_str);
+            } else {
+                d_StringFormat(passive_text, "%s: Punish %d enemy heals", trigger_str, effect_value);
+            }
+            break;
+
         case TRINKET_EFFECT_NONE:
             d_StringFormat(passive_text, "%s: (no effect)", trigger_str);
             break;
@@ -810,9 +818,21 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
         tooltip_height += 20;
     }
 
+    // Show heal damage dealt (if any - for Bleeding Heart)
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_HEAL_DAMAGE_DEALT) > 0) {
+        tooltip_height += 20;
+    }
+
     // Show current blocks remaining (if Warded Charm and has blocks)
     if (has_block_debuff && player->debuff_blocks_remaining > 0) {
         tooltip_height += 20;  // "Blocks Remaining: X"
+    }
+
+    // Check if this trinket has punish_heal effect (Bleeding Heart)
+    bool has_punish_heal = (template->passive_effect_type == TRINKET_EFFECT_PUNISH_HEAL ||
+                            template->passive_effect_type_2 == TRINKET_EFFECT_PUNISH_HEAL);
+    if (has_punish_heal && player->enemy_heal_punishes_remaining > 0) {
+        tooltip_height += 20;  // "Punishes Remaining: X"
     }
 
     tooltip_height += padding;
@@ -998,6 +1018,40 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
         };
         a_DrawText((char*)d_StringPeek(blocked_text), content_x, current_y, blocked_config);
         d_StringDestroy(blocked_text);
+        current_y += 20;
+    }
+
+    // Heal damage dealt (if any - for Bleeding Heart)
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_HEAL_DAMAGE_DEALT) > 0) {
+        dString_t* heal_dmg_text = d_StringInit();
+        d_StringFormat(heal_dmg_text, "Heal Damage Dealt: %d", TRINKET_GET_STAT(instance, TRINKET_STAT_HEAL_DAMAGE_DEALT));
+
+        aTextStyle_t heal_dmg_config = {
+            .type = FONT_GAME,
+            .fg = {255, 255, 255, 255},  // White text (matches other stats)
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.0f
+        };
+        a_DrawText((char*)d_StringPeek(heal_dmg_text), content_x, current_y, heal_dmg_config);
+        d_StringDestroy(heal_dmg_text);
+        current_y += 20;
+    }
+
+    // Show current punishes remaining (Bleeding Heart - live counter)
+    if (has_punish_heal && player->enemy_heal_punishes_remaining > 0) {
+        dString_t* punishes_text = d_StringInit();
+        d_StringFormat(punishes_text, "Punishes Remaining: %d", player->enemy_heal_punishes_remaining);
+
+        aTextStyle_t punishes_config = {
+            .type = FONT_GAME,
+            .fg = {255, 100, 100, 255},  // Red/pink (punishing heals)
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.0f
+        };
+        a_DrawText((char*)d_StringPeek(punishes_text), content_x, current_y, punishes_config);
+        d_StringDestroy(punishes_text);
         current_y += 20;
     }
 

@@ -274,9 +274,7 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
                             d_StringPeek(template->name),
                             player->current_bet,
                             template->passive_condition_bet_gte);
-                // Cleanup heap-allocated template (enemy pattern)
-                CleanupTrinketTemplate((TrinketTemplate_t*)template);
-                free((void*)template);
+                // NOTE: template is borrowed pointer from cache - do NOT free!
                 // Skip to next slot (condition not met)
                 continue;
             }
@@ -306,9 +304,7 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
             ExecuteTrinketEffect(template, instance, player, game, i, true);
         }
 
-        // Cleanup heap-allocated template (enemy pattern - ADR-19)
-        CleanupTrinketTemplate((TrinketTemplate_t*)template);
-        free((void*)template);
+        // NOTE: template is borrowed pointer from cache - do NOT free!
     }
 }
 

@@ -38,6 +38,7 @@ typedef enum {
     GAME_EVENT_PLAYER_ACTION_END,    // Player's action ends (stand/bust/blackjack/double)
     GAME_EVENT_CARD_TAG_CURSED,      // CURSED tag activated (10 damage to enemy)
     GAME_EVENT_CARD_TAG_VAMPIRIC,    // VAMPIRIC tag activated (5 damage + 5 chips)
+    GAME_EVENT_ENEMY_HEAL,           // Enemy heals HP (for Bleeding Heart trinket)
 } GameEvent_t;
 
 /**

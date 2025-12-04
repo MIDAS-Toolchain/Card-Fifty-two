@@ -208,6 +208,7 @@ typedef enum {
     TRINKET_EFFECT_BUFF_TAG_DAMAGE,        // Increase damage from tagged cards (value = bonus)
     TRINKET_EFFECT_PUSH_DAMAGE_PERCENT,    // Deal damage on push (value = percent of normal)
     TRINKET_EFFECT_BLOCK_DEBUFF,           // Block N debuffs this combat (value = count, Warded Charm)
+    TRINKET_EFFECT_PUNISH_HEAL,            // Punish enemy heals (deal damage equal to heal, Bleeding Heart)
 } TrinketEffectType_t;
 
 /**
@@ -291,6 +292,7 @@ typedef enum {
     TRINKET_STAT_REFUNDED_CHIPS,
     TRINKET_STAT_HIGHEST_STREAK,
     TRINKET_STAT_DEBUFFS_BLOCKED,
+    TRINKET_STAT_HEAL_DAMAGE_DEALT,
     TRINKET_STAT_COUNT
 } TrinketStatType_t;
 
@@ -372,6 +374,7 @@ typedef struct Player {
     // Status effects system (token manipulation debuffs)
     StatusEffectManager_t* status_effects;  // Heap-allocated status effect manager
     int debuff_blocks_remaining;            // Number of debuffs to block this combat (Warded Charm trinket)
+    int enemy_heal_punishes_remaining;      // Number of enemy heals to punish this combat (Bleeding Heart trinket)
 
     // Class system
     PlayerClass_t class;           // Character class (Degenerate, Dealer, Detective, Dreamer)

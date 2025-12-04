@@ -61,7 +61,8 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
         CleanupHand(&player.hand);
         return false;
     }
-    player.debuff_blocks_remaining = 0;  // No debuff blocks by default (Warded Charm adds blocks)
+    player.debuff_blocks_remaining = 0;           // No debuff blocks by default (Warded Charm adds blocks)
+    player.enemy_heal_punishes_remaining = 0;    // No heal punishes by default (Bleeding Heart adds punishes)
 
     // Initialize class system (Constitutional: no class by default)
     player.class = PLAYER_CLASS_NONE;

@@ -4,7 +4,7 @@
     name: "The Didact"
     description: """A corrupted tutorial program that still thinks it's teaching you the game.
 Its lessons have become twisted, turning the casino's rules against you."""
-    hp: 10
+    hp: 500
     image_path: "resources/enemies/didact.png"
 
     abilities: [

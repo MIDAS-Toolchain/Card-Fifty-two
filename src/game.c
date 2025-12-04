@@ -47,6 +47,7 @@ const char* GameEventToString(GameEvent_t event) {
         case GAME_EVENT_PLAYER_ACTION_END:   return "PLAYER_ACTION_END";
         case GAME_EVENT_CARD_TAG_CURSED:     return "CARD_TAG_CURSED";
         case GAME_EVENT_CARD_TAG_VAMPIRIC:   return "CARD_TAG_VAMPIRIC";
+        case GAME_EVENT_ENEMY_HEAL:          return "ENEMY_HEAL";
         default:                             return "UNKNOWN_EVENT";
     }
 }
@@ -870,15 +871,11 @@ void Game_ResolveRound(GameContext_t* game) {
                             TRINKET_ADD_STAT(instance, TRINKET_STAT_DAMAGE_DEALT, trinket_contribution);
                             d_LogDebugF("Pusher's Pebble tracking: +%d modified push damage", trinket_contribution);
 
-                            CleanupTrinketTemplate((TrinketTemplate_t*)template);
-                            free((void*)template);
+                            // NOTE: template is borrowed pointer from cache - do NOT free!
                             break;  // Only one Pusher's Pebble can exist
                         }
 
-                        if (template) {
-                            CleanupTrinketTemplate((TrinketTemplate_t*)template);
-                            free((void*)template);
-                        }
+                        // NOTE: template is borrowed pointer from cache - do NOT free!
                     }
                 }
 

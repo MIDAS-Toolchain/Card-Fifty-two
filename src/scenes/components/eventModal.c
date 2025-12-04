@@ -207,8 +207,7 @@ static int GenerateChoiceTooltipLines(const EventChoice_t* choice, TooltipLine_t
                 count++;
             }
 
-            CleanupTrinketTemplate(template);
-            free(template);
+            // NOTE: template is borrowed pointer from cache - do NOT free!
         } else {
             // Fallback if template not found
             snprintf(lines[count].text, sizeof(lines[count].text), "Trinket: %s", choice->trinket_reward_key);
@@ -369,8 +368,7 @@ void ShowEventModal(EventModal_t* modal, EventEncounter_t* event) {
 
             choice->has_trinket_reward = true;
 
-            CleanupTrinketTemplate(template);
-            free(template);
+            // NOTE: template is borrowed pointer from cache - no cleanup needed
 
             d_LogInfoF("Pre-rolled trinket '%s' for choice %zu: %d affix(es)",
                        choice->trinket_reward_key, i, inst->affix_count);

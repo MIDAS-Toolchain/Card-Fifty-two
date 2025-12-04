@@ -112,18 +112,14 @@ const TrinketTemplate_t* SelectTrinketTemplate(TrinketRarity_t rarity, Player_t*
             if (already_equipped) continue;  // Skip this trinket
         }
 
-        // Load template from DUF to check rarity
-        TrinketTemplate_t* template = LoadTrinketTemplateFromDUF(trinket_key);
+        // Load template from cache to check rarity
+        const TrinketTemplate_t* template = GetTrinketTemplate(trinket_key);
         if (template && template->rarity == rarity) {
             // Match! Store key (not template)
             d_ArrayAppend(matching_keys, key_ptr);
         }
 
-        // Cleanup test template
-        if (template) {
-            CleanupTrinketTemplate(template);
-            free(template);
-        }
+        // NOTE: template is borrowed pointer from cache - no cleanup needed
     }
 
     if (matching_keys->count == 0) {
@@ -143,14 +139,16 @@ const TrinketTemplate_t* SelectTrinketTemplate(TrinketRarity_t rarity, Player_t*
         return NULL;
     }
 
-    // Load the selected template (caller must free this!)
-    TrinketTemplate_t* result = LoadTrinketTemplateFromDUF(selected_key);
+    // Load the selected template from cache (borrowed pointer!)
+    const TrinketTemplate_t* result = GetTrinketTemplate(selected_key);
     if (result) {
         d_LogInfoF("Selected trinket template: %s (rarity %d)",
                    d_StringPeek(result->name), result->rarity);
     }
 
-    return result;
+    // NOTE: Cast to non-const for return (caller expects TrinketTemplate_t*)
+    // This is safe because callers should treat it as read-only
+    return (TrinketTemplate_t*)result;
 }
 
 // ============================================================================
@@ -374,9 +372,7 @@ bool GenerateTrinketDrop(int tier, bool is_elite, int* pity_counter, TrinketInst
                d_StringPeek(template->name), rolled_rarity, tier,
                out_instance->affix_count, out_instance->sell_value);
 
-    // Cleanup heap-allocated template (enemy pattern)
-    CleanupTrinketTemplate((TrinketTemplate_t*)template);
-    free((void*)template);
+    // NOTE: template is borrowed pointer from cache - do NOT free!
 
     return true;
 }

@@ -175,7 +175,7 @@ static void BlackjackDraw(float dt);
 // ============================================================================
 
 
-static void CleanupBlackjackScene(void);
+void CleanupBlackjackScene(void);
 
 // Layout initialization
 static void InitializeLayout(void);
@@ -553,7 +553,7 @@ void InitBlackjackScene(void) {
     d_LogInfo("Blackjack scene ready");
 }
 
-static void CleanupBlackjackScene(void) {
+void CleanupBlackjackScene(void) {
     d_LogInfo("Cleaning up Blackjack scene");
 
     // Cleanup tutorial system
@@ -708,10 +708,11 @@ static void StartNextEncounter(void) {
         // Fade in enemy on spawn (0.0 → 1.0 over 1.0 second)
         TweenFloat(&g_tween_manager, &enemy->defeat_fade_alpha, 1.0f, 1.0f, TWEEN_EASE_OUT_CUBIC);
 
-        // Reset debuff blocks at combat start (BEFORE trinket triggers add blocks)
+        // Reset trinket combat counters (BEFORE trinket triggers add charges)
         g_human_player->debuff_blocks_remaining = 0;
+        g_human_player->enemy_heal_punishes_remaining = 0;
 
-        // Fire COMBAT_START event (triggers trinkets like Warded Charm)
+        // Fire COMBAT_START event (triggers trinkets like Warded Charm, Bleeding Heart)
         Game_TriggerEvent(&g_game, GAME_EVENT_COMBAT_START);
 
         d_LogInfoF("New combat: %s (%d/%d HP)",

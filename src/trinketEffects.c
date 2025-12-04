@@ -326,6 +326,19 @@ static void ExecuteBlockDebuff(Player_t* player, int count) {
                count, player->debuff_blocks_remaining);
 }
 
+/**
+ * ExecutePunishHeal - Grant heal punish charges for this combat
+ *
+ * Example: Bleeding Heart (punish 1 enemy heal this combat)
+ */
+static void ExecutePunishHeal(Player_t* player, int count) {
+    if (!player || count <= 0) return;
+
+    player->enemy_heal_punishes_remaining += count;
+    d_LogInfoF("💔 Trinket effect: Punish %d enemy heal(s) this combat (total punishes: %d)",
+               count, player->enemy_heal_punishes_remaining);
+}
+
 // ============================================================================
 // PUBLIC API
 // ============================================================================
@@ -453,6 +466,10 @@ void ExecuteTrinketEffect(
 
         case TRINKET_EFFECT_BLOCK_DEBUFF:
             ExecuteBlockDebuff(player, effect_value);
+            break;
+
+        case TRINKET_EFFECT_PUNISH_HEAL:
+            ExecutePunishHeal(player, effect_value);
             break;
 
         default:

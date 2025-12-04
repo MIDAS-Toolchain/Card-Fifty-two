@@ -13,7 +13,7 @@
 #include "../../include/scenes/sceneBlackjack.h"  // For GetVisualEffects
 #include "../../include/scenes/components/visualEffects.h"
 #include "../../include/trinketDrop.h"  // For RerollTrinketAffixes
-#include "../../include/loaders/trinketLoader.h"  // For GetTrinketTemplate, CleanupTrinketTemplate
+#include "../../include/loaders/trinketLoader.h"  // For GetTrinketTemplate
 #include "../../include/trinketEffects.h"  // For ExecuteTrinketEffect
 
 // External globals (from sceneBlackjack.c)
@@ -662,9 +662,7 @@ static void CMD_TestDrop(Terminal_t* terminal, const char* args) {
         }
     }
 
-    // Cleanup heap-allocated template (we only needed it for display)
-    CleanupTrinketTemplate((TrinketTemplate_t*)template);
-    free((void*)template);
+    // NOTE: template is borrowed pointer from cache - no cleanup needed
 
     // Add to inventory by default (unless --no-drop flag)
     if (should_equip) {
@@ -769,10 +767,10 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
         sscanf(stacks_arg, "--stacks=%d", &stacks);
     }
 
-    // Load trinket template from DUF
-    const TrinketTemplate_t* template = LoadTrinketTemplateFromDUF(trinket_key);
+    // Load trinket template from cache
+    const TrinketTemplate_t* template = GetTrinketTemplate(trinket_key);
     if (!template) {
-        TerminalPrint(terminal, "[Error] Trinket '%s' not found in DUF database", trinket_key);
+        TerminalPrint(terminal, "[Error] Trinket '%s' not found in cache", trinket_key);
         TerminalPrint(terminal, "[Error] Try: broken_watch, streak_counter, elite_membership");
         return;
     }
@@ -790,8 +788,7 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
 
         if (!found_slot) {
             TerminalPrint(terminal, "[Error] All trinket slots are full");
-            CleanupTrinketTemplate((TrinketTemplate_t*)template);
-            free((void*)template);
+            // NOTE: template is borrowed pointer from cache - no cleanup needed
             return;
         }
     }
@@ -810,8 +807,7 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
     instance.base_trinket_key = d_StringInit();
     if (!instance.base_trinket_key) {
         TerminalPrint(terminal, "[Error] Failed to allocate base_trinket_key");
-        CleanupTrinketTemplate((TrinketTemplate_t*)template);
-        free((void*)template);
+        // NOTE: template is borrowed pointer from cache - do NOT free!
         return;
     }
     d_StringSet(instance.base_trinket_key, d_StringPeek(template->trinket_key), 0);
@@ -822,8 +818,7 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
         if (!instance.trinket_stack_stat) {
             TerminalPrint(terminal, "[Error] Failed to allocate trinket_stack_stat");
             d_StringDestroy(instance.base_trinket_key);
-            CleanupTrinketTemplate((TrinketTemplate_t*)template);
-            free((void*)template);
+            // NOTE: template is borrowed pointer from cache - do NOT free!
             return;
         }
         d_StringSet(instance.trinket_stack_stat, d_StringPeek(template->passive_stack_stat), 0);
@@ -900,9 +895,7 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
         ExecuteTrinketEffect(template, &g_human_player->trinket_slots[slot], g_human_player, &g_game, slot, false);
     }
 
-    // Cleanup heap-allocated template (ADR-19 pattern)
-    CleanupTrinketTemplate((TrinketTemplate_t*)template);
-    free((void*)template);
+    // NOTE: template is borrowed pointer from cache - no cleanup needed
 }
 
 // ============================================================================
