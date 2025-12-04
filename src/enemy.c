@@ -200,13 +200,11 @@ void HealEnemy(Enemy_t* enemy, int amount, TweenManager_t* tween_manager) {
     d_LogInfoF("%s healed %d HP (%d -> %d)",
                d_StringPeek(enemy->name), amount, old_hp, enemy->current_hp);
 
-    // Check for heal punish trinkets (each trinket can punish independently)
+    // Check for heal punish trinkets (find first available charge)
+    // NOTE: Only ONE punish triggers per heal (first trinket with charges wins)
     extern Player_t* g_human_player;  // From sceneBlackjack.c
     if (g_human_player) {
-        bool punished_heal = false;
-        int total_punish_damage = 0;
-
-        // Check ALL trinkets - each can punish independently
+        // Find first trinket with available punish charges
         for (int i = 0; i < 6; i++) {
             if (!g_human_player->trinket_slot_occupied[i]) continue;
 
@@ -214,24 +212,19 @@ void HealEnemy(Enemy_t* enemy, int amount, TweenManager_t* tween_manager) {
             if (!trinket->base_trinket_key) continue;
             if (trinket->heal_punishes_remaining <= 0) continue;
 
-            // Consume one charge from this trinket
+            // Consume one charge from ONLY THIS trinket (first match wins)
             trinket->heal_punishes_remaining--;
 
             // Deal damage equal to heal amount
             int punish_damage = amount;
             TakeDamage(enemy, punish_damage);
-            total_punish_damage += punish_damage;
 
             // Track stat on this trinket
             TRINKET_ADD_STAT(trinket, TRINKET_STAT_HEAL_DAMAGE_DEALT, punish_damage);
 
-            d_LogInfoF("💔 Trinket %d punished heal! Dealt %d damage (%d punishes remaining on this trinket)",
+            d_LogInfoF("💔 Trinket slot %d punished heal! Dealt %d damage (%d punishes remaining)",
                        i, punish_damage, trinket->heal_punishes_remaining);
 
-            punished_heal = true;
-        }
-
-        if (punished_heal) {
             // Trigger damage flash (red flash instead of green heal flash)
             if (tween_manager) {
                 TriggerEnemyDamageEffect(enemy, tween_manager);
@@ -245,7 +238,7 @@ void HealEnemy(Enemy_t* enemy, int amount, TweenManager_t* tween_manager) {
                 float center_y = ENEMY_HP_BAR_Y + 30;  // Below HP bar so it's visible as it rises
 
                 // Spawn red damage number (NOT crit - red is clear enough)
-                VFX_SpawnDamageNumber(vfx, total_punish_damage, center_x, center_y,
+                VFX_SpawnDamageNumber(vfx, punish_damage, center_x, center_y,
                                      false,  // is_healing = false (red damage)
                                      false,  // is_crit = false (normal size, not gold)
                                      false); // is_rake = false

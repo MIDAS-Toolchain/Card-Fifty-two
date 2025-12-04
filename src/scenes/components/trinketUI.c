@@ -824,7 +824,7 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     }
 
     // Show current blocks remaining (if Warded Charm and has blocks)
-    if (has_block_debuff && player->debuff_blocks_remaining > 0) {
+    if (has_block_debuff && instance->debuff_blocks_remaining > 0) {
         tooltip_height += 20;  // "Blocks Remaining: X"
     }
 
@@ -918,9 +918,9 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     }
 
     // Show current blocks remaining (Warded Charm - live counter)
-    if (has_block_debuff && player->debuff_blocks_remaining > 0) {
+    if (has_block_debuff && instance->debuff_blocks_remaining > 0) {
         dString_t* blocks_text = d_StringInit();
-        d_StringFormat(blocks_text, "Blocks Remaining: %d", player->debuff_blocks_remaining);
+        d_StringFormat(blocks_text, "Blocks Remaining: %d", instance->debuff_blocks_remaining);
 
         aTextStyle_t blocks_config = {
             .type = FONT_GAME,

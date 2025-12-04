@@ -317,13 +317,15 @@ static void ExecuteAddTagToCards(Player_t* player, const TrinketTemplate_t* temp
  * ExecuteBlockDebuff - Grant debuff blocks for this combat
  *
  * Example: Warded Charm (block 1 debuff this combat)
+ *
+ * NOTE: Sets counter on TRINKET INSTANCE, not player (so multiple trinkets stack)
  */
-static void ExecuteBlockDebuff(Player_t* player, int count) {
-    if (!player || count <= 0) return;
+static void ExecuteBlockDebuff(Player_t* player, TrinketInstance_t* instance, int count) {
+    if (!player || !instance || count <= 0) return;
 
-    player->debuff_blocks_remaining += count;
-    d_LogInfoF("🛡️ Trinket effect: Block %d debuff(s) this combat (total blocks: %d)",
-               count, player->debuff_blocks_remaining);
+    instance->debuff_blocks_remaining += count;
+    d_LogInfoF("🛡️ Trinket effect: Block %d debuff(s) this combat (trinket has %d blocks)",
+               count, instance->debuff_blocks_remaining);
 }
 
 /**
@@ -467,7 +469,7 @@ void ExecuteTrinketEffect(
             break;
 
         case TRINKET_EFFECT_BLOCK_DEBUFF:
-            ExecuteBlockDebuff(player, effect_value);
+            ExecuteBlockDebuff(player, instance, effect_value);
             break;
 
         case TRINKET_EFFECT_PUNISH_HEAL:

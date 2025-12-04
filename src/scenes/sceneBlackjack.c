@@ -708,13 +708,11 @@ static void StartNextEncounter(void) {
         // Fade in enemy on spawn (0.0 → 1.0 over 1.0 second)
         TweenFloat(&g_tween_manager, &enemy->defeat_fade_alpha, 1.0f, 1.0f, TWEEN_EASE_OUT_CUBIC);
 
-        // Reset trinket combat counters (BEFORE trinket triggers add charges)
-        g_human_player->debuff_blocks_remaining = 0;
-
-        // Reset per-trinket combat charges
+        // Reset per-trinket combat charges (BEFORE trinket triggers add charges)
         for (int i = 0; i < 6; i++) {
             if (g_human_player->trinket_slot_occupied[i]) {
                 g_human_player->trinket_slots[i].heal_punishes_remaining = 0;
+                g_human_player->trinket_slots[i].debuff_blocks_remaining = 0;
             }
         }
 
