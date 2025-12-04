@@ -11,6 +11,9 @@
 #include "../include/stats.h"
 #include "../include/player.h"
 #include "../include/deck.h"
+#include "../include/loaders/trinketLoader.h"  // For GetTrinketTemplate
+#include "../include/scenes/components/visualEffects.h"  // For VFX_SpawnDamageNumber
+#include "../include/scenes/sceneBlackjack.h"  // For GetVisualEffects, ENEMY_HP_BAR constants
 #include <stdlib.h>
 
 // External globals
@@ -197,10 +200,62 @@ void HealEnemy(Enemy_t* enemy, int amount, TweenManager_t* tween_manager) {
     d_LogInfoF("%s healed %d HP (%d -> %d)",
                d_StringPeek(enemy->name), amount, old_hp, enemy->current_hp);
 
+    // Check for heal punish trinkets (find first available charge)
+    // NOTE: Only ONE punish triggers per heal (first trinket with charges wins)
+    extern Player_t* g_human_player;  // From sceneBlackjack.c
+    if (g_human_player) {
+        // Find first trinket with available punish charges
+        for (int i = 0; i < 6; i++) {
+            if (!g_human_player->trinket_slot_occupied[i]) continue;
+
+            TrinketInstance_t* trinket = &g_human_player->trinket_slots[i];
+            if (!trinket->base_trinket_key) continue;
+            if (trinket->heal_punishes_remaining <= 0) continue;
+
+            // Consume one charge from ONLY THIS trinket (first match wins)
+            trinket->heal_punishes_remaining--;
+
+            // Deal damage equal to heal amount
+            int punish_damage = amount;
+            TakeDamage(enemy, punish_damage);
+
+            // Track stat on this trinket
+            TRINKET_ADD_STAT(trinket, TRINKET_STAT_HEAL_DAMAGE_DEALT, punish_damage);
+
+            d_LogInfoF("💔 Trinket slot %d punished heal! Dealt %d damage (%d punishes remaining)",
+                       i, punish_damage, trinket->heal_punishes_remaining);
+
+            // Trigger damage flash (red flash instead of green heal flash)
+            if (tween_manager) {
+                TriggerEnemyDamageEffect(enemy, tween_manager);
+            }
+
+            // Show punished heal damage number (red, normal style)
+            VisualEffects_t* vfx = GetVisualEffects();
+            if (vfx) {
+                // Position below enemy HP bar (numbers rise up, so spawn lower)
+                float center_x = SCREEN_WIDTH / 2.0f + ENEMY_HP_BAR_X_OFFSET;
+                float center_y = ENEMY_HP_BAR_Y + 30;  // Below HP bar so it's visible as it rises
+
+                // Spawn red damage number (NOT crit - red is clear enough)
+                VFX_SpawnDamageNumber(vfx, punish_damage, center_x, center_y,
+                                     false,  // is_healing = false (red damage)
+                                     false,  // is_crit = false (normal size, not gold)
+                                     false); // is_rake = false
+            }
+
+            return;  // Don't show heal flash if we punished the heal
+        }
+    }
+
     // Trigger heal visual effect (green flash)
     if (tween_manager) {
         TriggerEnemyHealEffect(enemy, tween_manager);
     }
+
+    // Trigger ENEMY_HEAL event (for other potential trinkets)
+    extern GameContext_t g_game;  // From sceneBlackjack.c
+    Game_TriggerEvent(&g_game, GAME_EVENT_ENEMY_HEAL);
 }
 
 float GetEnemyHPPercent(const Enemy_t* enemy) {

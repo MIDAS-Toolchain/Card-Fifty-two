@@ -432,6 +432,10 @@ void Initialize(void) {
 void Cleanup(void) {
     d_LogInfo("Shutting down...");
 
+    // Cleanup active scene (terminal, state storage, etc)
+    extern void CleanupBlackjackScene(void);
+    CleanupBlackjackScene();
+
     // Cleanup test deck and player hand
     CleanupDeck(&g_test_deck);
     CleanupHand(&g_player_hand);

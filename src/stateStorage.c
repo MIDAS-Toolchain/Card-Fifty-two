@@ -137,8 +137,9 @@ void StateData_ClearBool(GameStateData_t* data, const char* key) {
     // Check if key exists before removing (not an error if it doesn't)
     bool* exists = (bool*)d_TableGet(data->bool_flags, &key);
     if (exists) {
+        bool old_value = *exists;  // Copy BEFORE freeing
         d_TableRemove(data->bool_flags, &key);
-        d_LogDebugF("StateData_ClearBool: Removed key='%s' (was %d)", key, *exists);
+        d_LogDebugF("StateData_ClearBool: Removed key='%s' (was %d)", key, old_value);
     } else {
         d_LogDebugF("StateData_ClearBool: Key='%s' not found (already clear)", key);
     }
@@ -242,8 +243,9 @@ void StateData_ClearPhase(GameStateData_t* data) {
     d_LogInfo("StateData_ClearPhase: d_TableGet returned");
 
     if (exists) {
+        DealerPhase_t old_phase = *exists;  // Copy BEFORE freeing
         d_TableRemove(data->dealer_phase, &key_str);
-        d_LogDebugF("StateData_ClearPhase: Removed phase (was %d)", *exists);
+        d_LogDebugF("StateData_ClearPhase: Removed phase (was %d)", old_phase);
     } else {
         d_LogDebug("StateData_ClearPhase: Phase not found (already clear)");
     }

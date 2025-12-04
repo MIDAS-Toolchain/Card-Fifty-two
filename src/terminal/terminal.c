@@ -170,9 +170,16 @@ void CleanupTerminal(Terminal_t** terminal) {
                 if (key_ptr && *key_ptr) {
                     CommandHandler_t** handler = (CommandHandler_t**)d_TableGet(t->registered_commands, key_ptr);
                     if (handler && *handler) {
-                        d_StringDestroy((*handler)->name);
-                        d_StringDestroy((*handler)->help_text);
-                        free(*handler);
+                        // Copy handler pointer before removing from table
+                        CommandHandler_t* h = *handler;
+
+                        // Remove from table FIRST (key becomes invalid after we destroy name)
+                        d_TableRemove(t->registered_commands, key_ptr);
+
+                        // NOW safe to destroy (no more lookups using this key)
+                        d_StringDestroy(h->name);
+                        d_StringDestroy(h->help_text);
+                        free(h);
                     }
                 }
             }

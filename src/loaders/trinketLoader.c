@@ -14,6 +14,13 @@
 static dArray_t* g_trinket_databases = NULL;  // Array of dDUFValue_t* (all loaded trinket DUFs)
 dDUFValue_t* g_trinkets_db = NULL;             // Legacy: points to first DUF (for compatibility)
 dArray_t* g_trinket_key_cache = NULL;           // Cache of all trinket keys (const char*) for iteration
+static dTable_t* g_trinket_template_cache = NULL;  // Cache: trinket_key → TrinketTemplate_t* (pre-cached at startup)
+
+// ============================================================================
+// FORWARD DECLARATIONS
+// ============================================================================
+
+static TrinketTemplate_t* LoadTrinketTemplateFromDUF(const char* trinket_key);
 
 // ============================================================================
 // ENUM CONVERTERS
@@ -37,6 +44,7 @@ TrinketEffectType_t TrinketEffectTypeFromString(const char* str) {
     if (strcmp(str, "buff_tag_damage") == 0) return TRINKET_EFFECT_BUFF_TAG_DAMAGE;
     if (strcmp(str, "push_damage_percent") == 0) return TRINKET_EFFECT_PUSH_DAMAGE_PERCENT;
     if (strcmp(str, "block_debuff") == 0) return TRINKET_EFFECT_BLOCK_DEBUFF;
+    if (strcmp(str, "punish_heal") == 0) return TRINKET_EFFECT_PUNISH_HEAL;
 
     d_LogWarningF("Unknown trinket effect type: %s", str);
     return TRINKET_EFFECT_NONE;
@@ -386,7 +394,22 @@ bool PopulateAllTrinketTemplates(dArray_t* databases) {
         }
     }
 
-    // Populate trinket templates from each DUF file
+    // Initialize template cache (stores pointers to heap-allocated templates)
+    if (!g_trinket_template_cache) {
+        g_trinket_template_cache = d_TableInit(
+            sizeof(const char*),           // Key: trinket key string pointer
+            sizeof(TrinketTemplate_t*),    // Value: pointer to template (8 bytes)
+            d_HashString,
+            d_CompareString,
+            64                              // Initial capacity (plenty for ~20-30 trinkets)
+        );
+        if (!g_trinket_template_cache) {
+            d_LogFatal("Failed to create trinket template cache");
+            return false;
+        }
+    }
+
+    // Populate trinket key cache from each DUF file
     bool success = true;
     for (size_t i = 0; i < databases->count; i++) {
         dDUFValue_t** db_ptr = (dDUFValue_t**)d_ArrayGet(databases, i);
@@ -396,6 +419,37 @@ bool PopulateAllTrinketTemplates(dArray_t* databases) {
             d_LogErrorF("Failed to populate trinket templates from DUF #%zu", i);
             success = false;
         }
+    }
+
+    // Pre-cache all trinket templates at startup
+    if (g_trinket_key_cache && success) {
+        d_LogInfoF("Pre-caching %zu trinket templates...", g_trinket_key_cache->count);
+        int cached_count = 0;
+
+        for (size_t i = 0; i < g_trinket_key_cache->count; i++) {
+            const char** key_ptr = (const char**)d_ArrayGet(g_trinket_key_cache, i);
+            if (!key_ptr || !*key_ptr) continue;
+
+            const char* trinket_key = *key_ptr;
+
+            // Heap-allocate template (cache will own this)
+            TrinketTemplate_t* template = LoadTrinketTemplateFromDUF(trinket_key);
+            if (!template) {
+                d_LogErrorF("Failed to pre-cache trinket: %s", trinket_key);
+                success = false;
+                continue;
+            }
+
+            // Store pointer in cache (table copies 8-byte pointer value)
+            // Key: Use key_ptr (points to persistent string in g_trinket_key_cache array)
+            d_TableSet(g_trinket_template_cache, key_ptr, &template);
+            d_LogDebugF("Cached trinket template: %s", trinket_key);
+            cached_count++;
+
+            // DON'T free template - cache owns it now
+        }
+
+        d_LogInfoF("Pre-cached %d/%zu trinket templates", cached_count, g_trinket_key_cache->count);
     }
 
     return success;
@@ -467,16 +521,15 @@ bool ValidateTrinketDatabase(dDUFValue_t* trinkets_db, char* out_error_msg, size
 }
 
 /**
- * LoadTrinketTemplateFromDUF - Load trinket template from DUF (enemy pattern)
+ * LoadTrinketTemplateFromDUF - Load trinket template from DUF (internal only)
  *
  * @param trinket_key - Key name of trinket to load (e.g., "lucky_chip", "loaded_dice")
- * @return TrinketTemplate_t* - Heap-allocated template (caller must free), NULL on failure
+ * @return TrinketTemplate_t* - Heap-allocated template, NULL on failure
  *
- * IMPORTANT: Returned template is HEAP-ALLOCATED. Caller must:
- * 1. Call CleanupTrinketTemplate() to free internal dStrings
- * 2. Call free() to free the struct itself
+ * INTERNAL USE ONLY - Called by pre-caching system at startup.
+ * Caller must NOT free the returned pointer - cache owns the memory.
  */
-TrinketTemplate_t* LoadTrinketTemplateFromDUF(const char* trinket_key) {
+static TrinketTemplate_t* LoadTrinketTemplateFromDUF(const char* trinket_key) {
     if (!trinket_key) {
         d_LogError("LoadTrinketTemplateFromDUF: NULL trinket_key");
         return NULL;
@@ -509,7 +562,7 @@ TrinketTemplate_t* LoadTrinketTemplateFromDUF(const char* trinket_key) {
         return NULL;
     }
 
-    // Allocate template on heap (caller owns this memory)
+    // Allocate template on heap (cache will own this)
     TrinketTemplate_t* template = malloc(sizeof(TrinketTemplate_t));
     if (!template) {
         d_LogFatal("LoadTrinketTemplateFromDUF: Failed to allocate template");
@@ -524,7 +577,7 @@ TrinketTemplate_t* LoadTrinketTemplateFromDUF(const char* trinket_key) {
         return NULL;
     }
 
-    // Validate critical fields (enemy pattern: catch parse bugs early)
+    // Validate critical fields (catch parse bugs early)
     if (!template->name || !template->flavor) {
         d_LogErrorF("Trinket '%s' has NULL name or flavor after parse (parse bug!)", trinket_key);
         CleanupTrinketTemplate(template);
@@ -536,12 +589,35 @@ TrinketTemplate_t* LoadTrinketTemplateFromDUF(const char* trinket_key) {
 }
 
 /**
- * GetTrinketTemplate - Wrapper for LoadTrinketTemplateFromDUF (for backward compatibility)
+ * GetTrinketTemplate - Get cached trinket template
  *
- * NOTE: This allocates memory! Caller must cleanup the returned template.
+ * @param trinket_key - Trinket key string ("lucky_chip", "loaded_dice", etc)
+ * @return TrinketTemplate_t* - Borrowed pointer from cache, or NULL if not found
+ *
+ * Returns BORROWED pointer - do NOT free! Cache owns the memory.
+ * All templates are pre-cached at startup.
  */
 TrinketTemplate_t* GetTrinketTemplate(const char* trinket_key) {
-    return LoadTrinketTemplateFromDUF(trinket_key);
+    if (!trinket_key) {
+        d_LogError("GetTrinketTemplate: NULL trinket_key");
+        return NULL;
+    }
+
+    if (!g_trinket_template_cache) {
+        d_LogError("GetTrinketTemplate: Cache not initialized");
+        return NULL;
+    }
+
+    // Lookup in cache - returns pointer to pointer (TrinketTemplate_t**)
+    TrinketTemplate_t** cached_ptr = (TrinketTemplate_t**)d_TableGet(g_trinket_template_cache, &trinket_key);
+
+    if (!cached_ptr || !*cached_ptr) {
+        d_LogWarningF("GetTrinketTemplate: Cache miss for '%s' (should be pre-cached!)", trinket_key);
+        return NULL;
+    }
+
+    // Return borrowed pointer to heap-allocated template
+    return *cached_ptr;
 }
 
 void CleanupTrinketTemplate(TrinketTemplate_t* trinket) {
@@ -590,12 +666,38 @@ void CleanupTrinketTemplate(TrinketTemplate_t* trinket) {
 }
 
 void CleanupTrinketLoaderSystem(void) {
-    // Enemy pattern: No table to cleanup, just key cache and DUF tree
+    // Cleanup template cache (stores pointers to heap-allocated templates)
+    if (g_trinket_template_cache) {
+        dArray_t* keys = d_TableGetAllKeys(g_trinket_template_cache);
+        if (keys) {
+            // Free each heap-allocated template
+            for (size_t i = 0; i < keys->count; i++) {
+                const char** key_ptr = (const char**)d_ArrayGet(keys, i);
+                if (key_ptr && *key_ptr) {
+                    TrinketTemplate_t** template_ptr = (TrinketTemplate_t**)d_TableGet(
+                        g_trinket_template_cache, key_ptr
+                    );
+                    if (template_ptr && *template_ptr) {
+                        CleanupTrinketTemplate(*template_ptr);  // Free dStrings
+                        free(*template_ptr);                     // Free template struct
+                    }
+                }
+            }
+            d_ArrayDestroy(keys);
+        }
+        // Destroy table (frees the pointer storage)
+        d_TableDestroy(&g_trinket_template_cache);
+        g_trinket_template_cache = NULL;
+        d_LogInfo("Trinket template cache cleaned up");
+    }
+
+    // Cleanup key cache
     if (g_trinket_key_cache) {
         d_ArrayDestroy(g_trinket_key_cache);
         g_trinket_key_cache = NULL;
     }
 
+    // Cleanup DUF databases
     if (g_trinkets_db) {
         d_DUFFree(g_trinkets_db);
         g_trinkets_db = NULL;

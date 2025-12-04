@@ -18,18 +18,6 @@
     passive_effect_value: 1
 }
 
-@gamblers_coin {
-    name: "Gambler's Coin"
-    rarity: "common"
-    base_value: 35
-    flavor: "Heads you win, tails you win more."
-
-    # On blackjack: +10 chips
-    passive_trigger: "PLAYER_BLACKJACK"
-    passive_effect_type: "add_chips"
-    passive_effect_value: 10
-}
-
 @tarnished_medal {
     name: "Tarnished Medal"
     rarity: "common"
@@ -45,6 +33,18 @@
 # =============================================================================
 # UNCOMMON TRINKETS (Normal enemy pity / Elite enemy occasional)
 # =============================================================================
+
+@bleeding_heart {
+    name: "Bleeding Heart"
+    rarity: "uncommon"
+    base_value: 60
+    flavor: "Turn their mercy into pain."
+
+    # On combat start: punish 1 enemy heal (deal damage equal to heal amount)
+    passive_trigger: "COMBAT_START"
+    passive_effect_type: "punish_heal"
+    passive_effect_value: 1
+}
 
 @pushers_pebble {
     name: "Pusher's Pebble"

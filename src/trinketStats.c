@@ -147,9 +147,7 @@ void AggregateTrinketStats(Player_t* player) {
                         d_StringPeek(template->name), template->passive_effect_value);
         }
 
-        // Cleanup heap-allocated template (ADR-19)
-        CleanupTrinketTemplate((TrinketTemplate_t*)template);
-        free((void*)template);
+        // NOTE: template is borrowed pointer from cache - no cleanup needed
     }
 
     d_LogInfoF("Trinket stat aggregation complete: %d trinkets, %d affixes applied",

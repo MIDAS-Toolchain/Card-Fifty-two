@@ -70,34 +70,29 @@ void ApplyStatusEffect(StatusEffectManager_t* manager,
         return;
     }
 
-    // Check if this is a debuff and player has blocks remaining (Warded Charm)
-    if (player && IsStatusEffectDebuff(type) && player->debuff_blocks_remaining > 0) {
-        player->debuff_blocks_remaining--;
-        d_LogInfoF("🛡️ Warded Charm blocked %s! (%d blocks remaining)",
-                   GetStatusEffectName(type), player->debuff_blocks_remaining);
-
-        // Track stat on Warded Charm trinket (find trinket with block_debuff effect)
+    // Check if this is a debuff and any trinket has blocks remaining (Warded Charm)
+    // NOTE: Only ONE block triggers per debuff (first trinket with charges wins)
+    if (player && IsStatusEffectDebuff(type)) {
+        // Find first trinket with available block charges
         for (int i = 0; i < 6; i++) {
-            if (!player->trinket_slot_occupied[i]) continue;  // Empty slot
+            if (!player->trinket_slot_occupied[i]) continue;
 
             TrinketInstance_t* trinket = &player->trinket_slots[i];
-            if (!trinket->base_trinket_key) continue;  // Safety check
+            if (!trinket->base_trinket_key) continue;
+            if (trinket->debuff_blocks_remaining <= 0) continue;
 
-            TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(trinket->base_trinket_key));
-            if (!template) continue;
+            // Consume one charge from ONLY THIS trinket (first match wins)
+            trinket->debuff_blocks_remaining--;
 
-            // Check if this trinket has block_debuff effect
-            if (template->passive_effect_type == TRINKET_EFFECT_BLOCK_DEBUFF ||
-                template->passive_effect_type_2 == TRINKET_EFFECT_BLOCK_DEBUFF) {
-                TRINKET_INC_STAT(trinket, TRINKET_STAT_DEBUFFS_BLOCKED);
-                d_LogInfoF("📊 Warded Charm stat tracked: %d total blocks",
-                          TRINKET_GET_STAT(trinket, TRINKET_STAT_DEBUFFS_BLOCKED));
-                break;  // Only increment first matching trinket
-            }
+            // Track stat on this trinket
+            TRINKET_INC_STAT(trinket, TRINKET_STAT_DEBUFFS_BLOCKED);
+
+            d_LogInfoF("🛡️ Trinket slot %d blocked %s! (%d blocks remaining)",
+                       i, GetStatusEffectName(type), trinket->debuff_blocks_remaining);
+
+            // TODO: Spawn VFX "BLOCKED!" text above player
+            return;  // Don't apply the debuff
         }
-
-        // TODO: Spawn VFX "BLOCKED!" text above player
-        return;  // Don't apply the debuff
     }
 
     // Check if effect already exists (refresh duration)

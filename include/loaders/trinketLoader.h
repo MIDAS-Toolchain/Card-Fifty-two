@@ -78,21 +78,14 @@ bool MergeTrinketDatabases(dDUFValue_t* combat_db, dDUFValue_t* event_db);
 bool ValidateTrinketDatabase(dDUFValue_t* trinkets_db, char* out_error_msg, size_t error_msg_size);
 
 /**
- * LoadTrinketTemplateFromDUF - Load trinket template from DUF (enemy pattern)
- *
- * Allocates a new TrinketTemplate_t on the heap and parses it from DUF.
- * Caller must cleanup with CleanupTrinketTemplate() and free().
+ * GetTrinketTemplate - Get cached trinket template
  *
  * @param trinket_key - Trinket key string ("lucky_chip", "loaded_dice", etc)
- * @return TrinketTemplate_t* - Heap-allocated template, or NULL if not found
- */
-TrinketTemplate_t* LoadTrinketTemplateFromDUF(const char* trinket_key);
-
-/**
- * GetTrinketTemplate - Wrapper for LoadTrinketTemplateFromDUF (backward compatibility)
+ * @return TrinketTemplate_t* - Borrowed pointer from cache, or NULL if not found
  *
- * @param trinket_key - Trinket key string ("lucky_chip", "loaded_dice", etc)
- * @return TrinketTemplate_t* - Heap-allocated template, or NULL if not found
+ * NOTE: Returns BORROWED pointer - do NOT free! Cache owns the memory.
+ * All templates are pre-cached at startup by PopulateAllTrinketTemplates().
+ * This function performs a fast cache lookup with zero allocation overhead.
  */
 TrinketTemplate_t* GetTrinketTemplate(const char* trinket_key);
 
