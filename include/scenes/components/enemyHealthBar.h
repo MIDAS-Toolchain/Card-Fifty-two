@@ -11,8 +11,8 @@
 #include "../../enemy.h"
 
 // Health bar dimensions
-#define ENEMY_HP_BAR_WIDTH   120
-#define ENEMY_HP_BAR_HEIGHT  15
+#define ENEMY_HP_BAR_WIDTH   200
+#define ENEMY_HP_BAR_HEIGHT  30
 
 typedef struct EnemyHealthBar {
     int x, y, w, h;

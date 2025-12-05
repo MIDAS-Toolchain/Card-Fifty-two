@@ -14,6 +14,7 @@
 #include "../../include/loaders/enemyLoader.h"
 #include "../../include/scenes/sceneBlackjack.h"
 #include "../../include/scenes/sceneMenu.h"
+#include "../../include/scenes/sceneSettings.h"
 #include "../../include/scenes/components/button.h"
 #include "../../include/scenes/components/deckButton.h"
 #include "../../include/scenes/components/sidebarButton.h"
@@ -50,6 +51,7 @@
 #include "../../include/trinket.h"
 #include "../../include/trinketDrop.h"
 #include "../../include/loaders/trinketLoader.h"
+#include "../../include/trinketEffects.h"
 #include "../../include/stats.h"
 #include "../../include/sanityThreshold.h"
 #include "../../include/audioHelper.h"
@@ -553,6 +555,24 @@ void InitBlackjackScene(void) {
     d_LogInfo("Blackjack scene ready");
 }
 
+/**
+ * ResumeBlackjackScene - Resume blackjack scene without re-initializing
+ *
+ * Restores scene delegates after returning from settings/pause.
+ * Preserves all game state (g_game, g_human_player, HP, cards, etc.)
+ *
+ * IMPORTANT: Does NOT reset any state - just switches rendering back on
+ */
+void ResumeBlackjackScene(void) {
+    d_LogInfo("Resuming Blackjack scene (state preserved)");
+
+    // Restore scene delegates (BlackjackLogic and BlackjackDraw are static)
+    app.delegate.logic = BlackjackLogic;
+    app.delegate.draw = BlackjackDraw;
+
+    // That's it! Game state was never touched.
+}
+
 void CleanupBlackjackScene(void) {
     d_LogInfo("Cleaning up Blackjack scene");
 
@@ -713,6 +733,7 @@ static void StartNextEncounter(void) {
             if (g_human_player->trinket_slot_occupied[i]) {
                 g_human_player->trinket_slots[i].heal_punishes_remaining = 0;
                 g_human_player->trinket_slots[i].debuff_blocks_remaining = 0;
+                g_human_player->trinket_slots[i].combat_damage_bonus = 0;
             }
         }
 
@@ -850,9 +871,11 @@ static void BlackjackLogic(float dt) {
                 InitMenuScene();
                 return;
             case PAUSE_ACTION_SETTINGS:
-                // TODO: Open settings (future)
-                d_LogInfo("Settings not implemented yet");
-                break;
+                d_LogInfo("Opening settings from game");
+                // Don't cleanup blackjack scene - just switch to settings
+                // Game state (g_game, g_human_player, etc.) preserved
+                InitSettingsSceneFromGame();
+                return;
             case PAUSE_ACTION_HELP:
                 // TODO: Open help (future)
                 d_LogInfo("Help not implemented yet");
@@ -1136,23 +1159,30 @@ static void BlackjackLogic(float dt) {
                 dest->flash_alpha = src->flash_alpha;
 
                 dest->base_trinket_key = d_StringInit();
-                d_StringSet(dest->base_trinket_key, d_StringPeek(src->base_trinket_key), 0);
+                d_StringSet(dest->base_trinket_key, d_StringPeek(src->base_trinket_key));
 
                 if (src->trinket_stack_stat) {
                     dest->trinket_stack_stat = d_StringInit();
-                    d_StringSet(dest->trinket_stack_stat, d_StringPeek(src->trinket_stack_stat), 0);
+                    d_StringSet(dest->trinket_stack_stat, d_StringPeek(src->trinket_stack_stat));
                 } else {
                     dest->trinket_stack_stat = NULL;
                 }
 
                 for (int i = 0; i < src->affix_count; i++) {
                     dest->affixes[i].stat_key = d_StringInit();
-                    d_StringSet(dest->affixes[i].stat_key, d_StringPeek(src->affixes[i].stat_key), 0);
+                    d_StringSet(dest->affixes[i].stat_key, d_StringPeek(src->affixes[i].stat_key));
                     dest->affixes[i].rolled_value = src->affixes[i].rolled_value;
                 }
 
                 g_human_player->trinket_slot_occupied[slot] = true;
                 g_human_player->combat_stats_dirty = true;
+
+                // Trigger ON_EQUIP effects (special trigger value 999)
+                const TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(dest->base_trinket_key));
+                if (template && (int)template->passive_trigger == 999) {
+                    d_LogInfoF("Triggering ON_EQUIP effect for %s", d_StringPeek(dest->base_trinket_key));
+                    ExecuteTrinketEffect(template, dest, g_human_player, &g_game, slot, false);
+                }
 
                 // Clear flag so we don't equip again
                 g_trinket_drop_modal->should_equip_now = false;
@@ -1206,14 +1236,8 @@ static void BlackjackLogic(float dt) {
 
         if (g_reward_modal) {
             d_LogInfo("Attempting to show reward modal...");
-            if (!ShowRewardModal(g_reward_modal)) {
-                // No untagged cards - skip reward
-                d_LogInfo("No untagged cards, skipping reward");
-                Game_StartNewRound(&g_game);
-                State_Transition(&g_game, STATE_BETTING);
-            } else {
-                d_LogInfo("Reward modal shown successfully");
-            }
+            ShowRewardModal(g_reward_modal);  // Always show (handles "Too Many Tags" message internally)
+            d_LogInfo("Reward modal shown successfully");
         } else {
             d_LogError("g_reward_modal is NULL!");
         }

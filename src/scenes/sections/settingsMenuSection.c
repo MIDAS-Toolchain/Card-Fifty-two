@@ -311,7 +311,7 @@ void HandleSettingsInput(SettingsMenuSection_t* section) {
     // Update hover state (skip if dragging to avoid conflicts)
     section->hovered_index = -1;
     if (!section->slider_state.is_dragging) {
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 6; i++) {  // items[] has 6 elements (0-5)
             if (IsMouseOverItem(mx, my, items[i])) {
                 section->hovered_index = items[i].index;
                 break;

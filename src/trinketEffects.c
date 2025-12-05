@@ -14,6 +14,8 @@
 #include "../include/scenes/sceneBlackjack.h"  // For TweenEnemyHP, GetTweenManager, GetVisualEffects
 #include "../include/scenes/components/visualEffects.h"
 #include "../include/tween/tween.h"            // For TweenFloat, TWEEN_EASE_*
+#include "../include/cardTags.h"               // For CardTagFromString, AddCardTag
+#include "../include/random.h"                 // For GetRandomInt
 
 // ============================================================================
 // EFFECT EXECUTORS (Internal)
@@ -259,8 +261,8 @@ static void ExecuteAddDamageFlat(Player_t* player, GameContext_t* game, TrinketI
     VisualEffects_t* vfx = GetVisualEffects();
     if (vfx) {
         VFX_SpawnDamageNumber(vfx, modified_damage,
-                             SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
-                             ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                             GetGameAreaX() + (GetGameAreaWidth() / 2) + ENEMY_PORTRAIT_X_OFFSET,
+                             GetEnemyHealthBarY() - DAMAGE_NUMBER_Y_OFFSET,
                              false, is_crit, false);  // Pass crit flag from modifiers
     }
 
@@ -294,7 +296,7 @@ static void ExecuteBuffTagDamage(TrinketInstance_t* instance, const TrinketTempl
 /**
  * ExecuteAddTagToCards - Add card tag to N random cards in deck
  *
- * Example: Cursed Skull (add CURSED to 4 random cards on equip)
+ * Example: Cursed Skull (add CURSED to 4 random cards on equip), Blood Pact (add VAMPIRIC to 1 card)
  */
 static void ExecuteAddTagToCards(Player_t* player, const TrinketTemplate_t* template) {
     if (!player || !template) return;
@@ -304,13 +306,19 @@ static void ExecuteAddTagToCards(Player_t* player, const TrinketTemplate_t* temp
 
     if (!tag_str || count <= 0) return;
 
-    d_LogInfoF("Trinket %s adding tag %s to %d random cards",
+    CardTag_t tag = CardTagFromString(tag_str);
+
+    d_LogInfoF("🏷️ Trinket %s adding tag %s to %d random cards",
                d_StringPeek(template->name),
                tag_str,
                count);
 
-    // TODO: Implement when card tag system is ready
-    // AddTagToRandomCards(player, tag_str, count);
+    // Add tag to N random cards (allows duplicates - VAMPIRIC can stack)
+    for (int i = 0; i < count; i++) {
+        int random_card_id = GetRandomInt(0, 51);
+        AddCardTag(random_card_id, tag);
+        d_LogInfoF("  Added %s to card %d", tag_str, random_card_id);
+    }
 }
 
 /**
@@ -341,6 +349,34 @@ static void ExecutePunishHeal(Player_t* player, TrinketInstance_t* instance, int
     instance->heal_punishes_remaining += count;
     d_LogInfoF("💔 Trinket effect: Punish %d enemy heal(s) this combat (trinket has %d punishes)",
                count, instance->heal_punishes_remaining);
+}
+
+/**
+ * ExecuteChipCostFlatDamage - Lose chips and gain flat damage for combat
+ *
+ * Example: Blood Pact (lose 10 chips, gain +10 flat damage)
+ *
+ * Combined effect that deducts chips and stores flat damage bonus on trinket instance.
+ * Damage bonus persists for entire combat (reset at combat start).
+ */
+static void ExecuteChipCostFlatDamage(Player_t* player, TrinketInstance_t* instance, int value) {
+    if (!player || !instance || value <= 0) return;
+
+    // Deduct chips (can go to 0, triggering loss naturally)
+    player->chips -= value;
+    if (player->chips < 0) player->chips = 0;
+
+    // Store flat damage bonus on trinket instance (survives stat recalculation)
+    instance->combat_damage_bonus = value;
+
+    // Track total chips lost (for trinket stat display)
+    TRINKET_ADD_STAT(instance, TRINKET_STAT_CHIPS_LOST, value);
+
+    // Mark combat stats dirty for UI update
+    player->combat_stats_dirty = true;
+
+    d_LogInfoF("🩸 Blood Pact: Paid %d chips (remaining: %d), gained +%d flat damage bonus",
+               value, player->chips, value);
 }
 
 // ============================================================================
@@ -474,6 +510,10 @@ void ExecuteTrinketEffect(
 
         case TRINKET_EFFECT_PUNISH_HEAL:
             ExecutePunishHeal(player, instance, effect_value);
+            break;
+
+        case TRINKET_EFFECT_CHIP_COST_FLAT_DAMAGE:
+            ExecuteChipCostFlatDamage(player, instance, effect_value);
             break;
 
         default:

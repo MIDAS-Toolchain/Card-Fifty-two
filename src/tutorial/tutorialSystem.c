@@ -88,7 +88,7 @@ TutorialStep_t* CreateTutorialStep(const char* title,
         d_LogFatal("Failed to allocate title string");
         return NULL;
     }
-    d_StringSet(step->title, title, 0);
+    d_StringSet(step->title, title);
 
     // Create dialogue text (dString_t)
     step->dialogue_text = d_StringInit();
@@ -98,7 +98,7 @@ TutorialStep_t* CreateTutorialStep(const char* title,
         d_LogFatal("Failed to allocate dialogue text");
         return NULL;
     }
-    d_StringSet(step->dialogue_text, dialogue_text, 0);
+    d_StringSet(step->dialogue_text, dialogue_text);
 
     // Copy listener config
     step->listener = listener;

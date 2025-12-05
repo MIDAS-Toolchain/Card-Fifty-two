@@ -364,7 +364,7 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
 
     // Skip if no trigger set
     if (trigger == 0 && effect_type == TRINKET_EFFECT_NONE) {
-        d_StringSet(passive_text, "", 0);
+        d_StringSet(passive_text, "");
         return passive_text;
     }
 
@@ -526,8 +526,9 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
 
         case TRINKET_EFFECT_ADD_TAG_TO_CARDS: {
             const char* tag = template->passive_tag ? d_StringPeek(template->passive_tag) : "???";
-            d_StringFormat(passive_text, "%s: Add %s tag to %d cards",
-                          trigger_str, tag, template->passive_tag_count);
+            d_StringFormat(passive_text, "%s: Add %s tag to %d card%s",
+                          trigger_str, tag, template->passive_tag_count,
+                          template->passive_tag_count == 1 ? "" : "s");
             break;
         }
 
@@ -554,6 +555,10 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
             }
             break;
 
+        case TRINKET_EFFECT_CHIP_COST_FLAT_DAMAGE:
+            d_StringFormat(passive_text, "%s: Lose %d chips, gain +%d flat damage", trigger_str, effect_value, effect_value);
+            break;
+
         case TRINKET_EFFECT_NONE:
             d_StringFormat(passive_text, "%s: (no effect)", trigger_str);
             break;
@@ -576,7 +581,7 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
 static void RenderAffixTooltip(TrinketUI_t* ui, TrinketInstance_t* instance, int slot_index,
                                  int main_tooltip_x, int main_tooltip_y, int main_tooltip_height) {
     if (!ui || !instance || ui->cached_affix_count == 0) return;
-
+    (void)main_tooltip_height;  // Unused
     // Dimensions
     int affix_padding = 16;
     int affix_width = 320;  // Slightly narrower than main tooltip (340)
@@ -593,7 +598,6 @@ static void RenderAffixTooltip(TrinketUI_t* ui, TrinketInstance_t* instance, int
 
     // If too far left (would go offscreen), position to right of trinket slot instead
     if (affix_tooltip_x < 10) {
-        int row = slot_index / 3;
         int col = slot_index % 3;
         int slot_x = GetTrinketUIX() + col * (TRINKET_SLOT_SIZE + TRINKET_SLOT_GAP);
         affix_tooltip_x = slot_x + TRINKET_SLOT_SIZE + 15;
@@ -726,7 +730,14 @@ static void RenderAffixTooltip(TrinketUI_t* ui, TrinketInstance_t* instance, int
  * - Stats counters
  */
 static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* template, TrinketInstance_t* instance, Player_t* player, int slot_index) {
-    if (!template || !instance || !player) return;
+    if (!template || !instance || !player) {
+        d_LogWarningF("RenderTrinketTooltip: NULL param (template=%p, instance=%p, player=%p)",
+                      (void*)template, (void*)instance, (void*)player);
+        return;
+    }
+
+    d_LogDebugF("RenderTrinketTooltip: slot %d, template name=%s",
+                slot_index, d_StringPeek(template->name));
 
     // Check if this trinket has block_debuff effect (Warded Charm)
     bool has_block_debuff = (template->passive_effect_type == TRINKET_EFFECT_BLOCK_DEBUFF ||
@@ -778,7 +789,8 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     if (primary_passive) d_StringDestroy(primary_passive);
 
     // Add secondary passive height (if exists)
-    if (template->passive_trigger_2 != 0) {
+    // NOTE: Can't check passive_trigger_2 != 0 because COMBAT_START == 0!
+    if (template->passive_effect_type_2 != TRINKET_EFFECT_NONE) {
         dString_t* secondary_passive = FormatTrinketPassive(template, instance, true);
         if (secondary_passive && d_StringGetLength(secondary_passive) > 0) {
             int passive_height = a_GetWrappedTextHeight((char*)d_StringPeek(secondary_passive),
@@ -795,6 +807,11 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
 
     // Show damage counter (if any)
     if (TRINKET_GET_STAT(instance, TRINKET_STAT_DAMAGE_DEALT) > 0) {
+        tooltip_height += 20;
+    }
+
+    // Show chips lost counter (if any - for Blood Pact)
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_CHIPS_LOST) > 0) {
         tooltip_height += 20;
     }
 
@@ -906,7 +923,8 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
     if (passive_text) d_StringDestroy(passive_text);
 
     // Passive description (secondary, if exists)
-    if (template->passive_trigger_2 != 0) {
+    // NOTE: Can't check passive_trigger_2 != 0 because COMBAT_START == 0!
+    if (template->passive_effect_type_2 != TRINKET_EFFECT_NONE) {
         dString_t* passive_text_2 = FormatTrinketPassive(template, instance, true);
         if (passive_text_2 && d_StringGetLength(passive_text_2) > 0) {
             int passive_height = a_GetWrappedTextHeight((char*)d_StringPeek(passive_text_2),
@@ -950,6 +968,23 @@ static void RenderTrinketTooltip(TrinketUI_t* ui, const TrinketTemplate_t* templ
         };
         a_DrawText((char*)d_StringPeek(dmg_text), content_x, current_y, dmg_config);
         d_StringDestroy(dmg_text);
+        current_y += 20;
+    }
+
+    // Total chips lost (if any - for Blood Pact)
+    if (TRINKET_GET_STAT(instance, TRINKET_STAT_CHIPS_LOST) > 0) {
+        dString_t* chips_text = d_StringInit();
+        d_StringFormat(chips_text, "Total Chips Lost: %d", TRINKET_GET_STAT(instance, TRINKET_STAT_CHIPS_LOST));
+
+        aTextStyle_t chips_config = {
+            .type = FONT_GAME,
+            .fg = {255, 100, 100, 255},  // Reddish text (cost)
+            .align = TEXT_ALIGN_LEFT,
+            .wrap_width = content_width,
+            .scale = 1.0f
+        };
+        a_DrawText((char*)d_StringPeek(chips_text), content_x, current_y, chips_config);
+        d_StringDestroy(chips_text);
         current_y += 20;
     }
 
@@ -1083,6 +1118,14 @@ void RenderTrinketTooltips(TrinketUI_t* ui, Player_t* player) {
         // Use new TrinketInstance_t system
         if (player->trinket_slot_occupied[ui->hovered_trinket_slot]) {
             TrinketInstance_t* instance = &player->trinket_slots[ui->hovered_trinket_slot];
+
+            // Safety check: base_trinket_key must be initialized
+            if (!instance->base_trinket_key) {
+                d_LogWarningF("Trinket in slot %d has NULL base_trinket_key (occupied but uninitialized)",
+                              ui->hovered_trinket_slot);
+                return;
+            }
+
             const TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(instance->base_trinket_key));
             if (template) {
                 RenderTrinketTooltip(ui, template, instance, player, ui->hovered_trinket_slot);
@@ -1385,6 +1428,15 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
 
         if (has_trinket) {
             TrinketInstance_t* instance = &player->trinket_slots[slot_index];
+
+            // Safety check: base_trinket_key must be initialized
+            if (!instance->base_trinket_key) {
+                d_LogWarningF("Trinket in slot %d has NULL base_trinket_key (occupied but uninitialized)", slot_index);
+                // Draw empty slot instead
+                has_trinket = false;
+                goto draw_empty_slot;
+            }
+
             const char* trinket_key = d_StringPeek(instance->base_trinket_key);
             const TrinketTemplate_t* template = GetTrinketTemplate(trinket_key);
 
@@ -1436,7 +1488,10 @@ void RenderTrinketUI(TrinketUI_t* ui, Player_t* player) {
                                slot_y + 6,
                                name_config);
             }
-        } else {
+        }
+
+draw_empty_slot:
+        if (!has_trinket) {
             // Empty slot - draw dimmed border
             a_DrawRect((aRectf_t){slot_x, slot_y, TRINKET_SLOT_SIZE, TRINKET_SLOT_SIZE},
                       (aColor_t){80, 80, 80, 128});  // Dimmed gray

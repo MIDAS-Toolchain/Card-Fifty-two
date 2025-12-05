@@ -30,7 +30,7 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
         d_LogFatal("CreatePlayer: Failed to initialize name string");
         return false;
     }
-    d_StringSet(player.name, name, 0);
+    d_StringSet(player.name, name);
 
     // Initialize hand (value type - no malloc)
     InitHand(&player.hand);
@@ -76,6 +76,13 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
 
     d_LogInfo("Initialized 6 trinket instance slots for player");
 
+    // DEBUG: Verify occupied flags are all false
+    for (int i = 0; i < 6; i++) {
+        if (player.trinket_slot_occupied[i]) {
+            d_LogErrorF("BUG: Slot %d marked as occupied after initialization!", i);
+        }
+    }
+
     // Initialize combat stats (ADR-09: Dirty-flag aggregation)
     player.damage_flat = 0;
     player.damage_percent = 0;
@@ -83,8 +90,24 @@ bool CreatePlayer(const char* name, int id, bool is_dealer) {
     player.crit_bonus = 0;
     player.combat_stats_dirty = true;  // Will be calculated on first update
 
+    // Initialize defensive stats (ADR-09: Dirty-flag aggregation)
+    player.win_bonus_percent = 0;
+    player.loss_refund_percent = 0;
+    player.push_damage_percent = 0;
+    player.flat_chips_on_win = 0;
+
     // Register in global players table (store by value)
     d_TableSet(g_players, &player.player_id, &player);
+
+    // DEBUG: Verify table copy preserved occupied flags
+    Player_t* stored_player = (Player_t*)d_TableGet(g_players, &player.player_id);
+    if (stored_player) {
+        for (int i = 0; i < 6; i++) {
+            if (stored_player->trinket_slot_occupied[i]) {
+                d_LogErrorF("BUG: Slot %d marked as occupied in stored player (ID %d)!", i, id);
+            }
+        }
+    }
 
     d_LogInfoF("Created player: %s (ID: %d, Dealer: %s, Chips: %d)",
                d_StringPeek(player.name), id,
@@ -483,50 +506,8 @@ void CalculatePlayerCombatStats(Player_t* player) {
     player->push_damage_percent = 0;
     player->flat_chips_on_win = 0;
 
-    int lucky_count = 0;
-    int brutal_count = 0;
-
-    // ADR-09: LUCKY/BRUTAL are GLOBAL bonuses - scan ALL hands in play (player + dealer)
-    // Iterate through all players in g_players (player ID 0 = dealer, ID 1 = human)
-    extern dTable_t* g_players;
-    if (!g_players) {
-        d_LogWarning("CalculatePlayerCombatStats: g_players table is NULL");
-        player->combat_stats_dirty = false;
-        return;
-    }
-
-    // Scan player ID 0 (dealer) and player ID 1 (human player)
-    for (int player_id = 0; player_id <= 1; player_id++) {
-        Player_t* p = (Player_t*)d_TableGet(g_players, &player_id);
-        if (!p || !p->hand.cards) continue;
-
-        // Scan all FACE-UP cards in this player's hand (hidden cards don't count!)
-        for (size_t i = 0; i < p->hand.cards->count; i++) {
-            const Card_t* card = (const Card_t*)d_ArrayGet(p->hand.cards, i);
-            if (!card || !card->face_up) continue;  // Skip face-down cards!
-
-            // Check for LUCKY tag (+10% crit per card)
-            if (HasCardTag(card->card_id, CARD_TAG_LUCKY)) {
-                lucky_count++;
-                d_LogInfoF("  Found LUCKY card: %d (player_id=%d, face_up=%d)",
-                          card->card_id, player_id, card->face_up);
-            }
-
-            // Check for JAGGED tag (+10% damage per card)
-            if (HasCardTag(card->card_id, CARD_TAG_JAGGED)) {
-                brutal_count++;
-                d_LogInfoF("  Found JAGGED card: %d (player_id=%d, face_up=%d)",
-                          card->card_id, player_id, card->face_up);
-            }
-        }
-    }
-
-    // Apply bonuses from card tags
-    player->crit_chance = lucky_count * 10;      // +10% per LUCKY card
-    player->damage_percent = brutal_count * 10;  // +10% per BRUTAL card
-
-    d_LogInfoF("Card tag bonuses: damage_percent=%d%%, crit_chance=%d%% (LUCKY=%d, BRUTAL=%d)",
-               player->damage_percent, player->crit_chance, lucky_count, brutal_count);
+    // Get passive tag bonuses from DUF (data-driven: LUCKY, JAGGED, SHARP, etc)
+    GetPassiveTagBonuses(player, &player->damage_flat, &player->damage_percent, &player->crit_chance);
 
     // Apply trinket affixes and stack bonuses (additive with card tags)
     AggregateTrinketStats(player);

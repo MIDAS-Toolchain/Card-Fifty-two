@@ -7,6 +7,8 @@
 #include "deck.h"  // For DiscardCard()
 #include "cardTags.h"  // For HasCardTag(), RemoveCardTag()
 #include "stats.h"  // For Stats_IncrementCardsDrawn()
+#include "scenes/sceneBlackjack.h"  // For GetCardTransitionManager()
+#include "cardAnimation.h"  // For StopTransitionsForHand()
 
 // ============================================================================
 // HAND LIFECYCLE
@@ -97,6 +99,15 @@ void ClearHand(Hand_t* hand, Deck_t* deck) {
     if (!hand || !hand->cards) {
         d_LogError("ClearHand: NULL pointer passed");
         return;
+    }
+
+    // Stop any active card animations for this hand BEFORE clearing
+    CardTransitionManager_t* anim_mgr = GetCardTransitionManager();
+    if (anim_mgr) {
+        int stopped = StopTransitionsForHand(anim_mgr, hand);
+        if (stopped > 0) {
+            d_LogInfoF("Stopped %d active card animations before clearing hand", stopped);
+        }
     }
 
     // Remove DOUBLED tags from all cards before clearing (cleanup at end of turn)

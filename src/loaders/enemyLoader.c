@@ -253,7 +253,7 @@ static bool ParseEffect(dDUFValue_t* effect_node, AbilityEffect_t* out_effect) {
             dDUFValue_t* message_node = d_DUFGetObjectItem(effect_node, "message");
             if (message_node && message_node->value_string) {
                 out_effect->message = d_StringInit();
-                d_StringSet(out_effect->message, message_node->value_string, 0);
+                d_StringSet(out_effect->message, message_node->value_string);
             }
             break;
         }
@@ -407,7 +407,7 @@ Enemy_t* LoadEnemyFromDUF(dDUFValue_t* enemies_db, const char* enemy_key) {
     // Parse description (optional)
     dDUFValue_t* desc_node = d_DUFGetObjectItem(enemy_data, "description");
     if (desc_node && desc_node->value_string && enemy->description) {
-        d_StringSet(enemy->description, desc_node->value_string, 0);
+        d_StringSet(enemy->description, desc_node->value_string);
     }
 
     // Parse and add abilities (required - enemies must have at least one ability)
@@ -502,7 +502,7 @@ bool ValidateEnemyDatabase(dDUFValue_t* enemies_db, char* out_error_msg, size_t 
 
     while (enemy_entry) {
         // Get enemy key from DUF node (the @key syntax becomes node->string)
-        const char* enemy_key = enemy_entry->string;
+        const char* enemy_key = enemy_entry->key;
         if (!enemy_key) {
             enemy_entry = enemy_entry->next;
             continue;

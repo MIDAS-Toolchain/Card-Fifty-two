@@ -19,11 +19,12 @@
  * - CARD_TAG_HEAVY: Deals more damage on win
  */
 typedef enum {
-    CARD_TAG_CURSED,     // 10 damage to enemy when drawn
+    CARD_TAG_VICIOUS,    // 10 damage to enemy when drawn
     CARD_TAG_VAMPIRIC,   // 5 damage + 5 chips when drawn
     CARD_TAG_LUCKY,      // +10% crit while in any hand (global passive)
     CARD_TAG_JAGGED,     // +10% damage while in any hand (global passive)
     CARD_TAG_DOUBLED,    // Value doubled this hand (one-time, removed after calculation)
+    CARD_TAG_SHARP,      // +5 flat damage while in any hand (global passive)
     CARD_TAG_MAX
 } CardTag_t;
 
@@ -278,5 +279,20 @@ struct Player;
  * Pattern: Uses existing TakeDamage() funnel, SpawnDamageNumber(), TweenEnemyHP()
  */
 void ProcessCardTagEffects(const struct Card* card, struct GameContext* game, struct Player* drawer);
+
+/**
+ * GetPassiveTagBonuses - Collect all passive bonuses from tagged cards in play
+ *
+ * Data-driven implementation - reads effect definitions from DUF.
+ * Scans ALL players' hands (global scope) for passive tags (LUCKY, JAGGED, SHARP).
+ *
+ * Called by CalculatePlayerCombatStats() to apply passive tag bonuses.
+ *
+ * @param player - Player context (for API consistency)
+ * @param out_flat_damage - Output: flat damage bonus (SHARP: +5 per card)
+ * @param out_percent_damage - Output: percent damage bonus (JAGGED: +10% per card)
+ * @param out_percent_crit - Output: percent crit chance bonus (LUCKY: +10% per card)
+ */
+void GetPassiveTagBonuses(struct Player* player, int* out_flat_damage, int* out_percent_damage, int* out_percent_crit);
 
 #endif // CARD_TAGS_H

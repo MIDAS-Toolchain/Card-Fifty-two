@@ -97,7 +97,7 @@ Trinket_t* CreateTrinketTemplate(int trinket_id, const char* name, const char* d
         d_LogError("CreateTrinketTemplate: Failed to allocate name");
         return NULL;
     }
-    d_StringSet(template.name, name, 0);
+    d_StringSet(template.name, name);
 
     // Initialize description
     template.description = d_StringInit();
@@ -106,7 +106,7 @@ Trinket_t* CreateTrinketTemplate(int trinket_id, const char* name, const char* d
         d_StringDestroy(template.name);
         return NULL;
     }
-    d_StringSet(template.description, description, 0);
+    d_StringSet(template.description, description);
 
     // Initialize passive (use COMBAT_START as default "no-op" trigger)
     template.passive_trigger = GAME_EVENT_COMBAT_START;
@@ -258,6 +258,13 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
         }
 
         TrinketInstance_t* instance = &player->trinket_slots[i];
+
+        // Safety check: base_trinket_key must be initialized
+        if (!instance->base_trinket_key) {
+            d_LogWarningF("Trinket in slot %d has NULL base_trinket_key (occupied but uninitialized)", i);
+            continue;
+        }
+
         const TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(instance->base_trinket_key));
 
         if (!template) {
@@ -290,7 +297,8 @@ void CheckTrinketPassiveTriggers(Player_t* player, GameEvent_t event, GameContex
         }
 
         // Check secondary passive trigger (if exists)
-        if (template->passive_trigger_2 != 0 && template->passive_trigger_2 == event) {
+        // NOTE: Can't check passive_trigger_2 != 0 because COMBAT_START == 0!
+        if (template->passive_effect_type_2 != TRINKET_EFFECT_NONE && template->passive_trigger_2 == event) {
             // Note: Secondary passives don't have separate condition fields
             // If needed in future, add passive_condition_bet_gte_2 field
 
@@ -479,16 +487,16 @@ bool EquipClassTrinket(Player_t* player, Trinket_t* trinket_template) {
 
     // Deep-copy dStrings (shallow copy above copied pointers, we need new instances)
     player->class_trinket.name = d_StringInit();
-    d_StringSet(player->class_trinket.name, d_StringPeek(trinket_template->name), 0);
+    d_StringSet(player->class_trinket.name, d_StringPeek(trinket_template->name));
 
     player->class_trinket.description = d_StringInit();
-    d_StringSet(player->class_trinket.description, d_StringPeek(trinket_template->description), 0);
+    d_StringSet(player->class_trinket.description, d_StringPeek(trinket_template->description));
 
     player->class_trinket.passive_description = d_StringInit();
-    d_StringSet(player->class_trinket.passive_description, d_StringPeek(trinket_template->passive_description), 0);
+    d_StringSet(player->class_trinket.passive_description, d_StringPeek(trinket_template->passive_description));
 
     player->class_trinket.active_description = d_StringInit();
-    d_StringSet(player->class_trinket.active_description, d_StringPeek(trinket_template->active_description), 0);
+    d_StringSet(player->class_trinket.active_description, d_StringPeek(trinket_template->active_description));
 
     // Reset per-instance state (each copy starts fresh)
     player->class_trinket.passive_damage_bonus = 0;

@@ -251,7 +251,7 @@ void RollAffixes(int tier, TrinketRarity_t rarity, TrinketInstance_t* out_instan
 
                 // Store in instance
                 out_instance->affixes[out_instance->affix_count].stat_key = d_StringInit();
-                d_StringSet(out_instance->affixes[out_instance->affix_count].stat_key, stat_key_str, 0);
+                d_StringSet(out_instance->affixes[out_instance->affix_count].stat_key, stat_key_str);
                 out_instance->affixes[out_instance->affix_count].rolled_value = rolled_value;
                 out_instance->affix_count++;
 
@@ -307,7 +307,7 @@ bool GenerateTrinketDrop(int tier, bool is_elite, int* pity_counter, TrinketInst
         d_LogError("GenerateTrinketDrop: Failed to allocate base_trinket_key");
         return false;
     }
-    d_StringSet(out_instance->base_trinket_key, d_StringPeek(template->trinket_key), 0);
+    d_StringSet(out_instance->base_trinket_key, d_StringPeek(template->trinket_key));
 
     out_instance->rarity = template->rarity;
     out_instance->tier = tier;
@@ -318,7 +318,7 @@ bool GenerateTrinketDrop(int tier, bool is_elite, int* pity_counter, TrinketInst
     out_instance->trinket_stack_max = template->passive_stack_max;
     if (template->passive_stack_stat) {
         out_instance->trinket_stack_stat = d_StringInit();
-        d_StringSet(out_instance->trinket_stack_stat, d_StringPeek(template->passive_stack_stat), 0);
+        d_StringSet(out_instance->trinket_stack_stat, d_StringPeek(template->passive_stack_stat));
     }
     out_instance->trinket_stack_value = template->passive_stack_value;
 

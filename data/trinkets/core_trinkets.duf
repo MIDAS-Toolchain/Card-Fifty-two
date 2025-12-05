@@ -75,6 +75,24 @@
     passive_condition_bet_gte: 20
 }
 
+@blood_pact {
+    name: "Blood Pact"
+    rarity: "rare"
+    base_value: 95
+    flavor: "The blood price is always fair."
+
+    # On equip: add VAMPIRIC tag to 1 random card
+    passive_trigger: "ON_EQUIP"
+    passive_effect_type: "add_tag_to_cards"
+    passive_tag: "VAMPIRIC"
+    passive_tag_count: 1
+
+    # On combat start: lose 10 chips, gain +10 flat damage
+    passive_trigger_2: "COMBAT_START"
+    passive_effect_type_2: "chip_cost_flat_damage"
+    passive_effect_value_2: 10
+}
+
 # =============================================================================
 # LEGENDARY TRINKETS (Elite enemy pity drops)
 # =============================================================================

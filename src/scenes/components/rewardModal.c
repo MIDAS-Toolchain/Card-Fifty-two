@@ -144,7 +144,30 @@ void DestroyRewardModal(RewardModal_t** modal) {
 bool ShowRewardModal(RewardModal_t* modal) {
     if (!modal) return false;
 
-    // Find pool of cards that can accept new tags (0 or 1 tag, max 2 tags per card)
+    // Find minimum tag count across all cards
+    int min_tag_count = 99;  // Start high
+    for (int card_id = 0; card_id < 52; card_id++) {
+        const dArray_t* tags = GetCardTags(card_id);
+        int tag_count = tags ? (int)tags->count : 0;
+        if (tag_count < min_tag_count) {
+            min_tag_count = tag_count;
+        }
+    }
+
+    // If all cards have 3+ tags, show "Too Many Tags" message
+    if (min_tag_count >= 3) {
+        d_LogWarning("ShowRewardModal: All cards have 3+ tags, showing 'Too Many Tags' message");
+        modal->too_many_tags = true;
+        modal->is_visible = true;
+        modal->selected_index = -1;
+        modal->reward_taken = false;
+        return true;  // Show modal with message
+    }
+
+    // Reset too_many_tags flag (normal reward flow)
+    modal->too_many_tags = false;
+
+    // Find pool of cards with minimum tag count
     int eligible_cards[52];
     int count = 0;
 
@@ -152,17 +175,19 @@ bool ShowRewardModal(RewardModal_t* modal) {
         const dArray_t* tags = GetCardTags(card_id);
         int tag_count = tags ? (int)tags->count : 0;
 
-        // Card can accept tags if it has 0 or 1 tag (max 2 total)
-        if (tag_count < 2) {
+        // Include cards with minimum tag count
+        if (tag_count == min_tag_count) {
             eligible_cards[count++] = card_id;
         }
     }
 
-    // Need at least 3 eligible cards
+    // Need at least 3 eligible cards (should always be true since 52 cards / tag types)
     if (count < 3) {
-        d_LogWarning("ShowRewardModal: Not enough eligible cards (need 3, all cards have 2 tags)");
+        d_LogWarningF("ShowRewardModal: Not enough eligible cards (need 3, only %d cards have %d tags)", count, min_tag_count);
         return false;
     }
+
+    d_LogInfoF("ShowRewardModal: Found %d cards with %d tags (minimum)", count, min_tag_count);
 
     // Pick 3 random eligible cards (no duplicates)
     for (int i = 0; i < 3; i++) {
@@ -176,10 +201,11 @@ bool ShowRewardModal(RewardModal_t* modal) {
 
     // All available tags
     CardTag_t available_tags[] = {
-        CARD_TAG_CURSED,   // 10 damage to enemy when drawn
+        CARD_TAG_VICIOUS,  // 10 damage to enemy when drawn
         CARD_TAG_VAMPIRIC, // 5 damage + 5 chips when drawn
         CARD_TAG_LUCKY,    // +10% crit while in any hand
-        CARD_TAG_JAGGED    // +10% damage while in any hand
+        CARD_TAG_JAGGED,   // +10% damage while in any hand
+        CARD_TAG_SHARP     // +5 flat damage while in any hand
     };
     int all_tags_count = sizeof(available_tags) / sizeof(available_tags[0]);
 
@@ -189,7 +215,7 @@ bool ShowRewardModal(RewardModal_t* modal) {
         const dArray_t* existing_tags = GetCardTags(card_id);
 
         // Build list of tags this card doesn't have
-        CardTag_t valid_tags[4];  // Max 4 tag types
+        CardTag_t valid_tags[5];  // Max 5 tag types (was 4)
         int valid_count = 0;
 
         for (int t = 0; t < all_tags_count; t++) {
@@ -263,6 +289,17 @@ bool IsRewardModalVisible(const RewardModal_t* modal) {
 
 bool HandleRewardModalInput(RewardModal_t* modal, float dt) {
     if (!modal || !modal->is_visible) return false;
+
+    // If too many tags, just wait for SPACE/ENTER/CLICK to dismiss
+    if (modal->too_many_tags) {
+        if (app.keyboard[SDL_SCANCODE_SPACE] || app.keyboard[SDL_SCANCODE_RETURN] || app.mouse.pressed) {
+            app.keyboard[SDL_SCANCODE_SPACE] = 0;
+            app.keyboard[SDL_SCANCODE_RETURN] = 0;
+            modal->reward_taken = true;  // Mark as complete
+            return true;  // Close modal immediately
+        }
+        return false;  // Still waiting
+    }
 
     // If reward taken, handle multi-stage animation
     if (modal->reward_taken) {
@@ -517,6 +554,39 @@ void RenderRewardModal(const RewardModal_t* modal) {
     // Modal panel (centered)
     int modal_x = (window_w - REWARD_MODAL_WIDTH) / 2;
     int modal_y = (window_h - REWARD_MODAL_HEIGHT) / 2;
+
+    // If too many tags, show simple message modal
+    if (modal->too_many_tags) {
+        // Wider panel for message text
+        int msg_width = 700;
+        int msg_height = 300;
+        int msg_x = (window_w - msg_width) / 2;
+        int msg_y = (window_h - msg_height) / 2;
+
+        // Draw panel
+        a_DrawFilledRect((aRectf_t){msg_x, msg_y, msg_width, msg_height}, COLOR_PANEL_BG);
+        a_DrawFilledRect((aRectf_t){msg_x, msg_y, msg_width, REWARD_MODAL_HEADER_HEIGHT}, COLOR_HEADER_BG);
+        a_DrawRect((aRectf_t){msg_x, msg_y, msg_width, REWARD_MODAL_HEADER_HEIGHT}, COLOR_HEADER_BORDER);
+
+        // Title
+        int center_x = msg_x + (msg_width / 2);
+        a_DrawText("TOO MANY TAGS", center_x, msg_y + 10,
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={220,80,80,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+
+        // Message
+        int msg_text_y = msg_y + 100;
+        a_DrawText("All cards have maximum tags!", center_x, msg_text_y,
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_INFO_TEXT.r,COLOR_INFO_TEXT.g,COLOR_INFO_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+
+        a_DrawText("No tag upgrades available.", center_x, msg_text_y + 40,
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_INFO_TEXT.r,COLOR_INFO_TEXT.g,COLOR_INFO_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+
+        // Instruction
+        a_DrawText("Press SPACE, ENTER, or click to continue", center_x, msg_text_y + 120,
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={232,193,112,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
+
+        return;  // Skip normal rendering
+    }
 
     // Update FlexBox bounds for resolution changes
     int panel_body_y = modal_y + REWARD_MODAL_HEADER_HEIGHT;

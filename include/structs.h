@@ -209,6 +209,7 @@ typedef enum {
     TRINKET_EFFECT_PUSH_DAMAGE_PERCENT,    // Deal damage on push (value = percent of normal)
     TRINKET_EFFECT_BLOCK_DEBUFF,           // Block N debuffs this combat (value = count, Warded Charm)
     TRINKET_EFFECT_PUNISH_HEAL,            // Punish enemy heals (deal damage equal to heal, Bleeding Heart)
+    TRINKET_EFFECT_CHIP_COST_FLAT_DAMAGE,  // Lose chips, gain flat damage for combat (Blood Pact)
 } TrinketEffectType_t;
 
 /**
@@ -293,6 +294,7 @@ typedef enum {
     TRINKET_STAT_HIGHEST_STREAK,
     TRINKET_STAT_DEBUFFS_BLOCKED,
     TRINKET_STAT_HEAL_DAMAGE_DEALT,
+    TRINKET_STAT_CHIPS_LOST,           // Chips lost (Blood Pact)
     TRINKET_STAT_COUNT
 } TrinketStatType_t;
 
@@ -337,6 +339,7 @@ typedef struct {
     // Combat charges (per-trinket counters, reset each combat)
     int heal_punishes_remaining;     // Enemy heals to punish (Bleeding Heart)
     int debuff_blocks_remaining;     // Debuffs to block (Warded Charm)
+    int combat_damage_bonus;         // Flat damage bonus for this combat (Blood Pact)
 
     // Stats tracking (data-driven array replaces individual fields)
     int tracked_stats[TRINKET_STAT_COUNT];  // Indexed by TrinketStatType_t

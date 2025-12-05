@@ -146,7 +146,7 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
 
     // Skip if no trigger set
     if (trigger == 0 && effect_type == TRINKET_EFFECT_NONE) {
-        d_StringSet(passive_text, "", 0);
+        d_StringSet(passive_text, "");
         return passive_text;
     }
 
@@ -304,8 +304,9 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
 
         case TRINKET_EFFECT_ADD_TAG_TO_CARDS: {
             const char* tag = template->passive_tag ? d_StringPeek(template->passive_tag) : "???";
-            d_StringFormat(passive_text, "%s: Add %s tag to %d cards",
-                          trigger_str, tag, template->passive_tag_count);
+            d_StringFormat(passive_text, "%s: Add %s tag to %d card%s",
+                          trigger_str, tag, template->passive_tag_count,
+                          template->passive_tag_count == 1 ? "" : "s");
             break;
         }
 
@@ -322,6 +323,18 @@ static dString_t* FormatTrinketPassive(const TrinketTemplate_t* template, const 
             } else {
                 d_StringFormat(passive_text, "%s: Block %d debuffs", trigger_str, effect_value);
             }
+            break;
+
+        case TRINKET_EFFECT_PUNISH_HEAL:
+            if (effect_value == 1) {
+                d_StringFormat(passive_text, "%s: Punish 1 enemy heal", trigger_str);
+            } else {
+                d_StringFormat(passive_text, "%s: Punish %d enemy heals", trigger_str, effect_value);
+            }
+            break;
+
+        case TRINKET_EFFECT_CHIP_COST_FLAT_DAMAGE:
+            d_StringFormat(passive_text, "%s: Lose %d chips, gain +%d flat damage", trigger_str, effect_value, effect_value);
             break;
 
         case TRINKET_EFFECT_NONE:

@@ -250,16 +250,17 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
             const dArray_t* tags = GetCardTags(card->card_id);
 
             if (tags && tags->count > 0) {
-                const int badge_w = 64;  // Fixed width (prevents covering card rank)
-                const int badge_h = 25;
+                // Scale badge dimensions with card scale
+                int badge_w = (int)(64 * card_scale);
+                int badge_h = (int)(25 * card_scale);
 
                 for (size_t t = 0; t < tags->count; t++) {
                     CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, t);
                     if (!tag) continue;
 
-                    // Position from top-right, offset by 12px right and 24px down
-                    int badge_x = x + CARD_WIDTH - badge_w - 3 + 12;
-                    int badge_y = y - badge_h - 3 + 24 + ((int)t * (badge_h + 2));  // Stack vertically
+                    // Position from top-right, offset by 12px right and 24px down (scaled)
+                    int badge_x = x + (int)scaled_width - badge_w - (int)(3 * card_scale) + (int)(12 * card_scale);
+                    int badge_y = y - badge_h - (int)(3 * card_scale) + (int)(24 * card_scale) + ((int)t * (badge_h + (int)(2 * card_scale)));  // Stack vertically
 
                     // Get tag color
                     int r, g, b;
@@ -273,14 +274,14 @@ void RenderPlayerSection(PlayerSection_t* section, Player_t* player, int y) {
                     strncpy(truncated, full_tag_text, 3);
                     truncated[3] = '\0';
 
-                    // Black text, centered
+                    // Black text, centered (scaled)
                     aTextStyle_t tag_config = {
                         .type = FONT_ENTER_COMMAND,
                         .fg = {0, 0, 0, 255},
                         .align = TEXT_ALIGN_CENTER,
-                        .scale = 0.7f
+                        .scale = 0.7f * card_scale
                     };
-                    a_DrawText(truncated, badge_x + badge_w / 2, badge_y - 3, tag_config);
+                    a_DrawText(truncated, badge_x + badge_w / 2, badge_y - (int)(3 * card_scale), tag_config);
                 }
             }
         }

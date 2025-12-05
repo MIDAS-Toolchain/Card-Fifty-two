@@ -45,6 +45,7 @@ TrinketEffectType_t TrinketEffectTypeFromString(const char* str) {
     if (strcmp(str, "push_damage_percent") == 0) return TRINKET_EFFECT_PUSH_DAMAGE_PERCENT;
     if (strcmp(str, "block_debuff") == 0) return TRINKET_EFFECT_BLOCK_DEBUFF;
     if (strcmp(str, "punish_heal") == 0) return TRINKET_EFFECT_PUNISH_HEAL;
+    if (strcmp(str, "chip_cost_flat_damage") == 0) return TRINKET_EFFECT_CHIP_COST_FLAT_DAMAGE;
 
     d_LogWarningF("Unknown trinket effect type: %s", str);
     return TRINKET_EFFECT_NONE;
@@ -90,7 +91,7 @@ static bool ParseTrinketTemplate(dDUFValue_t* trinket_node, const char* trinket_
         d_LogError("ParseTrinketTemplate: Failed to allocate trinket_key");
         return false;
     }
-    d_StringSet(out_trinket->trinket_key, trinket_key, 0);
+    d_StringSet(out_trinket->trinket_key, trinket_key);
 
     // Parse name (required)
     dDUFValue_t* name_node = d_DUFGetObjectItem(trinket_node, "name");
@@ -105,7 +106,7 @@ static bool ParseTrinketTemplate(dDUFValue_t* trinket_node, const char* trinket_
         CleanupTrinketTemplate(out_trinket);
         return false;
     }
-    d_StringSet(out_trinket->name, name_node->value_string, 0);
+    d_StringSet(out_trinket->name, name_node->value_string);
 
     // Parse flavor (required)
     dDUFValue_t* flavor_node = d_DUFGetObjectItem(trinket_node, "flavor");
@@ -120,7 +121,7 @@ static bool ParseTrinketTemplate(dDUFValue_t* trinket_node, const char* trinket_
         CleanupTrinketTemplate(out_trinket);
         return false;
     }
-    d_StringSet(out_trinket->flavor, flavor_node->value_string, 0);
+    d_StringSet(out_trinket->flavor, flavor_node->value_string);
 
     // Parse rarity (required)
     dDUFValue_t* rarity_node = d_DUFGetObjectItem(trinket_node, "rarity");
@@ -187,7 +188,7 @@ static bool ParseTrinketTemplate(dDUFValue_t* trinket_node, const char* trinket_
             CleanupTrinketTemplate(out_trinket);
             return false;
         }
-        d_StringSet(out_trinket->passive_status_key, status_key_node->value_string, 0);
+        d_StringSet(out_trinket->passive_status_key, status_key_node->value_string);
     }
 
     // Parse passive_status_stacks (optional)
@@ -205,7 +206,7 @@ static bool ParseTrinketTemplate(dDUFValue_t* trinket_node, const char* trinket_
             CleanupTrinketTemplate(out_trinket);
             return false;
         }
-        d_StringSet(out_trinket->passive_stack_stat, stack_stat_node->value_string, 0);
+        d_StringSet(out_trinket->passive_stack_stat, stack_stat_node->value_string);
     }
 
     dDUFValue_t* stack_value_node = d_DUFGetObjectItem(trinket_node, "passive_stack_value");
@@ -226,7 +227,7 @@ static bool ParseTrinketTemplate(dDUFValue_t* trinket_node, const char* trinket_
             CleanupTrinketTemplate(out_trinket);
             return false;
         }
-        d_StringSet(out_trinket->passive_stack_on_max, stack_on_max_node->value_string, 0);
+        d_StringSet(out_trinket->passive_stack_on_max, stack_on_max_node->value_string);
     }
 
     // Parse tag fields (optional, for ADD_TAG_TO_CARDS/BUFF_TAG_DAMAGE)
@@ -238,7 +239,7 @@ static bool ParseTrinketTemplate(dDUFValue_t* trinket_node, const char* trinket_
             CleanupTrinketTemplate(out_trinket);
             return false;
         }
-        d_StringSet(out_trinket->passive_tag, tag_node->value_string, 0);
+        d_StringSet(out_trinket->passive_tag, tag_node->value_string);
     }
 
     dDUFValue_t* tag_count_node = d_DUFGetObjectItem(trinket_node, "passive_tag_count");
@@ -280,7 +281,7 @@ static bool ParseTrinketTemplate(dDUFValue_t* trinket_node, const char* trinket_
             CleanupTrinketTemplate(out_trinket);
             return false;
         }
-        d_StringSet(out_trinket->passive_status_key_2, status_key_2_node->value_string, 0);
+        d_StringSet(out_trinket->passive_status_key_2, status_key_2_node->value_string);
     }
 
     dDUFValue_t* status_stacks_2_node = d_DUFGetObjectItem(trinket_node, "passive_status_stacks_2");
@@ -296,7 +297,7 @@ static bool ParseTrinketTemplate(dDUFValue_t* trinket_node, const char* trinket_
             CleanupTrinketTemplate(out_trinket);
             return false;
         }
-        d_StringSet(out_trinket->passive_tag_2, tag_2_node->value_string, 0);
+        d_StringSet(out_trinket->passive_tag_2, tag_2_node->value_string);
     }
 
     // Parse optional condition
@@ -352,7 +353,7 @@ bool PopulateTrinketTemplates(dDUFValue_t* trinkets_db) {
     int loaded_count = 0;
 
     while (trinket_entry) {
-        const char* trinket_key = trinket_entry->string;  // @lucky_chip → "lucky_chip"
+        const char* trinket_key = trinket_entry->key;  // @lucky_chip → "lucky_chip"
         if (!trinket_key) {
             trinket_entry = trinket_entry->next;
             continue;
@@ -480,7 +481,7 @@ bool ValidateTrinketDatabase(dDUFValue_t* trinkets_db, char* out_error_msg, size
     int validated_count = 0;
 
     while (trinket_entry) {
-        const char* trinket_key = trinket_entry->string;
+        const char* trinket_key = trinket_entry->key;
         if (!trinket_key) {
             trinket_entry = trinket_entry->next;
             continue;
@@ -697,11 +698,20 @@ void CleanupTrinketLoaderSystem(void) {
         g_trinket_key_cache = NULL;
     }
 
-    // Cleanup DUF databases
-    if (g_trinkets_db) {
-        d_DUFFree(g_trinkets_db);
-        g_trinkets_db = NULL;
+    // Cleanup DUF databases - iterate through ALL entries and free each DUF
+    if (g_trinket_databases) {
+        for (size_t i = 0; i < g_trinket_databases->count; i++) {
+            dDUFValue_t** db_ptr = (dDUFValue_t**)d_ArrayGet(g_trinket_databases, i);
+            if (db_ptr && *db_ptr) {
+                d_DUFFree(*db_ptr);
+            }
+        }
+        d_ArrayDestroy(g_trinket_databases);
+        g_trinket_databases = NULL;
     }
+
+    // Legacy pointer already freed as index 0 of g_trinket_databases
+    g_trinkets_db = NULL;
 
     d_LogInfo("Trinket loader system cleaned up");
 }
