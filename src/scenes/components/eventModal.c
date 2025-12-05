@@ -337,7 +337,7 @@ void ShowEventModal(EventModal_t* modal, EventEncounter_t* event) {
 
             // Initialize base_trinket_key
             if (!inst->base_trinket_key) inst->base_trinket_key = d_StringInit();
-            d_StringSet(inst->base_trinket_key, choice->trinket_reward_key, 0);
+            d_StringSet(inst->base_trinket_key, choice->trinket_reward_key);
 
             inst->rarity = template->rarity;
             inst->tier = 1;  // Tutorial = Act 1
@@ -351,7 +351,7 @@ void ShowEventModal(EventModal_t* modal, EventEncounter_t* event) {
             inst->trinket_stack_value = template->passive_stack_value;
             if (template->passive_stack_stat) {
                 if (!inst->trinket_stack_stat) inst->trinket_stack_stat = d_StringInit();
-                d_StringSet(inst->trinket_stack_stat, d_StringPeek(template->passive_stack_stat), 0);
+                d_StringSet(inst->trinket_stack_stat, d_StringPeek(template->passive_stack_stat));
             }
 
             // Initialize runtime state

@@ -45,7 +45,7 @@ const char* GameEventToString(GameEvent_t event) {
         case GAME_EVENT_DEALER_BUST:         return "DEALER_BUST";
         case GAME_EVENT_CARD_DRAWN:          return "CARD_DRAWN";
         case GAME_EVENT_PLAYER_ACTION_END:   return "PLAYER_ACTION_END";
-        case GAME_EVENT_CARD_TAG_CURSED:     return "CARD_TAG_CURSED";
+        case GAME_EVENT_CARD_TAG_VICIOUS:    return "CARD_TAG_VICIOUS";
         case GAME_EVENT_CARD_TAG_VAMPIRIC:   return "CARD_TAG_VAMPIRIC";
         case GAME_EVENT_ENEMY_HEAL:          return "ENEMY_HEAL";
         default:                             return "UNKNOWN_EVENT";
@@ -884,8 +884,8 @@ void Game_ResolveRound(GameContext_t* game) {
                 VisualEffects_t* vfx = GetVisualEffects();
                 if (vfx) {
                     VFX_SpawnDamageNumber(vfx, damage_dealt,
-                                          SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
-                                          ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                                          GetGameAreaX() + (GetGameAreaWidth() / 2) + ENEMY_PORTRAIT_X_OFFSET,
+                                          GetEnemyHealthBarY() - DAMAGE_NUMBER_Y_OFFSET,
                                           false, is_crit, false);  // Pass crit flag, not rake
                 }
 

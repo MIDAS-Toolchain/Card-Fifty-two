@@ -86,15 +86,16 @@ void RenderEnemyHealthBar(const EnemyHealthBar_t* bar) {
     // Draw border (off-white)
     a_DrawRect((aRectf_t){bar->x, bar->y, bar->w, bar->h}, COLOR_BORDER);
 
-    // Draw HP text to the right of the bar (show actual HP, not display_hp)
+    // Draw HP text INSIDE the bar, centered (show actual HP, not display_hp)
     dString_t* hp_text = d_StringInit();
     d_StringFormat(hp_text, "%d/%d", bar->enemy->current_hp, bar->enemy->max_hp);
 
-    int text_x = bar->x + bar->w + 10;
-    int text_y = bar->y;
+    // Center text inside the bar
+    int text_x = bar->x + (bar->w / 2);
+    int text_y = bar->y + (bar->h / 2) - 22;  // Offset up slightly for better centering
 
     a_DrawText((char*)d_StringPeek(hp_text), text_x, text_y,
-                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_TEXT.r,COLOR_TEXT.g,COLOR_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_LEFT, .wrap_width=0, .scale=1.0f, .padding=0});
+                   (aTextStyle_t){.type=FONT_ENTER_COMMAND, .fg={COLOR_TEXT.r,COLOR_TEXT.g,COLOR_TEXT.b,255}, .bg={0,0,0,0}, .align=TEXT_ALIGN_CENTER, .wrap_width=0, .scale=1.0f, .padding=0});
 
     d_StringDestroy(hp_text);
 }

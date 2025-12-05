@@ -236,7 +236,7 @@ void SetCardFlavorText(int card_id, const char* text) {
     CardMetadata_t* meta = GetOrCreateMetadata(card_id);
     if (!meta) return;
 
-    d_StringSet(meta->flavor_text, text, 0);
+    d_StringSet(meta->flavor_text, text);
 }
 
 const char* GetCardFlavorText(int card_id) {
@@ -258,16 +258,17 @@ const char* GetCardTagName(CardTag_t tag) {
 }
 
 CardTag_t CardTagFromString(const char* str) {
-    if (!str) return CARD_TAG_CURSED;  // Default fallback
+    if (!str) return CARD_TAG_VICIOUS;  // Default fallback
 
-    if (strcmp(str, "CURSED") == 0) return CARD_TAG_CURSED;
+    if (strcmp(str, "VICIOUS") == 0) return CARD_TAG_VICIOUS;
     if (strcmp(str, "VAMPIRIC") == 0) return CARD_TAG_VAMPIRIC;
     if (strcmp(str, "LUCKY") == 0) return CARD_TAG_LUCKY;
     if (strcmp(str, "JAGGED") == 0) return CARD_TAG_JAGGED;
     if (strcmp(str, "DOUBLED") == 0) return CARD_TAG_DOUBLED;
+    if (strcmp(str, "SHARP") == 0) return CARD_TAG_SHARP;
 
-    d_LogWarningF("Unknown card tag: %s (defaulting to CURSED)", str);
-    return CARD_TAG_CURSED;
+    d_LogWarningF("Unknown card tag: %s (defaulting to VICIOUS)", str);
+    return CARD_TAG_VICIOUS;
 }
 
 const char* GetCardRarityName(CardRarity_t rarity) {
@@ -328,8 +329,8 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
 
     d_LogInfoF("ProcessCardTagEffects: Checking card %d for tags...", card->card_id);
 
-    // Check for CURSED tag: 10 damage to enemy
-    if (HasCardTag(card->card_id, CARD_TAG_CURSED)) {
+    // Check for VICIOUS tag: 10 damage to enemy
+    if (HasCardTag(card->card_id, CARD_TAG_VICIOUS)) {
         int base_damage = 10;
 
         // Apply ALL damage modifiers (ADR-010: Universal damage modifier)
@@ -354,15 +355,15 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
         if (vfx) {
             VFX_TriggerScreenShake(vfx, 15.0f, 0.4f);  // 15px intensity, 0.4s duration
             VFX_SpawnDamageNumber(vfx, damage,
-                                 SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
-                                 ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                                 GetGameAreaX() + (GetGameAreaWidth() / 2) + ENEMY_PORTRAIT_X_OFFSET,
+                                 GetEnemyHealthBarY() - DAMAGE_NUMBER_Y_OFFSET,
                                  false, is_crit, false);  // Pass crit flag, not rake
         }
 
         // Fire tag-specific event
-        Game_TriggerEvent(game, GAME_EVENT_CARD_TAG_CURSED);
+        Game_TriggerEvent(game, GAME_EVENT_CARD_TAG_VICIOUS);
 
-        d_LogInfoF("💀 CURSED tag! %s of %s dealt %d damage to %s",
+        d_LogInfoF("💀 VICIOUS tag! %s of %s dealt %d damage to %s",
                    GetRankString(card->rank), GetSuitString(card->suit),
                    damage, game->current_enemy->name);
     }
@@ -399,8 +400,8 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
 
             // Spawn damage number (red, on enemy)
             VFX_SpawnDamageNumber(vfx, damage,
-                                 SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
-                                 ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                                 GetGameAreaX() + (GetGameAreaWidth() / 2) + ENEMY_PORTRAIT_X_OFFSET,
+                                 GetEnemyHealthBarY() - DAMAGE_NUMBER_Y_OFFSET,
                                  false, is_crit, false);  // Pass crit flag, not rake
 
             // Spawn chip gain number (green, near chips display on left sidebar)
@@ -419,4 +420,93 @@ void ProcessCardTagEffects(const Card_t* card, GameContext_t* game, Player_t* dr
                    GetRankString(card->rank), GetSuitString(card->suit),
                    damage, chip_gain);
     }
+}
+
+// ============================================================================
+// DATA-DRIVEN PASSIVE TAG SYSTEM
+// ============================================================================
+
+/**
+ * GetPassiveTagBonuses - Collect all passive bonuses from tagged cards in play
+ *
+ * Reads effect definitions from DUF (data-driven).
+ * Scans ALL players' hands (global scope) for passive tags.
+ *
+ * @param player - Player context (unused, but kept for API consistency)
+ * @param out_flat_damage - Output: flat damage bonus
+ * @param out_percent_damage - Output: percent damage bonus
+ * @param out_percent_crit - Output: percent crit chance bonus
+ */
+void GetPassiveTagBonuses(Player_t* player, int* out_flat_damage, int* out_percent_damage, int* out_percent_crit) {
+    // Initialize outputs
+    *out_flat_damage = 0;
+    *out_percent_damage = 0;
+    *out_percent_crit = 0;
+
+    if (!player || !g_card_metadata) return;
+
+    // Scan all players (0=dealer, 1=human) for GLOBAL passive tags
+    extern dTable_t* g_players;
+    if (!g_players) {
+        d_LogWarning("GetPassiveTagBonuses: g_players table is NULL");
+        return;
+    }
+
+    for (int player_id = 0; player_id <= 1; player_id++) {
+        Player_t* p = (Player_t*)d_TableGet(g_players, &player_id);
+        if (!p || !p->hand.cards) continue;
+
+        // Scan all FACE-UP cards in this player's hand
+        for (size_t i = 0; i < p->hand.cards->count; i++) {
+            const Card_t* card = (const Card_t*)d_ArrayGet(p->hand.cards, i);
+            if (!card || !card->face_up) continue;  // Skip face-down cards
+
+            const dArray_t* tags = GetCardTags(card->card_id);
+            if (!tags) continue;
+
+            // Process each tag on this card
+            for (size_t t = 0; t < tags->count; t++) {
+                CardTag_t* tag_ptr = (CardTag_t*)d_ArrayGet(tags, t);
+                if (!tag_ptr) continue;
+                CardTag_t tag = *tag_ptr;
+
+                // Only process passive tags
+                const char* trigger_type = GetTagTriggerType(tag);
+                if (!trigger_type || strcmp(trigger_type, "passive") != 0) continue;
+
+                // Process effects from DUF
+                dDUFValue_t* effects = GetTagEffects(tag);
+                if (!effects) continue;
+
+                dDUFValue_t* effect = effects->child;
+                while (effect) {
+                    dDUFValue_t* type_val = d_DUFGetObjectItem(effect, "type");
+                    dDUFValue_t* value_val = d_DUFGetObjectItem(effect, "value");
+
+                    if (type_val && type_val->value_string && value_val) {
+                        const char* effect_type = type_val->value_string;
+                        int value = (int)value_val->value_int;
+
+                        if (strcmp(effect_type, "add_flat_damage") == 0) {
+                            *out_flat_damage += value;
+                            d_LogInfoF("  Found %s tag (card %d): +%d flat damage",
+                                     GetCardTagName(tag), card->card_id, value);
+                        } else if (strcmp(effect_type, "add_damage_percent") == 0) {
+                            *out_percent_damage += value;
+                            d_LogInfoF("  Found %s tag (card %d): +%d%% damage",
+                                     GetCardTagName(tag), card->card_id, value);
+                        } else if (strcmp(effect_type, "add_crit_percent") == 0) {
+                            *out_percent_crit += value;
+                            d_LogInfoF("  Found %s tag (card %d): +%d%% crit",
+                                     GetCardTagName(tag), card->card_id, value);
+                        }
+                    }
+                    effect = effect->next;
+                }
+            }
+        }
+    }
+
+    d_LogInfoF("Passive tag bonuses: flat_damage=%d, damage_percent=%d%%, crit_chance=%d%%",
+               *out_flat_damage, *out_percent_damage, *out_percent_crit);
 }

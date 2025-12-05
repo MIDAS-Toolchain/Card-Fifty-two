@@ -168,7 +168,7 @@ void Settings_Load(Settings_t* settings) {
     temp_buf[file_size] = '\0';
     SDL_RWclose(file);
 
-    d_StringSet(buffer, temp_buf, 0);  // 0 = replace entire string
+    d_StringSet(buffer, temp_buf);  // 0 = replace entire string
     SDL_free(temp_buf);
 
     // Parse DUF format (simple key=value pairs)

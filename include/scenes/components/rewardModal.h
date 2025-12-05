@@ -49,6 +49,7 @@ typedef enum {
  */
 typedef struct RewardModal {
     bool is_visible;              // true = shown, false = hidden
+    bool too_many_tags;           // true = all cards maxed out (3+ tags), show message instead
     int card_ids[3];              // 3 different cards being offered
     CardTag_t tags[3];            // Tag for each card (parallel array)
     int selected_index;           // -1 = none, 0-2 = which combo picked

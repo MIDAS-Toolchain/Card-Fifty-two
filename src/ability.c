@@ -43,8 +43,8 @@ Ability_t* CreateAbility(const char* name, const char* description) {
         return NULL;
     }
 
-    d_StringSet(ability->name, name, 0);
-    d_StringSet(ability->description, description, 0);
+    d_StringSet(ability->name, name);
+    d_StringSet(ability->description, description);
 
     // Initialize effects array (capacity 4, most abilities have 1-3 effects)
     ability->effects = d_ArrayInit(4, sizeof(AbilityEffect_t));
@@ -464,7 +464,7 @@ GameEvent_t GameEventFromString(const char* str) {
     if (strcmp(str, "DEALER_BUST") == 0) return GAME_EVENT_DEALER_BUST;
     if (strcmp(str, "CARD_DRAWN") == 0) return GAME_EVENT_CARD_DRAWN;
     if (strcmp(str, "PLAYER_ACTION_END") == 0) return GAME_EVENT_PLAYER_ACTION_END;
-    if (strcmp(str, "CARD_TAG_CURSED") == 0) return GAME_EVENT_CARD_TAG_CURSED;
+    if (strcmp(str, "CARD_TAG_VICIOUS") == 0) return GAME_EVENT_CARD_TAG_VICIOUS;
     if (strcmp(str, "CARD_TAG_VAMPIRIC") == 0) return GAME_EVENT_CARD_TAG_VAMPIRIC;
 
     d_LogWarningF("Unknown game event: %s", str);

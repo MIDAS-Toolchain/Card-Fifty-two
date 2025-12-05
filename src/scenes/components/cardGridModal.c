@@ -168,6 +168,17 @@ bool HandleCardGridModalInput(CardGridModal_t* modal) {
         return true;  // Request close
     }
 
+    // Check if click is outside modal (click-outside-to-close UX)
+    bool mouse_inside_modal = (app.mouse.x >= modal_x &&
+                               app.mouse.x <= modal_x + MODAL_WIDTH &&
+                               app.mouse.y >= modal_y &&
+                               app.mouse.y <= modal_y + MODAL_HEIGHT);
+
+    if (!mouse_inside_modal && app.mouse.pressed) {
+        app.mouse.pressed = 0;  // Consume the click to prevent reopening
+        return true;  // Request close - clicked outside modal
+    }
+
     // X button in top-right (centered in header)
     int close_button_size = 30;
     int close_button_x = modal_x + MODAL_WIDTH - close_button_size - 10;
@@ -179,7 +190,7 @@ bool HandleCardGridModalInput(CardGridModal_t* modal) {
                              app.mouse.y <= close_button_y + close_button_size);
 
     if (mouse_over_close && app.mouse.pressed) {
-        return true;  // Request close
+        return true;  // Request close - clicked X button
     }
 
     // Update hovered card index (for hover-to-enlarge effect)
@@ -396,37 +407,43 @@ void RenderCardGridModal(CardGridModal_t* modal) {
                 a_DrawRect((aRectf_t){x, y, scaled_card_width, scaled_card_height}, (aColor_t){100, 100, 100, 255});
             }
 
-            // Draw tag badge on top-right of card
+            // Draw tag badges on top-right of card (all tags, stacked vertically)
             const dArray_t* tags = GetCardTags(card->card_id);
             if (tags && tags->count > 0) {
-                CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, 0);
-                const char* tag_text = GetCardTagName(*tag);
+                // Scale badge dimensions with card scale
+                int badge_w = (int)(64 * card_scale);  // Base 64px scaled
+                int badge_h = (int)(CARD_GRID_TAG_BADGE_H * card_scale);
 
-                int r, g, b;
-                GetCardTagColor(*tag, &r, &g, &b);
+                for (size_t t = 0; t < tags->count; t++) {
+                    CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, t);
+                    if (!tag) continue;
 
-                // Minimum width: 16px less than current CARD_GRID_TAG_BADGE_W (80px)
-                int badge_w = 64;  // 80 - 16 = 64px min width
-                int badge_h = CARD_GRID_TAG_BADGE_H;
-                int badge_x = x + CARD_GRID_CARD_WIDTH - badge_w - 3 + 12;  // +12px right (was +8px)
-                int badge_y = y - badge_h - 3 + 24;  // +24px down (was +16px)
+                    const char* tag_text = GetCardTagName(*tag);
 
-                if (badge_y >= panel_body_y) {
-                    a_DrawFilledRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){r, g, b, 255});
-                    a_DrawRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){0, 0, 0, 255});
+                    int r, g, b;
+                    GetCardTagColor(*tag, &r, &g, &b);
 
-                    // Truncate tag text to first 3 letters
-                    char truncated[4] = {0};
-                    strncpy(truncated, tag_text, 3);
-                    truncated[3] = '\0';
+                    // Stack vertically: add (badge_h + 2) * tag_index
+                    int badge_x = x + (int)scaled_card_width - badge_w - (int)(3 * card_scale) + (int)(12 * card_scale);
+                    int badge_y = y - badge_h - (int)(3 * card_scale) + (int)(24 * card_scale) + ((int)t * (badge_h + (int)(2 * card_scale)));
 
-                    aTextStyle_t tag_config = {
-                        .type = FONT_ENTER_COMMAND,
-                        .fg = {0, 0, 0, 180},
-                        .align = TEXT_ALIGN_CENTER,
-                        .scale = 0.7f
-                    };
-                    a_DrawText(truncated, badge_x + badge_w / 2, badge_y - 3, tag_config);
+                    if (badge_y >= panel_body_y) {
+                        a_DrawFilledRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){r, g, b, 255});
+                        a_DrawRect((aRectf_t){badge_x, badge_y, badge_w, badge_h}, (aColor_t){0, 0, 0, 255});
+
+                        // Truncate tag text to first 3 letters
+                        char truncated[4] = {0};
+                        strncpy(truncated, tag_text, 3);
+                        truncated[3] = '\0';
+
+                        aTextStyle_t tag_config = {
+                            .type = FONT_ENTER_COMMAND,
+                            .fg = {0, 0, 0, 180},
+                            .align = TEXT_ALIGN_CENTER,
+                            .scale = 0.7f * card_scale  // Scale text with card
+                        };
+                        a_DrawText(truncated, badge_x + badge_w / 2, badge_y - (int)(3 * card_scale), tag_config);
+                    }
                 }
             }
         }
@@ -466,36 +483,42 @@ void RenderCardGridModal(CardGridModal_t* modal) {
                     a_BlitRect(card->texture, &src, &dest, 1.0f);
                 }
 
-                // Draw tag badge on enlarged card
+                // Draw tag badges on enlarged card (all tags, stacked vertically)
                 const dArray_t* tags = GetCardTags(card->card_id);
                 if (tags && tags->count > 0) {
-                    CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, 0);
-                    const char* tag_text = GetCardTagName(*tag);
-
-                    int r, g, b;
-                    GetCardTagColor(*tag, &r, &g, &b);
-
                     // Scale badge with card (use 64px base width)
-                    int hover_badge_w = (int)(64 * HOVER_CARD_SCALE);  // 64px min width scaled
-                    int hover_badge_h = (int)(CARD_GRID_TAG_BADGE_H * HOVER_CARD_SCALE);
-                    int hover_badge_x = hover_x + hover_w - hover_badge_w - 5 + (int)(12 * HOVER_CARD_SCALE);  // +12px right (scaled)
-                    int hover_badge_y = hover_y - hover_badge_h - 5 + (int)(24 * HOVER_CARD_SCALE);  // +24px down (scaled)
+                    int hover_badge_w = (int)(64 * card_scale * HOVER_CARD_SCALE);
+                    int hover_badge_h = (int)(CARD_GRID_TAG_BADGE_H * card_scale * HOVER_CARD_SCALE);
 
-                    a_DrawFilledRect((aRectf_t){hover_badge_x, hover_badge_y, hover_badge_w, hover_badge_h}, (aColor_t){r, g, b, 255});
-                    a_DrawRect((aRectf_t){hover_badge_x, hover_badge_y, hover_badge_w, hover_badge_h}, (aColor_t){0, 0, 0, 255});
+                    for (size_t t = 0; t < tags->count; t++) {
+                        CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, t);
+                        if (!tag) continue;
 
-                    // Truncate tag text to first 3 letters
-                    char truncated[4] = {0};
-                    strncpy(truncated, tag_text, 3);
-                    truncated[3] = '\0';
+                        const char* tag_text = GetCardTagName(*tag);
 
-                    aTextStyle_t hover_tag_config = {
-                        .type = FONT_ENTER_COMMAND,
-                        .fg = {0, 0, 0, 200},
-                        .align = TEXT_ALIGN_CENTER,
-                        .scale = 0.7f * HOVER_CARD_SCALE
-                    };
-                    a_DrawText(truncated, hover_badge_x + hover_badge_w / 2, hover_badge_y + (int)(3 * HOVER_CARD_SCALE) - 10, hover_tag_config);
+                        int r, g, b;
+                        GetCardTagColor(*tag, &r, &g, &b);
+
+                        // Stack vertically: add (badge_h + 2) * tag_index (scaled)
+                        int hover_badge_x = hover_x + hover_w - hover_badge_w - (int)(5 * card_scale * HOVER_CARD_SCALE) + (int)(12 * card_scale * HOVER_CARD_SCALE);
+                        int hover_badge_y = hover_y - hover_badge_h - (int)(5 * card_scale * HOVER_CARD_SCALE) + (int)(24 * card_scale * HOVER_CARD_SCALE) + ((int)t * (hover_badge_h + (int)(2 * card_scale * HOVER_CARD_SCALE)));
+
+                        a_DrawFilledRect((aRectf_t){hover_badge_x, hover_badge_y, hover_badge_w, hover_badge_h}, (aColor_t){r, g, b, 255});
+                        a_DrawRect((aRectf_t){hover_badge_x, hover_badge_y, hover_badge_w, hover_badge_h}, (aColor_t){0, 0, 0, 255});
+
+                        // Truncate tag text to first 3 letters
+                        char truncated[4] = {0};
+                        strncpy(truncated, tag_text, 3);
+                        truncated[3] = '\0';
+
+                        aTextStyle_t hover_tag_config = {
+                            .type = FONT_ENTER_COMMAND,
+                            .fg = {0, 0, 0, 200},
+                            .align = TEXT_ALIGN_CENTER,
+                            .scale = 0.7f * card_scale * HOVER_CARD_SCALE
+                        };
+                        a_DrawText(truncated, hover_badge_x + hover_badge_w / 2, hover_badge_y - (int)(3 * card_scale * HOVER_CARD_SCALE), hover_tag_config);
+                    }
                 }
             }
         }

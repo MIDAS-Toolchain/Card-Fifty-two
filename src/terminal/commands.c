@@ -171,6 +171,52 @@ dArray_t* SuggestTrinketNames(Terminal_t* terminal, const char* partial_arg) {
     return suggestions;
 }
 
+/**
+ * SuggestTagNames - Provide autocomplete suggestions for card tags
+ *
+ * Reads tag names dynamically from g_card_tags_db DUF (data-driven).
+ * Returns all tag keys with optional descriptions.
+ */
+dArray_t* SuggestTagNames(Terminal_t* terminal, const char* partial_arg) {
+    (void)terminal;  // Unused
+
+    dArray_t* suggestions = d_ArrayInit(16, sizeof(char*));
+    if (!suggestions) return NULL;
+
+    // Get tags from DUF database (data-driven)
+    extern dDUFValue_t* g_card_tags_db;
+    if (!g_card_tags_db || g_card_tags_db->type != D_DUF_TABLE) {
+        d_LogWarning("SuggestTagNames: g_card_tags_db is NULL or invalid");
+        return suggestions;  // Return empty array
+    }
+
+    // Filter by partial argument (case-insensitive prefix match)
+    size_t partial_len = partial_arg ? strlen(partial_arg) : 0;
+
+    dDUFValue_t* current = g_card_tags_db->child;
+    while (current) {
+        const char* tag_key = current->key;
+        if (!tag_key) {
+            current = current->next;
+            continue;
+        }
+
+        size_t candidate_len = strlen(tag_key);
+
+        // Prefix match AND candidate must be longer than partial (skip exact matches)
+        bool is_prefix_match = (partial_len == 0 || strncasecmp(tag_key, partial_arg, partial_len) == 0);
+        bool is_longer = (candidate_len > partial_len);
+
+        if (is_prefix_match && (partial_len == 0 || is_longer)) {
+            d_ArrayAppend(suggestions, &tag_key);
+        }
+
+        current = current->next;
+    }
+
+    return suggestions;
+}
+
 // ============================================================================
 // COMMAND IMPLEMENTATIONS
 // ============================================================================
@@ -436,39 +482,65 @@ void CMD_SpawnEnemy(Terminal_t* terminal, const char* args) {
 
 void CMD_AddTag(Terminal_t* terminal, const char* args) {
     if (!args || strlen(args) == 0) {
-        TerminalPrint(terminal, "[Error] Usage: add_tag <card_id|all> <tag_name>");
-        TerminalPrint(terminal, "[Error] Example: add_tag 0 cursed");
-        TerminalPrint(terminal, "[Error] Example: add_tag all vampiric");
+        TerminalPrint(terminal, "[Error] Usage: add_tag <tag_name> <card_id|all>");
+        TerminalPrint(terminal, "[Error] Example: add_tag cursed 0");
+        TerminalPrint(terminal, "[Error] Example: add_tag vampiric all");
         return;
     }
 
-    // Parse: card_id_or_all tag_name
-    char card_str[32] = {0};
+    // Parse: tag_name card_id_or_all (NEW ORDER!)
     char tag_name[32] = {0};
+    char card_str[32] = {0};
 
-    sscanf(args, "%31s %31s", card_str, tag_name);
+    sscanf(args, "%31s %31s", tag_name, card_str);
 
-    if (strlen(tag_name) == 0) {
-        TerminalPrint(terminal, "[Error] Missing tag name");
-        TerminalPrint(terminal, "[Error] Valid tags: cursed, vampiric, lucky, brutal, doubled");
+    if (strlen(card_str) == 0) {
+        TerminalPrint(terminal, "[Error] Missing card target (card_id or 'all')");
         return;
     }
 
-    // Convert tag name to enum
-    CardTag_t tag;
-    if (strcasecmp(tag_name, "cursed") == 0) {
-        tag = CARD_TAG_CURSED;
-    } else if (strcasecmp(tag_name, "vampiric") == 0) {
-        tag = CARD_TAG_VAMPIRIC;
-    } else if (strcasecmp(tag_name, "lucky") == 0) {
-        tag = CARD_TAG_LUCKY;
-    } else if (strcasecmp(tag_name, "jagged") == 0) {
-        tag = CARD_TAG_JAGGED;
-    } else if (strcasecmp(tag_name, "doubled") == 0) {
-        tag = CARD_TAG_DOUBLED;
-    } else {
+    // Convert tag name to enum (DATA-DRIVEN: loop through DUF database)
+    extern dDUFValue_t* g_card_tags_db;
+    if (!g_card_tags_db || g_card_tags_db->type != D_DUF_TABLE) {
+        TerminalPrint(terminal, "[Error] Card tag database not loaded");
+        return;
+    }
+
+    CardTag_t tag = CARD_TAG_MAX;  // Invalid sentinel
+    bool found = false;
+
+    // Iterate through DUF database to find matching tag
+    dDUFValue_t* current = g_card_tags_db->child;
+    while (current) {
+        const char* tag_key = current->key;
+        if (tag_key && strcasecmp(tag_key, tag_name) == 0) {
+            // Found matching tag - convert key to uppercase for CardTagFromString()
+            char uppercase_key[32] = {0};
+            for (size_t i = 0; i < strlen(tag_key) && i < 31; i++) {
+                uppercase_key[i] = toupper((unsigned char)tag_key[i]);
+            }
+
+            tag = CardTagFromString(uppercase_key);
+            if (tag != CARD_TAG_MAX) {
+                found = true;
+                break;
+            }
+        }
+        current = current->next;
+    }
+
+    if (!found) {
         TerminalPrint(terminal, "[Error] Unknown tag: %s", tag_name);
-        TerminalPrint(terminal, "[Error] Valid tags: cursed, vampiric, lucky, brutal, doubled");
+        TerminalPrint(terminal, "[Error] Valid tags (from DUF):");
+
+        // List all available tags from DUF
+        current = g_card_tags_db->child;
+        while (current) {
+            if (current->key) {
+                TerminalPrint(terminal, "  - %s", current->key);
+            }
+            current = current->next;
+        }
         return;
     }
 
@@ -810,7 +882,7 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
         // NOTE: template is borrowed pointer from cache - do NOT free!
         return;
     }
-    d_StringSet(instance.base_trinket_key, d_StringPeek(template->trinket_key), 0);
+    d_StringSet(instance.base_trinket_key, d_StringPeek(template->trinket_key));
 
     // Copy stack stat if exists (Broken Watch, Streak Counter)
     if (template->passive_stack_stat) {
@@ -821,7 +893,7 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
             // NOTE: template is borrowed pointer from cache - do NOT free!
             return;
         }
-        d_StringSet(instance.trinket_stack_stat, d_StringPeek(template->passive_stack_stat), 0);
+        d_StringSet(instance.trinket_stack_stat, d_StringPeek(template->passive_stack_stat));
         instance.trinket_stack_value = template->passive_stack_value;
         instance.trinket_stack_max = template->passive_stack_max;
     } else {
@@ -840,6 +912,11 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
 
     // Initialize stat tracking (data-driven)
     memset(instance.tracked_stats, 0, sizeof(instance.tracked_stats));
+
+    // Initialize combat counters
+    instance.heal_punishes_remaining = 0;
+    instance.debuff_blocks_remaining = 0;
+    instance.combat_damage_bonus = 0;
 
     // Initialize tag buff tracking (Cursed Skull)
     instance.buffed_tag = -1;
@@ -870,6 +947,12 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
     // Mark combat stats dirty for recalculation
     g_human_player->combat_stats_dirty = true;
 
+    // Trigger ON_EQUIP effects (special trigger value 999)
+    if ((int)template->passive_trigger == 999) {
+        TerminalPrint(terminal, "[Info] Triggering ON_EQUIP effect for %s", d_StringPeek(template->name));
+        ExecuteTrinketEffect(template, &g_human_player->trinket_slots[slot], g_human_player, &g_game, slot, false);
+    }
+
     TerminalPrint(terminal, "[Success] Equipped '%s' to slot %d (Tier %d)",
                   d_StringPeek(template->name), slot, tier);
     TerminalPrint(terminal, "[Info] Affixes: %d | Sell: %d chips",
@@ -891,8 +974,21 @@ static void CMD_GiveTrinket(Terminal_t* terminal, const char* args) {
     // If trinket has COMBAT_START trigger and we're in combat, trigger it now
     extern GameContext_t g_game;
     if (template->passive_trigger == GAME_EVENT_COMBAT_START && g_game.is_combat_mode) {
-        TerminalPrint(terminal, "[Info] Triggering COMBAT_START effect (Warded Charm blocks, etc)");
+        TerminalPrint(terminal, "[Info] Triggering COMBAT_START effect (primary passive)");
         ExecuteTrinketEffect(template, &g_human_player->trinket_slots[slot], g_human_player, &g_game, slot, false);
+    }
+    // Also check secondary passive for COMBAT_START (Blood Pact)
+    if (template->passive_trigger_2 == GAME_EVENT_COMBAT_START && g_game.is_combat_mode) {
+        TerminalPrint(terminal, "[Info] Triggering COMBAT_START effect (secondary passive)");
+        ExecuteTrinketEffect(template, &g_human_player->trinket_slots[slot], g_human_player, &g_game, slot, true);
+    }
+
+    // Force immediate stat recalculation (terminal context doesn't trigger normal game flows)
+    // This ensures effects like Blood Pact's +10 damage are aggregated immediately
+    if (g_human_player->combat_stats_dirty) {
+        CalculatePlayerCombatStats(g_human_player);
+        TerminalPrint(terminal, "[Info] Recalculated combat stats (damage_flat: %d, damage_percent: %d%%)",
+                      g_human_player->damage_flat, g_human_player->damage_percent);
     }
 
     // NOTE: template is borrowed pointer from cache - no cleanup needed
@@ -970,7 +1066,7 @@ void RegisterBuiltinCommands(Terminal_t* terminal) {
     RegisterCommand(terminal, "set_hp", CMD_SetHP, "Set enemy HP (triggers victory if HP <= 0)", NULL);
     RegisterCommand(terminal, "deal_damage", CMD_DealDamage, "Deal damage to enemy (uses player modifiers)", NULL);
     RegisterCommand(terminal, "spawn_enemy", CMD_SpawnEnemy, "Spawn combat enemy", SuggestEnemyNames);
-    RegisterCommand(terminal, "add_tag", CMD_AddTag, "Add tag to card(s) by ID or 'all'", NULL);
+    RegisterCommand(terminal, "add_tag", CMD_AddTag, "Add tag to card(s) by ID or 'all'", SuggestTagNames);
     RegisterCommand(terminal, "apply_status", CMD_ApplyStatus, "Apply status effect to player", SuggestStatusEffects);
     RegisterCommand(terminal, "trigger_event", CMD_TriggerEvent, "Trigger specific event by name", SuggestEventNames);
     RegisterCommand(terminal, "give_trinket", CMD_GiveTrinket, "Equip trinket by DUF key (use --tier=N --slot=N --stacks=N)", SuggestTrinketNames);

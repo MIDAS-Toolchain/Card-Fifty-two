@@ -1,295 +1,177 @@
-# Card Fifty-Two - AI Development Guide
+# CLAUDE.md
 
-## What This Is
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-A blackjack roguelike built with:
-- **Archimedes** (SDL2 game framework)
-- **Daedalus** (C data structures: dString_t, dArray_t, dTable_t)
+## Build Commands
 
-Philosophy: **Everything's a table or array. No raw pointers, no manual memory chaos.**
+```bash
+# Standard development
+make              # Build debug version
+make run          # Build and run game
+make clean        # Clean all build artifacts
 
----
+# Testing
+make test         # Build and run unit test suite
 
-## Critical Rule: Read Architecture Docs First
+# Web build (Emscripten/WebAssembly)
+make web          # Compile to WASM (outputs to index/)
+make serve        # Start local server at http://localhost:8000
 
-**BEFORE suggesting ANY code changes, read the relevant ADR (Architecture Decision Record).**
-
-Location: `architecture/decision_records/*.md`
-
-These docs explain WHY things work the way they do. Violating them causes crashes and multi-day debugging sessions.
-
-run `make verify` in the shell to run all of our fitness functions and ensure the project is stable.
-
----
-
-## Core Patterns (Non-Negotiable)
-
-### 1. Use Daedalus Types, Not Raw Malloc
-
-**DO:**
-```c
-dArray_t* cards = d_ArrayInit(16, sizeof(Card_t));  // capacity FIRST!
-d_ArrayAppend(cards, &card);
-d_ArrayDestroy(&cards);
+# Memory debugging
+make valgrind     # Run with Valgrind
+make asan         # Build with AddressSanitizer
 ```
 
-**DON'T:**
-```c
-Card_t* cards = malloc(52 * sizeof(Card_t));  // ❌ NO!
+## Architecture Overview
+
+### Constitutional Patterns (CRITICAL)
+
+This codebase follows strict architectural rules:
+
+1. **NO raw `malloc`/`free`** - Use Daedalus data structures:
+   - `dString_t*` for strings
+   - `dArray_t*` for arrays
+   - `dTable_t*` for hash maps
+
+2. **Value semantics** - Tables store data by value, not pointers:
+   ```c
+   // ✅ CORRECT
+   Player_t player = {0};
+   d_TableSet(g_players, &player_id, &player);  // Stores copy
+   Player_t* p = (Player_t*)d_TableGet(g_players, &player_id);  // Returns pointer to value inside table
+
+   // ❌ WRONG
+   Player_t* player = malloc(sizeof(Player_t));  // Never do this!
+   d_TableSet(g_players, &player_id, &player);   // Stores pointer (bad!)
+   ```
+
+3. **Parameter order for `d_ArrayInit`**: `capacity` FIRST, `element_size` SECOND:
+   ```c
+   // ✅ CORRECT
+   dArray_t* cards = d_ArrayInit(52, sizeof(Card_t));
+
+   // ❌ WRONG (causes bus errors)
+   dArray_t* cards = d_ArrayInit(sizeof(Card_t), 52);
+   ```
+
+4. **Double-pointer destructors** for cleanup:
+   ```c
+   void CleanupEnemy(Enemy_t** enemy);  // Takes &enemy, sets to NULL
+   ```
+
+### State Machine Architecture
+
+The game is a **state machine** (see `GameContext_t` in [include/structs.h](include/structs.h)):
+
+```
+BETTING → DEALING → PLAYER_TURN → DEALER_TURN → SHOWDOWN → ROUND_END
+  ↑                                                              ↓
+  └─────────────────(loop if enemy HP > 0)─────────────────────┘
+                                 ↓
+                    COMBAT_VICTORY → REWARD_SCREEN
 ```
 
-**Why:** Manual memory management = segfaults. Daedalus handles it. See `ADR-003`.
+**Key files**: [src/game.c](src/game.c), [src/state.c](src/state.c), [include/game.h](include/game.h)
 
----
+### Event-Driven Triggers
 
-### 2. Tables Store Structs By Value
-
-**Critical:** `dTable_t` stores data **by value** (memcpy), not by pointer.
-
-**Example (g_players):**
-```c
-// CreatePlayer - stores Player_t BY VALUE
-Player_t player = {0};
-player.name = d_StringInit();
-// ... initialize player ...
-d_TableSet(g_players, &player.player_id, &player);  // Copies struct
-
-// Lookup - returns pointer to struct INSIDE table
-Player_t* player = (Player_t*)d_TableGet(g_players, &player_id);
-if (!player) return;
-player->chips -= 10;  // Modify in-place
-```
-
-**Common Bug:**
-```c
-// ❌ WRONG - double pointer dereference
-Player_t** player_ptr = (Player_t**)d_TableGet(g_players, &id);
-Player_t* player = *player_ptr;  // CRASHES! Reads garbage as pointer
-```
-
-**Why:** See `ADR-003` - tables store by value, not by pointer.
-
----
-
-### 3. Parameter Order: d_ArrayInit(capacity, element_size)
-
-**CAPACITY FIRST, element_size second** (backwards from calloc!)
+Systems communicate via **game events** (not polling):
 
 ```c
-// ✅ CORRECT
-d_ArrayInit(16, sizeof(Card_t));  // 16 capacity, Card_t elements
-
-// ❌ WRONG (causes bus errors)
-d_ArrayInit(sizeof(Card_t), 16);  // Creates misaligned array
+Game_TriggerEvent(game, GAME_EVENT_CARD_DRAWN);
 ```
 
-**Why:** See `ADR-006` - wrong order causes memory misalignment crashes.
+**Listeners**: Enemy abilities, trinket passives, status effects
 
----
+### Data-Driven Systems
 
-### 4. Archimedes Delegate Pattern
+Game content defined in **DUF files** (`data/`): enemies, events, trinkets, affixes, card tags
 
-Scenes control game flow via function pointers:
+**DUF Loaders** in [src/loaders/](src/loaders/) parse files at startup and populate global caches.
 
-```c
-void InitBlackjackScene(void) {
-    app.delegate.logic = BlackjackLogic;  // Update function
-    app.delegate.draw = BlackjackDraw;    // Render function
-}
+### Global State
 
-// Main loop calls delegates
-void MainLoop(void) {
-    a_PrepareScene();
-    app.delegate.logic(a_GetDeltaTime());
-    app.delegate.draw(a_GetDeltaTime());
-    a_PresentScene();
-}
-```
+Key globals (see [src/main.c](src/main.c) and [include/common.h](include/common.h)):
+- `g_players` - Player registry (table: player_id → Player_t)
+- `g_card_metadata` - Card tags/metadata (separate from Card_t)
+- `g_trinket_templates` - Trinket definitions from DUF
+- `g_enemies_db`, `g_events_db` - DUF parsed databases
 
-**DON'T** hardcode scene logic in main loop. Use delegates.
+### Core Data Structures
 
----
+Key structs in [include/structs.h](include/structs.h):
 
-## Architecture Enforcement
+**Card_t** (32 bytes, value type):
+- Lightweight: texture, card_id, position, suit, rank, face_up
+- **Extended metadata** (tags, rarity) stored in `g_card_metadata` global table
+- Access via `GetCardMetadata(card_id)`
 
-### Fitness Functions (Architecture Tests)
+**Player_t**:
+- `Hand_t hand`, `int chips` (HP + currency), `int sanity`
+- `dArray_t* trinkets` (TrinketInstance_t values)
+- `StatusEffectList_t status_effects`
+- `bool combat_stats_dirty` - flag for stat recalculation
 
-Location: `architecture/fitness_functions/*.py`
+**Enemy_t**:
+- `dString_t* name`, `int current_hp`, `dArray_t* abilities`
 
-Run all: `./verify_architecture.sh` or `make verify`
+### Trinket System
 
-**What They Check:**
-- `FF-001`: All events have trigger callsites
-- `FF-002`: Win/loss code calls status effect modifiers
-- `FF-003`: No raw malloc for strings/arrays + correct table usage
-- `FF-004`: Card_t stays lightweight (no metadata bloat)
-- `FF-005`: Event choices stored as value types
-- `FF-006`: d_ArrayInit parameter order
+**Two-phase design**:
+1. **Templates** (`Trinket_t`) - immutable definitions from DUF in `g_trinket_templates`
+2. **Instances** (`TrinketInstance_t`) - per-player equipped trinkets with stacks/cooldowns
 
-**When They Run:**
-- Manually: `make verify`
-- Before commits (recommended)
-- In CI/CD (future)
+**Affix system**: Trinkets get 1-3 random stat affixes (+% dmg, +% crit, refund) from `data/affixes/`
 
-### Decision Records (ADRs)
+### UI Architecture
 
-Location: `architecture/decision_records/*.md`
+Modular system in [src/scenes/](src/scenes/):
+- **Sections**: Persistent regions (topBar, leftSidebar, player, dealer)
+- **Components**: Modals/overlays (eventModal, rewardModal, trinketDropModal)
+- **Pipeline**: Archimedes → sections → modals → tweens
 
-Each ADR documents:
-- **Context**: What problem we faced
-- **Decision**: What we chose and why
-- **Consequences**: Trade-offs accepted
-- **Evidence**: Code examples from codebase
+### Terminal/Debug
 
-**Read these BEFORE making architectural changes!**
-
----
+Press backtick (\`) to open. Commands: `give_chips N`, `set_sanity N`, `deal_damage N`, `add_tag TAG ID`, `give_trinket TRINKET` 
 
 ## Testing
 
-### Unit Tests
-```bash
-make test          # Run all tests
-./bin/test_runner  # Direct execution
-```
+Run `make test` for unit tests. Test files in [test/](test/):
+- `test_structs.c`, `test_state.c`, `test_trinkets.c`, `test_stats.c`, etc.
 
-Tests use stub/mock patterns for game systems.
+## Game Design Reference
 
-### Integration Testing
-```bash
-make run           # Manual playtesting
-make valgrind      # Memory leak detection
-make asan          # Address sanitizer (detects use-after-free)
-```
+**[GAME_DESIGN_SUMMARY.md](GAME_DESIGN_SUMMARY.md)** - Complete systems reference
+**[GAME_DESIGN_BUILD_OPPORTUNITIES.md](GAME_DESIGN_BUILD_OPPORTUNITIES.md)** - Class design, progression
 
-### Architecture Verification
-```bash
-make verify        # Run all fitness functions
-```
+**Quick reference**:
+- **Combat**: Blackjack hands damage enemies (bet = base damage)
+- **Card Tags**: CURSED (10 dmg), VAMPIRIC (5 dmg + heal), LUCKY (+10% crit), BRUTAL (+10% dmg)
+- **Classes**: Degenerate (risk/reward), Dealer (control), Detective (pairs)
+- **Resources**: Chips (HP + currency), Sanity (affects betting)
 
----
+## Common Patterns
 
-## Common Mistakes (That Cost Us Days)
+**Adding a Card Tag**:
+1. Add enum to [include/defs.h](include/defs.h)
+2. Add DUF definition to [data/card_tags/tags.duf](data/card_tags/tags.duf)
+3. Implement in [src/cardTags.c](src/cardTags.c) `ProcessCardTagEffects()`
 
-### ❌ Wrong: Double Pointer from g_players
-```c
-Player_t** player_ptr = (Player_t**)d_TableGet(g_players, &id);
-Player_t* player = *player_ptr;  // SEGFAULT!
-```
-**Fix:** `Player_t* player = (Player_t*)d_TableGet(g_players, &id);`
+**Adding a Trinket**:
+1. Add DUF template to [data/trinkets/core_trinkets.duf](data/trinkets/core_trinkets.duf)
+2. If custom logic needed, implement in [src/trinket.c](src/trinket.c)
 
-### ❌ Wrong: Backwards d_ArrayInit Parameters
-```c
-d_ArrayInit(sizeof(Card_t), 16);  // BUS ERROR!
-```
-**Fix:** `d_ArrayInit(16, sizeof(Card_t));  // capacity FIRST`
+**Adding a Game Event**:
+1. Add to `GameEvent_t` in [include/game.h](include/game.h)
+2. Add `GameEventToString()` case in [src/game.c](src/game.c)
+3. Call `Game_TriggerEvent(game, GAME_EVENT_YOUR_EVENT)` where needed
 
-### ❌ Wrong: Manual String Management
-```c
-char buffer[128];
-snprintf(buffer, sizeof(buffer), "HP: %d", hp);
-```
-**Fix:** Use `dString_t*` with `d_StringFormat()`
+**Adding an Enemy Ability**:
+1. Add DUF to [data/enemies/tutorial_enemies.duf](data/enemies/tutorial_enemies.duf)
+2. Implement in [src/ability.c](src/ability.c)
 
-### ❌ Wrong: Uninitialized Struct Fields
-```c
-AbilityData_t ability = {
-    .ability_id = ABILITY_FOO,
-    .trigger = TRIGGER_PASSIVE
-    // Missing: animation fields!
-};
-```
-**Fix:** Initialize ALL fields, especially floats (they become NaN garbage)
+## Important Constraints
 
----
-
-## Project Structure
-
-```
-card-fifty-two/
-├── architecture/
-│   ├── decision_records/    # ADRs explaining WHY
-│   └── fitness_functions/   # Automated architecture checks
-├── include/                 # Header files
-├── src/                     # Implementation
-│   ├── scenes/             # Game screens (menu, blackjack, etc)
-│   ├── terminal/           # Debug console
-│   └── tween/              # Animation system
-├── tests/                   # Unit tests
-├── CLAUDE.md               # This file
-├── Makefile                # Build system
-└── verify_architecture.sh  # Run all fitness functions
-```
-
----
-
-## AI Workflow (Follow This!)
-
-When asked to modify code:
-
-1. **Read relevant ADR** from `architecture/decision_records/`
-2. **Check existing patterns** - grep for similar code
-3. **Suggest changes** that follow constitutional patterns
-4. **Run fitness functions** - `make verify`
-5. **Run tests** - `make test`
-6. **If tests fail**, fix them or update them
-
-When in doubt:
-- Check `architecture/decision_records/` for precedent
-- Ask human before violating constitutional patterns
-- Prefer editing existing files over creating new ones
-
----
-
-## Human Approval Required For
-
-- Adding new global tables
-- Changing core data structures (Player_t, Card_t, etc)
-- Breaking delegate pattern
-- Adding external dependencies
-- Creating new ADRs or fitness functions
-
----
-
-## Build Commands Reference
-
-```bash
-make              # Build debug version
-make run          # Build and run
-make test         # Run unit tests
-make verify       # Run architecture fitness functions
-make clean        # Clean build artifacts
-make valgrind     # Check for memory leaks
-make asan         # Address sanitizer build
-```
-
----
-
-## Key Files Reference
-
-**Global State:**
-- `include/defs.h` - Global tables (g_players, g_card_textures)
-- `src/main.c` - Initialization and cleanup
-
-**Core Game Logic:**
-- `src/game.c` - Blackjack rules, hand resolution
-- `src/player.c` - Player management
-- `src/enemy.c` - Enemy abilities and AI
-
-**Architecture:**
-- `architecture/decision_records/` - WHY things work this way
-- `architecture/fitness_functions/` - Automated checks
-
-**Structs:**
-- `include/structs.h` - All major data structures
-
----
-
-## Version History
-
-- **2025-11-14**: Major rewrite - fixed contradictions, added fitness function docs
-- **2025-10-05**: Initial constitutional baseline
-
----
-
-**Remember:** The architecture docs (`architecture/`) are the source of truth. This file is a quick reference. When they conflict, trust the ADRs.
+- **Card_t must stay 32 bytes** - use `g_card_metadata` for extended data
+- **d_ArrayInit order**: `d_ArrayInit(CAPACITY, element_size)` - backwards = bus error
+- Event-driven architecture - trigger events, don't poll state

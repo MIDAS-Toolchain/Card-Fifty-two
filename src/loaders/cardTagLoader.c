@@ -18,11 +18,12 @@ dDUFValue_t* g_card_tags_db = NULL;
 
 const char* CardTagToString(CardTag_t tag) {
     switch (tag) {
-        case CARD_TAG_CURSED:   return "cursed";
+        case CARD_TAG_VICIOUS:  return "vicious";
         case CARD_TAG_VAMPIRIC: return "vampiric";
         case CARD_TAG_LUCKY:    return "lucky";
         case CARD_TAG_JAGGED:   return "jagged";
         case CARD_TAG_DOUBLED:  return "doubled";
+        case CARD_TAG_SHARP:    return "sharp";
         default:
             d_LogErrorF("CardTagToString: Unknown tag %d", tag);
             return "unknown";
@@ -58,7 +59,7 @@ bool ValidateCardTagDatabase(dDUFValue_t* db, char* out_error_msg, size_t error_
                 "Card Tag DUF Validation Failed\n\n"
                 "Card tag database is NULL\n\n"
                 "Common issues:\n"
-                "- All 5 tags required: cursed, vampiric, lucky, jagged, doubled\n"
+                "- All 6 tags required: vicious, vampiric, lucky, jagged, doubled, sharp\n"
                 "- Each tag needs display_name, description, color_r/g/b\n"
                 "- Trigger type must be 'on_draw' or 'passive'\n"
                 "- Effects array cannot be empty");
@@ -71,7 +72,7 @@ bool ValidateCardTagDatabase(dDUFValue_t* db, char* out_error_msg, size_t error_
                 "Card Tag DUF Validation Failed\n\n"
                 "Card tag database is not a table (type=%d)\n\n"
                 "Common issues:\n"
-                "- All 5 tags required: cursed, vampiric, lucky, jagged, doubled\n"
+                "- All 6 tags required: vicious, vampiric, lucky, jagged, doubled, sharp\n"
                 "- Each tag needs display_name, description, color_r/g/b\n"
                 "- Trigger type must be 'on_draw' or 'passive'\n"
                 "- Effects array cannot be empty", db->type);
@@ -81,9 +82,9 @@ bool ValidateCardTagDatabase(dDUFValue_t* db, char* out_error_msg, size_t error_
 
     d_LogInfo("Validating card tag database...");
 
-    // Required tags (all 5 must be present)
-    const char* required_tags[] = {"cursed", "vampiric", "lucky", "jagged", "doubled"};
-    const int num_required = 5;
+    // Required tags (all 6 must be present)
+    const char* required_tags[] = {"vicious", "vampiric", "lucky", "jagged", "doubled", "sharp"};
+    const int num_required = 6;
 
     for (int i = 0; i < num_required; i++) {
         const char* tag_key = required_tags[i];
@@ -92,7 +93,7 @@ bool ValidateCardTagDatabase(dDUFValue_t* db, char* out_error_msg, size_t error_
         if (!tag_entry) {
             snprintf(out_error_msg, error_msg_size,
                     "Card Tag DUF Validation Failed\n\n"
-                    "Missing tag: %s (expected all 5 tags: cursed, vampiric, lucky, jagged, doubled)",
+                    "Missing tag: %s (expected all 6 tags: vicious, vampiric, lucky, jagged, doubled, sharp)",
                     tag_key);
             d_LogError(out_error_msg);
             return false;
@@ -113,7 +114,7 @@ bool ValidateCardTagDatabase(dDUFValue_t* db, char* out_error_msg, size_t error_
                     "Card Tag DUF Validation Failed\n\n"
                     "Tag '%s' missing or invalid 'display_name' field\n\n"
                     "Common issues:\n"
-                    "- All 5 tags required: cursed, vampiric, lucky, jagged, doubled\n"
+                    "- All 6 tags required: cursed, vampiric, lucky, jagged, doubled, sharp\n"
                     "- Each tag needs display_name, description, color_r/g/b\n"
                     "- Trigger type must be 'on_draw' or 'passive'\n"
                     "- Effects array cannot be empty", tag_key);

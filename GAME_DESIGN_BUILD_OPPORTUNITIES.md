@@ -71,7 +71,7 @@ Classes provide **identity and playstyle direction** without hard-locking strate
 - **Cooldown:** 3 turns
 - **Targeting:** Any card in player/dealer hand
 - **Synergies:**
-  - Pairs with Aces (1’2 or 11’22 for bust into discard strats)
+  - Pairs with Aces (1ï¿½2 or 11ï¿½22 for bust into discard strats)
   - Works with 2-5 value cards to hit 21 from 11-15 hands
 - **Side Effect:** Each active use increases passive damage by +5
 
@@ -92,9 +92,9 @@ Classes provide **identity and playstyle direction** without hard-locking strate
 |----------|--------|---------------|
 | **100-76%** | No effect | Safe baseline |
 | **75-51%** | Lose access to **Minimum Bet** (1 chip) | Push toward medium/high bets |
-| **50-26%** | **Maximum bet doubled** (10’20) | Reward high-risk plays with higher damage ceiling |
+| **50-26%** | **Maximum bet doubled** (10ï¿½20) | Reward high-risk plays with higher damage ceiling |
 | **25-1%** | Lose access to **Medium Bet** (5 chips) | Only min or max bets (extreme variance) |
-| **0%** | **Maximum bet doubled again** (20’40), "All or nothing" | Ultimate risk/reward endgame |
+| **0%** | **Maximum bet doubled again** (20ï¿½40), "All or nothing" | Ultimate risk/reward endgame |
 
 **Cumulative Effects:** Each threshold **stacks** with previous ones. At 0% sanity:
 - MIN bet disabled (from 75% threshold)
@@ -169,8 +169,8 @@ Classes provide **identity and playstyle direction** without hard-locking strate
 - **Cooldown:** 5 turns
 - **Targeting:** Any 2 cards in player/dealer hands
 - **Synergies:**
-  - Create pairs on demand (copy Ace’Ace’Ace for pair damage)
-  - Force specific hand values (copy 10’10’20 total)
+  - Create pairs on demand (copy Aceï¿½Aceï¿½Ace for pair damage)
+  - Force specific hand values (copy 10ï¿½10ï¿½20 total)
   - Combo with passive (more pairs = more damage)
 - **Side Effect:** Each active use increases passive damage by +5
 
@@ -185,7 +185,7 @@ Classes provide **identity and playstyle direction** without hard-locking strate
 
 **Example:** Player has [7`, 7e, Kc], Dealer has [10f, 10`]
 - Player has 1 pair (7s), Dealer has 1 pair (10s) = **2 pairs total**
-- Damage: 5 × 2 = **10 damage** (before scaling)
+- Damage: 5 ï¿½ 2 = **10 damage** (before scaling)
 
 #### Sanity Thresholds: "Pattern Recognition"
 
@@ -197,12 +197,12 @@ Classes provide **identity and playstyle direction** without hard-locking strate
 | **75-51%** | **Can only do Medium bets** (5 chips) | Consistent damage, predictable economy |
 | **50-26%** | **Medium bet = enemy's score from last round** | Dynamic betting (scales with enemy performance) |
 | **25-1%** | **Must HIT if your total < enemy's visible card value** | Forced aggression based on information |
-| **0%** | **Pairs in hand count double for damage calculation** | Massive damage spike (2 pairs ’ 4 pairs worth) |
+| **0%** | **Pairs in hand count double for damage calculation** | Massive damage spike (2 pairs ï¿½ 4 pairs worth) |
 
 **Strategy Implications:**
 - 50% threshold creates **adaptive betting** (bet scales with enemy threat)
 - 25% threshold rewards **information play** (visible card = bet decision)
-- 0% threshold is **explosive damage** (pairs deal 10 base × 2 = 20 per pair)
+- 0% threshold is **explosive damage** (pairs deal 10 base ï¿½ 2 = 20 per pair)
 - Synergizes with pair-generating effects (Detective's Files active)
 
 ---
@@ -233,15 +233,15 @@ Trinkets are **equipment with passive effects** that drop after **every combat v
 | **Boss** | 0% | 30% | 50% | 20% |
 
 **Pity System:**
-- Normal enemies: Every 5 kills without Uncommon+ ’ **force Uncommon**
-- Elite enemies: Every 5 kills without Legendary ’ **force Legendary**
+- Normal enemies: Every 5 kills without Uncommon+ ï¿½ **force Uncommon**
+- Elite enemies: Every 5 kills without Legendary ï¿½ **force Legendary**
 
 ### Affix System (DUF-Based Trinkets)
 
 **Implementation Status:**  **Fully Designed** (see [TRINKET_DUF_INVESTIGATION.md](TRINKET_DUF_INVESTIGATION.md))
 
 Each trinket has:
-1. **Base Passive** (from DUF template, e.g., "Lucky Chip" ’ gain LUCKY_STREAK on win)
+1. **Base Passive** (from DUF template, e.g., "Lucky Chip" ï¿½ gain LUCKY_STREAK on win)
 2. **Affixes** (1-3 random stat bonuses based on Act tier)
 
 #### Example: Trinket Drop in Act 2
@@ -422,7 +422,7 @@ Some trinkets **buff specific card tags**:
 
 #### Ace's Sleeve (Legendary)
 **Passive:**
-- **On Blackjack:** Deal **double damage** (200% = 2×)
+- **On Blackjack:** Deal **double damage** (200% = 2ï¿½)
 
 **Design Intent:** Massive burst damage on natural 21s
 
@@ -469,7 +469,7 @@ Some trinkets **buff specific card tags**:
 
 ## Class Trinket Upgrades
 
-**Status:**   **Designed but NOT Implemented**
+**Status:** ï¿½ **Designed but NOT Implemented**
 
 After defeating each **boss enemy**, players are offered **3 class trinket upgrades** (instead of a trinket drop). Each upgrade:
 1. **Modifies active OR passive** (or both) of the class trinket
@@ -521,7 +521,7 @@ After defeating each **boss enemy**, players are offered **3 class trinket upgra
 **Active Change:** Can now target **face cards (10-value)** to turn them into **11s**
 **Affix:** Greedy (+25% chips on win)
 
-**Design Intent:** Exotic active option (turn 10’11 for precise hand values)
+**Design Intent:** Exotic active option (turn 10ï¿½11 for precise hand values)
 
 ---
 
@@ -585,12 +585,12 @@ Each event has:
 
 **Act Structure (Tutorial):**
 ```
-COMBAT (Didact) ’ EVENT ’ COMBAT (Daemon) ’ EVENT ’ Victory
+COMBAT (Didact) ï¿½ EVENT ï¿½ COMBAT (Daemon) ï¿½ EVENT ï¿½ Victory
 ```
 
 **Act Structure (Future):**
 ```
-COMBAT ’ EVENT ’ COMBAT ’ EVENT ’ ELITE ’ EVENT ’ BOSS
+COMBAT ï¿½ EVENT ï¿½ COMBAT ï¿½ EVENT ï¿½ ELITE ï¿½ EVENT ï¿½ BOSS
 ```
 
 **Event Density:** ~40% of encounters are events (high decision density)
@@ -626,7 +626,7 @@ COMBAT ’ EVENT ’ COMBAT ’ EVENT ’ ELITE ’ EVENT ’ BOSS
 | **Trinket Possession** | Requires Lucky Coin | "= Requires Lucky Coin trinket" |
 
 **Design Intent:**
-- Rewards **build planning** (get CURSED cards ’ unlock powerful choice)
+- Rewards **build planning** (get CURSED cards ï¿½ unlock powerful choice)
 - Encourages **resource management** (maintain high HP to access healing)
 - Creates **knowledge checks** (experienced players know what unlocks what)
 
@@ -708,7 +708,7 @@ Some trinkets **ONLY** drop from events (not combat):
 |---------|--------------|--------|--------|
 | **Elite Membership** | House Odds | Event | +20% win bonus, 20% loss refund |
 | **Stack Trace** | System Maintenance | Event | +3% damage/stack (max 20 stacks = 60%) |
-| **Cursed Dealer's Coin** | (Planned) | Event | On blackjack: Deal 2× damage BUT lose 10 sanity |
+| **Cursed Dealer's Coin** | (Planned) | Event | On blackjack: Deal 2ï¿½ damage BUT lose 10 sanity |
 | **Broken Clock** | (Planned) | Event | Rewind last hand (once per combat) |
 
 **Design Intent:**
@@ -736,11 +736,11 @@ Card tags are **permanent upgrades** to individual cards in the 52-card deck.
 
 | Tag | Effect | Damage Type | Visual |
 |-----|--------|-------------|--------|
-| **CURSED** | Deal 10 damage to enemy | Immediate trigger | Purple glow + skull icon |
-| **VAMPIRIC** | Deal 5 damage to enemy + heal 5 chips | Immediate trigger | Red glow + fangs icon |
+| **VICIOUS** | Deal 10 damage to enemy | Immediate trigger | Red glow + skull icon |
+| **VAMPIRIC** | Deal 5 damage to enemy + heal 5 chips | Immediate trigger | Orange glow + fangs icon |
 
 **Design Intent:**
-- **CURSED** = pure aggro (10 damage is ~10% of normal enemy HP)
+- **VICIOUS** = pure aggro (10 damage is ~2% of normal enemy HP)
 - **VAMPIRIC** = sustain hybrid (damage + healing)
 - **Trigger Timing:** On draw (not on hand calculation) = rewards drawing many cards
 
@@ -754,12 +754,12 @@ Card tags are **permanent upgrades** to individual cards in the 52-card deck.
 | **BRUTAL** | +10% damage dealt | Global (player + dealer hands) | Yes (+10% per card) |
 
 **Design Intent:**
-- **LUCKY** = offense boost (10% crit = ~5% average damage increase at 1.5× crit)
+- **LUCKY** = offense boost (10% crit = ~5% average damage increase at 1.5ï¿½ crit)
 - **BRUTAL** = consistent damage (10% flat = always useful)
 - **Global Scope:** Works even if card is in dealer's hand (asymmetric power)
 
 **Example:** Player has 3 LUCKY cards in hand, dealer has 1 LUCKY card
-- Total crit chance: **+40%** (4 cards × 10% = 40%)
+- Total crit chance: **+40%** (4 cards ï¿½ 10% = 40%)
 - Player benefits even from dealer's LUCKY card!
 
 ---
@@ -768,7 +768,7 @@ Card tags are **permanent upgrades** to individual cards in the 52-card deck.
 
 | Tag | Effect | Duration | Source |
 |-----|--------|----------|--------|
-| **DOUBLED** | Card value ×2 for hand calculation | This hand only | Degenerate's Gambit active |
+| **DOUBLED** | Card value ï¿½2 for hand calculation | This hand only | Degenerate's Gambit active |
 
 **Design Intent:**
 - **DOUBLED** = tactical active ability tag (not permanent)
@@ -866,7 +866,7 @@ Combining all systems creates **distinct build archetypes**:
 ### 1. "Glass Cannon Degenerate"
 
 **Core:**
-- Class: Degenerate (low sanity ’ 40-chip bets)
+- Class: Degenerate (low sanity ï¿½ 40-chip bets)
 - Class Upgrades: "Exponential Greed" (+10 scaling per active)
 - Trinkets: Blood Ante, Devil's Bargain, Ace's Sleeve
 - Tags: BRUTAL on face cards, CURSED on low cards
@@ -885,7 +885,7 @@ Combining all systems creates **distinct build archetypes**:
 ### 2. "Immortal Dealer"
 
 **Core:**
-- Class: Dealer (low sanity ’ face-down visibility, bust protection)
+- Class: Dealer (low sanity ï¿½ face-down visibility, bust protection)
 - Class Upgrades: Cooldown reduction, reshuffle damage scaling
 - Trinkets: Insurance Policy, Elite Membership, Golden Horseshoe
 - Tags: VAMPIRIC on Aces, LUCKY on face cards
@@ -911,7 +911,7 @@ Combining all systems creates **distinct build archetypes**:
 
 **Gameplay:**
 - Hit aggressively to create long hands (more pair chances)
-- Use active to copy cards into pairs (7’7’pair)
+- Use active to copy cards into pairs (7ï¿½7ï¿½pair)
 - CURSED tags on same-rank cards trigger multiple times
 - Stack damage via Counting Cards (+2 per draw) + Stack Trace (stacking %)
 
@@ -1011,7 +1011,7 @@ Combining all systems creates **distinct build archetypes**:
 - [x] Trinket stacking (Broken Watch, Iron Knuckles)
 - [x] Tag buff system (Cursed Skull)
 
-###   Designed but NOT Implemented
+### ï¿½ Designed but NOT Implemented
 
 - [ ] Class trinket upgrade system (boss rewards)
 - [ ] Dealer class trinket (active + passive)
@@ -1040,11 +1040,11 @@ Combining all systems creates **distinct build archetypes**:
 Each upgrade should:
 1. **Modify only 1-2 stats** (avoid overwhelming complexity)
 2. **Enable new strategies** (not just +10% damage)
-3. **Pair with relevant affixes** (offensive upgrade ’ offensive affix)
+3. **Pair with relevant affixes** (offensive upgrade ï¿½ offensive affix)
 4. **Cost nothing** (always beneficial, no downsides)
 
 **Bad Example:** "Active cooldown -1 turn, passive damage -5" (downside = feels bad)
-**Good Example:** "Active cooldown -1 turn, passive scales 2× faster" (pure upside)
+**Good Example:** "Active cooldown -1 turn, passive scales 2ï¿½ faster" (pure upside)
 
 ---
 

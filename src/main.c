@@ -12,6 +12,7 @@
 #include "stats.h"
 #include "settings.h"
 #include "scenes/sceneMenu.h"
+#include "scenes/sceneBlackjack.h"
 #include "loaders/enemyLoader.h"
 #include "loaders/affixLoader.h"
 #include "loaders/trinketLoader.h"
@@ -51,11 +52,11 @@ aSoundEffect_t g_ui_click_sound;
 aSoundEffect_t g_card_slide_sounds[CARD_SLIDE_SOUND_COUNT];
 int g_last_card_slide_index = -1;  // Track last played sound for no-repeat
 
-// Test deck (for demonstration)
+// Test deck (for game - used by sceneBlackjack.c)
 // Constitutional pattern: Deck_t is value type, not pointer
 Deck_t g_test_deck;
 
-// Player hand (for demonstration)
+// Player hand (for game - used by sceneBlackjack.c)
 // Constitutional pattern: Hand_t is value type, not pointer
 Hand_t g_player_hand;
 
@@ -158,8 +159,8 @@ void Initialize(void) {
 
     d_LogInfo("Archimedes initialized successfully");
 
-    // Initialize audio system (uses default: 16 channels, 44100 Hz)
-    if (a_InitAudio() != 0) {
+    // Initialize audio system (SDL_mixer API: 16 channels, 44100 Hz)
+    if (a_AudioInit(16, 44100) < 0) {
         d_LogError("Failed to initialize audio system");
     } else {
         d_LogInfo("Audio system initialized");
@@ -343,7 +344,7 @@ void Initialize(void) {
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", error_buf, NULL);
 
             d_DUFErrorFree(err);
-            d_ArrayDestroy(&trinket_databases);
+            d_ArrayDestroy(trinket_databases);
             a_Quit();
             exit(1);
         }
@@ -351,7 +352,7 @@ void Initialize(void) {
         if (!ValidateTrinketDatabase(db, validation_error, sizeof(validation_error))) {
             d_LogErrorF("Trinket database '%s' validation failed: %s", filepath, validation_error);
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Card Fifty-Two - Startup Error", validation_error, NULL);
-            d_ArrayDestroy(&trinket_databases);
+            d_ArrayDestroy(trinket_databases);
             a_Quit();
             exit(1);
         }
@@ -362,7 +363,7 @@ void Initialize(void) {
     // Populate global trinket template cache from all DUF files
     if (!PopulateAllTrinketTemplates(trinket_databases)) {
         d_LogFatal("Failed to populate trinket templates");
-        d_ArrayDestroy(&trinket_databases);
+        d_ArrayDestroy(trinket_databases);
         a_Quit();
         exit(1);
     }
@@ -433,7 +434,6 @@ void Cleanup(void) {
     d_LogInfo("Shutting down...");
 
     // Cleanup active scene (terminal, state storage, etc)
-    extern void CleanupBlackjackScene(void);
     CleanupBlackjackScene();
 
     // Cleanup test deck and player hand
@@ -526,155 +526,13 @@ void Cleanup(void) {
         d_LogInfo("Settings saved and destroyed");
     }
 
+    // Cleanup audio system (must be called before a_Quit())
+    a_AudioQuit();
+    d_LogInfo("Audio system shut down");
+
     // Quit Archimedes
     a_Quit();
     d_LogInfo("Archimedes shutdown complete");
-}
-
-// ============================================================================
-// RENDERING HELPERS
-// ============================================================================
-
-static void RenderHand(const Hand_t* hand, int start_x, int start_y) {
-    // Check NULL before dereferencing
-    if (!hand || !hand->cards) {
-        return;
-    }
-
-    // Early return if hand is empty
-    if (hand->cards->count == 0) {
-        return;
-    }
-
-    // Draw each card in hand horizontally with spacing
-    const int CARD_SPACING = 120;  // Horizontal spacing between cards
-
-    for (size_t i = 0; i < hand->cards->count; i++) {
-        const Card_t* card = GetCardFromHand(hand, i);
-        if (!card) continue;
-
-        int x = start_x + (i * CARD_SPACING);
-        int y = start_y;
-
-        // Draw card background
-        if (g_card_back_texture && g_card_back_texture->surface) {
-            aRectf_t src = {0, 0, g_card_back_texture->surface->w, g_card_back_texture->surface->h};
-            aRectf_t dest = {x, y, CARD_WIDTH, CARD_HEIGHT};
-            a_BlitRect(g_card_back_texture, &src, &dest, 1.0f);
-        }
-
-        // Draw card face if face up
-        // NOTE: card->texture is SDL_Texture*, but we need aImage_t* for a_BlitRect
-        // This is a temporary workaround - cards should store aImage_t* in the future
-        if (card->face_up && card->texture) {
-            d_LogWarning("Card rendering in main.c needs migration to aImage_t*");
-            // TODO: Migrate card textures to aImage_t* system
-        }
-    }
-}
-
-// ============================================================================
-// SCENE DELEGATES
-// ============================================================================
-
-static void SceneLogic(float dt) {
-    (void)dt;  // Unused for now
-
-    a_DoInput();
-
-}
-
-static void SceneDraw(float dt) {
-    (void)dt;  // Unused for now
-
-    // Set background color (dark green felt)
-    app.background = (aColor_t){10, 80, 30, 255};
-
-    // Draw title
-    aTextStyle_t title_style = {
-        .type = FONT_ENTER_COMMAND,
-        .fg = {255, 255, 255, 255},
-        .bg = {0, 0, 0, 0},
-        .align = TEXT_ALIGN_CENTER,
-        .wrap_width = 0,
-        .scale = 1.0f,
-        .padding = 0
-    };
-    a_DrawText("Card Fifty-Two", SCREEN_WIDTH / 2, 100, title_style);
-
-    // Draw subtitle (USE FONT_ENTER_COMMAND, BRIGHT WHITE)
-    a_DrawText("Tech Demo - Archimedes & Daedalus", SCREEN_WIDTH / 2, 160, title_style);
-
-    // Draw deck info (Constitutional pattern: dString_t, not char[])
-    dString_t* deck_info = d_StringInit();
-    d_StringFormat(deck_info, "Deck: %zu cards remaining",
-                   GetDeckSize(&g_test_deck));
-    a_DrawText((char*)d_StringPeek(deck_info), SCREEN_WIDTH / 2, 220, title_style);
-    d_StringDestroy(deck_info);
-
-    // Draw player hand info (yellow)
-    aTextStyle_t hand_style = {
-        .type = FONT_ENTER_COMMAND,
-        .fg = {255, 255, 0, 255},
-        .bg = {0, 0, 0, 0},
-        .align = TEXT_ALIGN_CENTER,
-        .wrap_width = 0,
-        .scale = 1.0f,
-        .padding = 0
-    };
-    dString_t* hand_info = d_StringInit();
-    d_StringFormat(hand_info, "Your Hand - Cards: %zu | Value: %d%s",
-                   GetHandSize(&g_player_hand),
-                   g_player_hand.total_value,
-                   g_player_hand.is_blackjack ? " (BLACKJACK!)" :
-                   g_player_hand.is_bust ? " (BUST)" : "");
-    a_DrawText((char*)d_StringPeek(hand_info), SCREEN_WIDTH / 2, 280, hand_style);
-    d_StringDestroy(hand_info);
-
-    // Render player hand visually
-    RenderHand(&g_player_hand, 100, 350);
-
-    // Draw instructions (BRIGHT YELLOW)
-    a_DrawText("[S] Shuffle | [D] Deal Card | [R] Reset | [ESC] Quit",
-               SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100, hand_style);
-
-    // Draw status (CYAN instead of green - visible on green bg)
-    aTextStyle_t status_style = {
-        .type = FONT_ENTER_COMMAND,
-        .fg = {0, 255, 255, 255},
-        .bg = {0, 0, 0, 0},
-        .align = TEXT_ALIGN_RIGHT,
-        .wrap_width = 0,
-        .scale = 1.0f,
-        .padding = 0
-    };
-    dString_t* status = d_StringInit();
-    d_StringFormat(status, "FPS: %.1f", 1.0f / a_GetDeltaTime());
-    a_DrawText((char*)d_StringPeek(status), SCREEN_WIDTH - 10, 10, status_style);
-    d_StringDestroy(status);
-}
-
-// ============================================================================
-// SCENE INITIALIZATION
-// ============================================================================
-
-void InitScene(void) {
-    // Set scene delegates
-    app.delegate.logic = SceneLogic;
-    app.delegate.draw = SceneDraw;
-
-    // Initialize and shuffle test deck
-    // Constitutional pattern: Deck_t is value type
-    InitDeck(&g_test_deck, 1);  // Single 52-card deck
-    ShuffleDeck(&g_test_deck);
-    d_LogInfo("Test deck initialized and shuffled");
-
-    // Initialize player hand
-    // Constitutional pattern: Hand_t is value type
-    InitHand(&g_player_hand);
-    d_LogInfo("Player hand initialized");
-
-    d_LogInfo("Scene delegates initialized");
 }
 
 // ============================================================================

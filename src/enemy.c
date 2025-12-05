@@ -8,6 +8,7 @@
 #include "../include/ability.h"
 #include "../include/tween/tween.h"
 #include "../include/statusEffects.h"
+#include "../include/cardTags.h"  // For ClearCardTags()
 #include "../include/stats.h"
 #include "../include/player.h"
 #include "../include/deck.h"
@@ -51,7 +52,7 @@ Enemy_t* CreateEnemy(const char* name, int max_hp) {
         free(enemy);
         return NULL;
     }
-    d_StringSet(enemy->name, name, 0);
+    d_StringSet(enemy->name, name);
     // Description will be set by loader
 
     // Initialize HP
@@ -102,6 +103,10 @@ void DestroyEnemy(Enemy_t** enemy) {
     if (!enemy || !*enemy) return;
 
     Enemy_t* e = *enemy;
+
+    // NOTE: Card tags (VICIOUS, VAMPIRIC, LUCKY, JAGGED, SHARP) persist across combats
+    // They are permanent upgrades from rewards, not temporary combat effects
+    // Only DOUBLED tag is temporary (removed in ClearHand())
 
     // Destroy dString_t fields
     if (e->name) {
@@ -234,8 +239,8 @@ void HealEnemy(Enemy_t* enemy, int amount, TweenManager_t* tween_manager) {
             VisualEffects_t* vfx = GetVisualEffects();
             if (vfx) {
                 // Position below enemy HP bar (numbers rise up, so spawn lower)
-                float center_x = SCREEN_WIDTH / 2.0f + ENEMY_HP_BAR_X_OFFSET;
-                float center_y = ENEMY_HP_BAR_Y + 30;  // Below HP bar so it's visible as it rises
+                float center_x = GetGameAreaX() + (GetGameAreaWidth() / 2.0f) + ENEMY_PORTRAIT_X_OFFSET;
+                float center_y = GetEnemyHealthBarY() + 30;  // Below HP bar so it's visible as it rises
 
                 // Spawn red damage number (NOT crit - red is clear enough)
                 VFX_SpawnDamageNumber(vfx, punish_damage, center_x, center_y,

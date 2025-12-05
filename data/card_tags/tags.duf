@@ -6,8 +6,8 @@
 # ON-DRAW TAGS (trigger when card is drawn)
 # ============================================================================
 
-@cursed {
-    display_name: "Cursed"
+@vicious {
+    display_name: "Vicious"
     description: "10 damage to enemy when drawn"
     color_r: 165
     color_g: 48
@@ -126,6 +126,27 @@
         {
             type: "multiply_card_value"
             multiplier: 2
+        }
+    ]
+}
+
+@sharp {
+    display_name: "Sharp"
+    description: "+5 flat damage while in any hand"
+    color_r: 192
+    color_g: 192
+    color_b: 192
+
+    trigger: {
+        type: "passive"
+        scope: "global"
+    }
+
+    # Effect: +5 flat damage per SHARP card in play
+    effects: [
+        {
+            type: "add_flat_damage"
+            value: 5
         }
     ]
 }

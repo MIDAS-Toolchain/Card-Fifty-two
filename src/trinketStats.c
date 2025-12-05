@@ -103,6 +103,13 @@ void AggregateTrinketStats(Player_t* player) {
         }
 
         TrinketInstance_t* instance = &player->trinket_slots[slot];
+
+        // Safety check: base_trinket_key must be initialized
+        if (!instance->base_trinket_key) {
+            d_LogWarningF("Trinket in slot %d has NULL base_trinket_key (occupied but uninitialized)", slot);
+            continue;
+        }
+
         const TrinketTemplate_t* template = GetTrinketTemplate(d_StringPeek(instance->base_trinket_key));
 
         if (!template) {
@@ -126,6 +133,13 @@ void AggregateTrinketStats(Player_t* player) {
 
         // Apply trinket stack bonus (if any)
         ApplyTrinketStackBonus(player, instance);
+
+        // Apply combat damage bonus (Blood Pact - COMBAT_START effect)
+        if (instance->combat_damage_bonus > 0) {
+            player->damage_flat += instance->combat_damage_bonus;
+            d_LogInfoF("🩸 Trinket combat bonus: %s adds +%d flat damage (total flat: %d)",
+                        d_StringPeek(template->name), instance->combat_damage_bonus, player->damage_flat);
+        }
 
         // Apply trinket passive effects to defensive stats
         // Elite Membership: add_chips_percent (20%) → win_bonus_percent

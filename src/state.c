@@ -183,7 +183,12 @@ void State_Transition(GameContext_t* game, GameState_t new_state) {
             break;
 
         case STATE_SHOWDOWN:
-            Game_ResolveRound(game);
+            // Skip round resolution if enemy already defeated (tag kill during dealer turn)
+            if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
+                d_LogInfo("Enemy already defeated, skipping round resolution");
+            } else {
+                Game_ResolveRound(game);
+            }
             break;
 
         case STATE_ROUND_END:
@@ -423,8 +428,7 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
     DealerPhase_t phase = StateData_GetPhase(&game->state_data);
 
     const char* phase_names[] = {"CHECK_REVEAL", "DECIDE", "ACTION", "WAIT"};
-    d_LogRateLimitedF(D_LOG_RATE_LIMIT_FLAG_HASH_FORMAT_STRING, D_LOG_LEVEL_INFO,
-                      1, 1.0,  // 1 log per 1 second
+    d_LogInfoF_Throttle(1.0,  // 1 log per 1 second
                       "State_UpdateDealerTurn: phase=%s, dealer_total=%d, timer=%.2f",
                       phase_names[phase],
                       dealer->hand.total_value,
@@ -470,6 +474,13 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
 
                                 // Process card tag effects for revealed card
                                 ProcessCardTagEffects(hidden, game, dealer);
+
+                                // Check for enemy defeat from tag damage
+                                if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
+                                    d_LogInfo("COMBAT VICTORY (tag kill on dealer reveal)!");
+                                    State_Transition(game, STATE_SHOWDOWN);
+                                    return;
+                                }
                             }
                         }
 
@@ -514,6 +525,13 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
                         const Card_t* last_card = GetCardFromHand(&dealer->hand, dealer->hand.cards->count - 1);
                         if (last_card && last_card->face_up) {
                             ProcessCardTagEffects(last_card, game, dealer);
+
+                            // Check for enemy defeat from tag damage
+                            if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
+                                d_LogInfo("COMBAT VICTORY (tag kill on dealer hit)!");
+                                State_Transition(game, STATE_SHOWDOWN);
+                                return;
+                            }
                         }
                     }
                 } else {
@@ -526,6 +544,13 @@ void State_UpdateDealerTurn(GameContext_t* game, float dt) {
 
                             // Process card tag effects for revealed card
                             ProcessCardTagEffects(hidden, game, dealer);
+
+                            // Check for enemy defeat from tag damage
+                            if (game->is_combat_mode && game->current_enemy && game->current_enemy->is_defeated) {
+                                d_LogInfo("COMBAT VICTORY (tag kill on dealer stand reveal)!");
+                                State_Transition(game, STATE_SHOWDOWN);
+                                return;
+                            }
                         }
                     }
                 }

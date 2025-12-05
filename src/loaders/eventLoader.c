@@ -55,7 +55,7 @@ bool ValidateEventDatabase(dDUFValue_t* db, char* out_error_msg, size_t error_ms
     int validated_count = 0;
 
     while (entry) {
-        const char* key = entry->string;
+        const char* key = entry->key;
         if (!key) {
             entry = entry->next;
             continue;

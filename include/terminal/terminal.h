@@ -85,6 +85,14 @@ typedef struct Terminal {
     int selection_start;           // Start of selection (-1 = no selection)
     int selection_end;             // End of selection (-1 = no selection)
     dString_t* highlighted_text;   // Currently selected text (for future clipboard operations)
+
+    // Backspace hold-to-delete state (Problem 4)
+    float backspace_hold_timer;    // Time since backspace was pressed (seconds)
+    float backspace_repeat_delay;  // Initial delay before repeat starts (0.5s)
+    float backspace_repeat_rate;   // Time between repeats after delay (0.05s = 20/sec)
+
+    // Scroll state tracking (Problem 5)
+    bool user_has_scrolled;        // True if user manually scrolled (disables auto-scroll to bottom)
 } Terminal_t;
 
 // ============================================================================

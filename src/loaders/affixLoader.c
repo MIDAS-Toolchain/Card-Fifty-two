@@ -37,7 +37,7 @@ static bool ParseAffixTemplate(dDUFValue_t* affix_node, const char* stat_key, Af
         d_LogError("ParseAffixTemplate: Failed to allocate stat_key");
         return false;
     }
-    d_StringSet(out_affix->stat_key, stat_key, 0);
+    d_StringSet(out_affix->stat_key, stat_key);
 
     // Parse name (required)
     dDUFValue_t* name_node = d_DUFGetObjectItem(affix_node, "name");
@@ -52,7 +52,7 @@ static bool ParseAffixTemplate(dDUFValue_t* affix_node, const char* stat_key, Af
         d_StringDestroy(out_affix->stat_key);
         return false;
     }
-    d_StringSet(out_affix->name, name_node->value_string, 0);
+    d_StringSet(out_affix->name, name_node->value_string);
 
     // Parse description (required)
     dDUFValue_t* desc_node = d_DUFGetObjectItem(affix_node, "description");
@@ -69,7 +69,7 @@ static bool ParseAffixTemplate(dDUFValue_t* affix_node, const char* stat_key, Af
         d_StringDestroy(out_affix->name);
         return false;
     }
-    d_StringSet(out_affix->description, desc_node->value_string, 0);
+    d_StringSet(out_affix->description, desc_node->value_string);
 
     // Parse min_value (required)
     dDUFValue_t* min_node = d_DUFGetObjectItem(affix_node, "min_value");
@@ -224,8 +224,8 @@ dArray_t* GetAllAffixKeys(void) {
     dDUFValue_t* child = g_affixes_db->child;
     int key_count = 0;
     while (child) {
-        if (child->string) {  // @damage_bonus_percent → "damage_bonus_percent"
-            const char* key = child->string;
+        if (child->key) {  // @damage_bonus_percent → "damage_bonus_percent"
+            const char* key = child->key;
             d_ArrayAppend(keys, &key);
             key_count++;
         }
@@ -249,7 +249,7 @@ bool ValidateAffixDatabase(dDUFValue_t* affixes_db, char* out_error_msg, size_t 
     int validated_count = 0;
 
     while (affix_entry) {
-        const char* stat_key = affix_entry->string;
+        const char* stat_key = affix_entry->key;
         if (!stat_key) {
             affix_entry = affix_entry->next;
             continue;

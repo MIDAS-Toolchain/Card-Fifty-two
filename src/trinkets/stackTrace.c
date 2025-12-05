@@ -77,8 +77,8 @@ static void StackTracePassive(Player_t* player, GameContext_t* game, Trinket_t* 
     VisualEffects_t* vfx = GetVisualEffects();
     if (vfx) {
         VFX_SpawnDamageNumber(vfx, damage,
-                             SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
-                             ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                             GetGameAreaX() + (GetGameAreaWidth() / 2) + ENEMY_PORTRAIT_X_OFFSET,
+                             GetEnemyHealthBarY() - DAMAGE_NUMBER_Y_OFFSET,
                              false, false, false);  // Not healing, not crit, not rake
     }
 
@@ -106,13 +106,13 @@ Trinket_t* CreateStackTraceTrinket(void) {
     trinket->passive_trigger = GAME_EVENT_PLAYER_BUST;  // Fires when player busts
     trinket->passive_effect = StackTracePassive;
     d_StringSet(trinket->passive_description,
-                "When you BUST, deal 15 damage to enemy", 0);
+                "When you BUST, deal 15 damage to enemy");
 
     // No active effect
     trinket->active_target_type = TRINKET_TARGET_NONE;
     trinket->active_effect = NULL;
     trinket->active_cooldown_max = 0;
-    d_StringSet(trinket->active_description, "", 0);
+    d_StringSet(trinket->active_description, "");
 
     d_LogInfo("Created Stack Trace trinket template");
     return trinket;

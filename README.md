@@ -1,225 +1,124 @@
 # Card Fifty-Two
 
-**A Blackjack game demonstrating clean Scene → Section → Component architecture in C.**
+**A Blackjack roguelike RPG with survival horror and absurd surrealism.**
 
-Tech demo for [Archimedes](https://github.com/McCoy1701/Archimedes) (SDL2 framework) + [Daedalus](https://github.com/McCoy1701/Daedalus) (data structures). Shows how to build maintainable game UIs without raw pointers or manual memory chaos.
+## What is this?
 
----
+Card Fifty-Two is a blackjack roguelike where **blackjack is your weapon**. Fight corrupted AI enemies in a glitching casino by playing blackjack hands—each hand you win damages the enemy, each hand you lose costs you chips (your health).
 
-## 🎯 Tech Demo Highlights
+Built in C using:
+- **[Archimedes](https://github.com/McCoy1701/Archimedes)**: SDL2 game framework
+- **[Daedalus](https://github.com/mcCoy1701/daedalus)**: C data structures library
 
-- **Scene → Section → Component** architecture with clear boundaries
-- **String handling patterns**: Static storage (`char[]`) vs dynamic building (`dString_t*`)
-- **Memory safety**: Everything's a table or array - zero naked pointers
-- **Reusable components**: Button, MenuItem, CardGridModal used across multiple scenes
-- **Tutorial system**: Step-by-step overlay with spotlight and event listeners
+**Core Twist**: You always have all 52 cards. Instead of building a deck, you **upgrade cards with tags** that grant special powers (SHARP cards boost damage, VAMPIRIC cards heal you, LUCKY cards boost crit chance).
 
----
-
-## 🏗️ Architecture in Action
-
-### Scene → Section → Component Hierarchy
-
-| Layer | File | Responsibility | Example |
-|-------|------|----------------|---------|
-| **Scene** | [`sceneBlackjack.c`](src/scenes/sceneBlackjack.c) | Game loop, state machine, input routing | Blackjack game |
-| **Section** | [`playerSection.c`](src/scenes/sections/playerSection.c) | Layout group (title, cards, chips) | Player's hand area |
-| **Component** | [`button.c`](src/scenes/components/button.c) | Reusable UI element | Hit/Stand/Double buttons |
-
-### Real Implementation Examples
-
-**Button Component** (Pattern 1: Static Storage)
-```c
-// include/scenes/components/button.h
-typedef struct Button {
-    char label[256];           // Fixed buffer - set once, rarely changes
-    char hotkey_hint[64];      // Static storage with strncpy()
-    int x, y, w, h;
-    bool enabled;
-} Button_t;
-```
-[→ button.h](include/scenes/components/button.h) | [→ button.c](src/scenes/components/button.c)
-
-**PlayerSection** (Pattern 2: Dynamic Building)
-```c
-// src/scenes/sections/playerSection.c
-dString_t* info = d_StringInit();
-d_StringFormat(info, "%s: %d%s", player->name, player->score,
-               player->is_bust ? " (BUST)" : "");
-a_DrawText((char*)d_StringPeek(info), x, y, ...);
-d_StringDestroy(info);  // Temporary string for this frame
-```
-[→ playerSection.c](src/scenes/sections/playerSection.c)
-
-**Component Reuse**
-- `Button_t` used in: ActionPanel (betting/actions), TopBarSection (settings), PauseMenuSection (resume/quit)
-- `MenuItem_t` used in: MainMenuSection, PauseMenuSection, SettingsScene
-- `CardGridModal_t` used in: DrawPileModal, DiscardPileModal
-
-[→ All Components](src/scenes/components/) | [→ All Sections](src/scenes/sections/)
-
----
-
-## 🔑 Key Design Patterns
-
-### 1. String Handling Decision Guide
-
-**Use `char[]` for static storage:**
-```c
-// Labels that rarely change
-char label[256];
-strncpy(button->label, "Hit", sizeof(button->label) - 1);
-```
-Examples: [button.c:43](src/scenes/components/button.c#L43), [menuItem.c:43](src/scenes/components/menuItem.c#L43), [actionPanel.h:20](include/scenes/sections/actionPanel.h#L20)
-
-**Use `dString_t*` for dynamic building:**
-```c
-// Formatting with variables (created/destroyed each frame)
-dString_t* str = d_StringInit();
-d_StringFormat(str, "Score: %d | Bet: %d", score, bet);
-a_DrawText((char*)d_StringPeek(str), x, y, ...);
-d_StringDestroy(str);
-```
-Examples: [playerSection.c:113](src/scenes/sections/playerSection.c#L113), [dealerSection.c:109](src/scenes/sections/dealerSection.c#L109), [deckViewPanel.c:94](src/scenes/sections/deckViewPanel.c#L94)
-
-### 2. Memory Ownership
-
-**Stack-allocated singletons** (scene-scoped):
-```c
-static Deck_t g_test_deck;        // Scene singleton
-static GameContext_t g_game;      // Scene singleton
-InitDeck(&g_test_deck, 1);        // Init/Cleanup pattern
-```
-[→ sceneBlackjack.c:47-48](src/scenes/sceneBlackjack.c#L47-L48)
-
-**Heap-allocated components** (created/destroyed):
-```c
-Button_t* btn = CreateButton(x, y, w, h, "Hit");
-// ... use button ...
-DestroyButton(&btn);  // Frees memory, sets pointer to NULL
-```
-[→ button.c:18](src/scenes/components/button.c#L18)
-
-### 3. Data Flow Example: Button Click
-
-1. **User clicks** → `app.mouse.pressed` set by `a_DoInput()` (Archimedes)
-2. **Button detects** → `IsButtonClicked(button)` checks mouse bounds ([button.c:85](src/scenes/components/button.c#L85))
-3. **Scene handles** → `HandleBettingInput()` processes click ([sceneBlackjack.c:431](src/scenes/sceneBlackjack.c#L431))
-4. **Game logic** → `ProcessBettingInput()` validates and updates state ([game.c](src/game.c))
-5. **Render reflects** → `RenderButton()` shows updated state ([button.c:130](src/scenes/components/button.c#L130))
-
----
-
-## 🚀 Quick Start
+## How to build
 
 ### Prerequisites
-```bash
-# Ubuntu/Debian
-sudo apt-get install build-essential libsdl2-dev libsdl2-image-dev \
-    libsdl2-ttf-dev libsdl2-mixer-dev libcjson-dev
+- GCC (C11 support)
+- SDL2, SDL2_image, SDL2_ttf, SDL2_mixer
+- Archimedes and Daedalus libraries installed
+- make
 
-# Install Archimedes + Daedalus (see their repos for instructions)
-```
-
-### Build & Run
+### Native Build
 ```bash
-git clone <this-repo>
-cd card-fifty-two
+# Build the game
 make
-./bin/card-fifty-two
+
+# Build and run
+make run
+
+# Debug build
+make debug
+
+# Run tests
+make test
+
+# Verify architecture compliance
+make verify
 ```
 
-### Controls
-| Key | Action |
-|-----|--------|
-| **ESC** | Pause / Menu |
-| **H** | Hit (draw card) |
-| **S** | Stand (end turn) |
-| **D** | Double down |
-| **1-3** | Place bet (10/50/100) |
-| **V** | View draw pile |
-| **C** | View discard pile |
+### Web Build (Emscripten)
+```bash
+# Build for web (requires Emscripten SDK)
+make web
 
----
+# Serve locally at http://localhost:8000
+make serve
+```
 
-## 📚 For Developers
+See [Makefile](Makefile) for all available targets.
 
-**Architecture Documentation:**
-- [Data Structures](__architecture/baseline/01_data_structures.md) - Deck, Hand, Player, string patterns
-- [Components](__architecture/rendering/02_components.md) - Button, MenuItem, CardGridModal
-- [Scenes](__architecture/rendering/01_scenes.md) - Scene structure, FlexBox layout
+## Architecture
 
-**Design Documentation:**
-- [Game State Machine](__design/baseline/04_game_state_machine.md) - State transitions, input flow
-- [Blackjack Rules](__design/baseline/01_blackjack_core.md) - Game logic, scoring, dealer AI
+**Tech Stack**: C11, SDL2, Archimedes framework, Daedalus data structures
 
-**Key Files:**
-- [`CLAUDE.md`](CLAUDE.md) - Constitutional patterns for AI collaboration (explains "Everything's a table or array")
-- [`common.h`](include/common.h) - Global includes, constants, color palette
-- [`Makefile`](Makefile) - Build system with native + web targets
+**Project Structure**:
+```
+card-fifty-two/
+├── src/           # ~10,500 lines of modular C code
+│   ├── scenes/    # UI sections and components
+│   ├── loaders/   # DUF file parsers (enemies, events, trinkets)
+│   ├── terminal/  # Debug command system
+│   └── trinkets/  # Class-specific trinket implementations
+├── include/       # Header files
+├── data/          # DUF data files (enemies, events, affixes, trinkets)
+├── resources/     # Textures, audio, fonts
+├── test/          # Unit test suite
+└── Makefile
+```
 
----
+**Constitutional Patterns**:
+- No raw `malloc`—use `dString_t`, `dArray_t`, `dTable_t` from Daedalus
+- Value semantics (tables store data by value, not pointers)
+- Fitness functions enforce architectural rules (`make verify`)
+- Data-driven design with DUF format files
 
-## 🛠️ Technical Stack
+**Key Files**:
+- [src/main.c](src/main.c) - Entry point, initialization
+- [src/game.c](src/game.c) - Core game state machine
+- [include/structs.h](include/structs.h) - Core data structures
+- [Makefile](Makefile) - Build system with native + web targets
 
-- **Language**: C11
-- **Graphics**: SDL2 via Archimedes
-- **Data Structures**: Daedalus (`dArray_t`, `dTable_t`, `dString_t`)
-- **Build**: Make + Emscripten (web)
-- **Platforms**: Linux, macOS, Windows, Web
+## Design
 
----
+See comprehensive design documentation:
+- **[GAME_DESIGN_SUMMARY.md](GAME_DESIGN_SUMMARY.md)** - Complete game systems reference
+- **[GAME_DESIGN_BUILD_OPPORTUNITIES.md](GAME_DESIGN_BUILD_OPPORTUNITIES.md)** - Class system, trinkets, progression
 
-## 🎨 Design Philosophy
+**Key Systems**:
+- **Combat**: Blackjack hands are attacks (win = damage enemy, lose = lose chips)
+- **Card Tags**: Permanent upgrades (CURSED, VAMPIRIC, LUCKY, BRUTAL, DOUBLED)
+- **Trinkets**: Equipment with passive effects + random affixes (27 unique trinkets)
+- **Classes**: 3 playable classes with unique abilities and sanity thresholds
+- **Events**: Slay the Spire-style narrative encounters with unlockable choices
+- **Status Effects**: Enemy debuffs that manipulate betting and resources
 
-> **"Everything's a table or array"** - No raw pointers, no manual `malloc` for collections.
+## Gameplay
 
-**Constitutional Patterns** (from [`CLAUDE.md`](CLAUDE.md)):
-1. All collections use `dArray_t` or `dTable_t` (never raw arrays)
-2. Cards are value types (48 bytes, copied by value)
-3. Players/components are pointer types (heap allocated)
-4. Scenes use Archimedes delegate pattern (`app.delegate.logic`, `app.delegate.draw`)
-5. String handling: `char[]` for static, `dString_t*` for dynamic
+### Core Loop
+1. **Place Bet** (10-100 chips) - higher bet = more damage if you win
+2. **Play Blackjack** - hit, stand, double down against dealer AI
+3. **Deal Damage** - winning hands damage the enemy (based on bet amount)
+4. **Repeat** until enemy HP reaches 0 or you run out of chips
 
-**Benefits:**
-- ✅ Memory safety (Daedalus handles allocations)
-- ✅ Clear ownership model (who frees what)
-- ✅ Testable (mockable tables, clear data flow)
-- ✅ Portable (pure C, works on web via Emscripten)
+### Resources
+- **Chips**: Your health AND betting currency (lose if you hit 0)
+- **Sanity**: Mental stability (affects betting options and class abilities)
 
----
+### Classes
+- **Degenerate**: Risk/reward gambler (rewards hitting on 15+, scales with aggressive play)
+- **Dealer**: Control specialist (see enemy's face-down card at low sanity, mulligan mechanic)
+- **Detective**: Pattern recognition (deals damage based on pairs in play)
 
-## 🤝 Contributing
+### Card Tags (Permanent Upgrades)
+- **CURSED**: Deal 10 damage to enemy when drawn
+- **VAMPIRIC**: Deal 5 damage + heal 5 chips when drawn
+- **LUCKY**: +10% crit chance while in any hand
+- **BRUTAL**: +10% damage while in any hand
 
-This is a **reference implementation** demonstrating:
-- Clean C architecture without OOP
-- Scene/Section/Component separation
-- Memory-safe data structures
-- String handling best practices
-- Tutorial system implementation
-
-Pull requests welcome for:
-- Bug fixes
-- New card games (Poker, Hearts)
-- Component improvements
-- Documentation clarity
-
----
-
-## 📄 License
-
-[To be determined - likely GPL-2.0 to match Archimedes/Daedalus]
-
----
-
-## 🙏 Credits
-
-Built with:
-- [Archimedes](https://github.com/McCoy1701/Archimedes) by McCoy1701
-- [Daedalus](https://github.com/McCoy1701/Daedalus) by McCoy1701
-
-Part of the **MIDAS Toolchain** ecosystem.
-
----
-
-**Ready to explore?** Start with [`sceneBlackjack.c`](src/scenes/sceneBlackjack.c) → [`playerSection.c`](src/scenes/sections/playerSection.c) → [`button.c`](src/scenes/components/button.c) 🎴
+### Progression
+- Win combat → choose card to upgrade with tag
+- Encounter events → make narrative choices (gain chips, sanity, tags, trinkets)
+- Defeat bosses → unlock class trinket upgrades (planned)
+- Collect trinkets → equipment with passive effects + random stat affixes

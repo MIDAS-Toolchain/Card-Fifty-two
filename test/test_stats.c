@@ -225,7 +225,7 @@ TEST(placeBet_updates_bet_peak) {
     player.chips = 200;
     player.current_bet = 0;
     player.name = d_StringInit();
-    d_StringSet(player.name, "TestPlayer", 0);
+    d_StringSet(player.name, "TestPlayer");
 
     // Place bets (reset current_bet between hands like the game does)
     PlaceBet(&player, 10);
@@ -260,7 +260,7 @@ TEST(placeBet_calculates_correct_average) {
     player.chips = 500;
     player.current_bet = 0;
     player.name = d_StringInit();
-    d_StringSet(player.name, "TestPlayer", 0);
+    d_StringSet(player.name, "TestPlayer");
 
     // Place consistent bets (reset current_bet between hands like the game does)
     PlaceBet(&player, 10);
@@ -306,7 +306,7 @@ TEST(placeBet_double_down_tracking) {
     player.chips = 500;
     player.current_bet = 0;
     player.name = d_StringInit();
-    d_StringSet(player.name, "TestPlayer", 0);
+    d_StringSet(player.name, "TestPlayer");
 
     // Place initial bet of 10
     PlaceBet(&player, 10);

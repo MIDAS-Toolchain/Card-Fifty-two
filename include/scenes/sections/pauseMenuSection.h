@@ -18,7 +18,6 @@
 typedef enum PauseAction {
     PAUSE_ACTION_NONE = 0,
     PAUSE_ACTION_RESUME,
-    PAUSE_ACTION_STATS,
     PAUSE_ACTION_SETTINGS,
     PAUSE_ACTION_HELP,
     PAUSE_ACTION_QUIT_TO_MENU
@@ -29,12 +28,11 @@ typedef enum PauseAction {
 // ============================================================================
 
 typedef struct PauseMenuSection {
-    MenuItem_t* menu_items[5];        // Resume, Stats, Settings, Help, Return to Main Menu (vertical column layout)
+    MenuItem_t* menu_items[5];        // Resume, Settings, Help, Return to Main Menu (vertical column layout)
     MenuItemRow_t* confirm_items[2];  // Yes, No (for confirmation dialog - horizontal row layout)
     bool is_visible;                  // Whether pause menu is displayed
     bool show_confirm_dialog;         // Whether confirmation dialog is shown
-    bool show_stats_overlay;          // Whether stats overlay is shown
-    int selected_option;              // Currently selected main menu option (0-4)
+    int selected_option;              // Currently selected main menu option (0-3)
     int confirm_selected;             // Currently selected confirm option (0-1)
 } PauseMenuSection_t;
 

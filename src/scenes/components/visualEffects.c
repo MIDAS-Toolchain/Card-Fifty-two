@@ -79,8 +79,7 @@ void RenderDamageNumbers(VisualEffects_t* vfx) {
 
         // Debug: log rendering of healing numbers
         if (dmg->is_healing) {
-            d_LogRateLimitedF(D_LOG_RATE_LIMIT_FLAG_HASH_FORMAT_STRING, D_LOG_LEVEL_INFO,
-                             1, 0.5,  // 1 log per 0.5 seconds
+            d_LogInfoF_Throttle(1.0,  // 1 log per 1.0
                              "Rendering healing number: slot=%d, damage=%d, alpha=%.2f, active=%d",
                              i, dmg->damage, dmg->alpha, dmg->active);
         }

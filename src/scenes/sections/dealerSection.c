@@ -170,11 +170,14 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
 
     d_StringDestroy(info);
 
-    // Render enemy health bar (centered horizontally, slightly below dealer section top)
+    // Render enemy health bar (centered above enemy portrait)
     if (enemy && section->enemy_hp_bar) {
-        // Position using constants from sceneBlackjack.h
-        int bar_x = (SCREEN_WIDTH / 2) - (ENEMY_HP_BAR_WIDTH / 2) + ENEMY_HP_BAR_X_OFFSET;
-        int bar_y = ENEMY_HP_BAR_Y;
+        // Center horizontally in game area (matches enemy portrait centering)
+        int game_area_center_x = GetGameAreaX() + (GetGameAreaWidth() / 2);
+        int bar_x = game_area_center_x - (ENEMY_HP_BAR_WIDTH / 2) + ENEMY_PORTRAIT_X_OFFSET;
+
+        // Dynamic Y position based on screen height
+        int bar_y = GetEnemyHealthBarY();
 
         SetEnemyHealthBarEnemy(section->enemy_hp_bar, enemy);
         SetEnemyHealthBarPosition(section->enemy_hp_bar, bar_x, bar_y);
@@ -342,16 +345,17 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
             const dArray_t* tags = GetCardTags(card->card_id);
 
             if (tags && tags->count > 0) {
-                const int badge_w = 64;  // Fixed width (prevents covering card rank)
-                const int badge_h = 25;
+                // Scale badge dimensions with card scale
+                int badge_w = (int)(64 * card_scale);
+                int badge_h = (int)(25 * card_scale);
 
                 for (size_t t = 0; t < tags->count; t++) {
                     CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, t);
                     if (!tag) continue;
 
-                    // Position from top-right, offset by 12px right and 24px down
-                    int badge_x = x + CARD_WIDTH - badge_w - 3 + 12;
-                    int badge_y = y_pos - badge_h - 3 + 24 + ((int)t * (badge_h + 2));  // Stack vertically
+                    // Position from top-right, offset by 12px right and 24px down (scaled)
+                    int badge_x = x + (int)scaled_width - badge_w - (int)(3 * card_scale) + (int)(12 * card_scale);
+                    int badge_y = y_pos - badge_h - (int)(3 * card_scale) + (int)(24 * card_scale) + ((int)t * (badge_h + (int)(2 * card_scale)));  // Stack vertically
 
                     // Get tag color
                     int r, g, b;
@@ -365,14 +369,14 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
                     strncpy(truncated, full_tag_text, 3);
                     truncated[3] = '\0';
 
-                    // Black text, centered
+                    // Black text, centered (scaled)
                     aTextStyle_t tag_config = {
                         .type = FONT_ENTER_COMMAND,
                         .fg = {0, 0, 0, 255},
                         .align = TEXT_ALIGN_CENTER,
-                        .scale = 0.7f
+                        .scale = 0.7f * card_scale
                     };
-                    a_DrawText(truncated, badge_x + badge_w / 2, badge_y + 3, tag_config);
+                    a_DrawText(truncated, badge_x + badge_w / 2, badge_y - (int)(3 * card_scale), tag_config);
                 }
             }
         }
@@ -391,15 +395,19 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
                 CalculateCardFanPosition((size_t)hovered_index, hand_size, cards_y, &x, &y_pos);
             }
 
-            // Apply hover effects
-            float hover_t = section->hover_state.hover_amount;
-            float scale = 1.0f + (0.15f * hover_t);  // 1.0 → 1.15
-            int lift = (int)(-20.0f * hover_t);      // 0 → -20px
+            // Apply hover effects (on top of base card scale!)
+            float card_scale = GetCardScale();  // Base scale (1.0 or 1.2 at 1600x900)
+            float base_width = CARD_WIDTH * card_scale;
+            float base_height = CARD_HEIGHT * card_scale;
 
-            int scaled_width = (int)(CARD_WIDTH * scale);
-            int scaled_height = (int)(CARD_HEIGHT * scale);
-            int scaled_x = x - (scaled_width - CARD_WIDTH) / 2;  // Center scaling
-            int scaled_y = y_pos + lift - (scaled_height - CARD_HEIGHT) / 2;
+            float hover_t = section->hover_state.hover_amount;
+            float hover_scale = 1.0f + (0.15f * hover_t);  // 1.0 → 1.15
+            int lift = (int)(-20.0f * hover_t);             // 0 → -20px
+
+            int scaled_width = (int)(base_width * hover_scale);
+            int scaled_height = (int)(base_height * hover_scale);
+            int scaled_x = x - (scaled_width - (int)base_width) / 2;  // Center scaling
+            int scaled_y = y_pos + lift - (scaled_height - (int)base_height) / 2;
 
             // Use Archimedes image blitting
             if (card->face_up && card->texture && card->texture->surface) {
@@ -422,8 +430,8 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
                 d_StringFormat(ace_text, "(%d)", ace_value);
 
                 // Top-left corner, 20px down from top (scaled)
-                int text_x = scaled_x + (int)(4 * scale);
-                int text_y = scaled_y + (int)(20 * scale);
+                int text_x = scaled_x + (int)(4 * card_scale * hover_scale);
+                int text_y = scaled_y + (int)(20 * card_scale * hover_scale);
 
                 // Lighter blue text (dodger blue)
                 a_DrawText((char*)d_StringPeek(ace_text), text_x, text_y,
@@ -440,7 +448,7 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
                         bool is_valid = IsCardValidTarget(card, trinket_slot);
 
                         // Draw bright border to indicate this card will be selected on click
-                        int border_thickness = (int)(3 * scale);  // Thicker border for visibility
+                        int border_thickness = (int)(3 * card_scale * hover_scale);  // Thicker border for visibility
                         if (is_valid) {
                             // Bright green border (valid target + hovered = selectable)
                             for (int i = 0; i < border_thickness; i++) {
@@ -465,16 +473,16 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
                 const dArray_t* tags = GetCardTags(card->card_id);
 
                 if (tags && tags->count > 0) {
-                    const int badge_w = (int)(64 * scale);  // Scaled width
-                    const int badge_h = (int)(25 * scale);
+                    const int badge_w = (int)(64 * card_scale * hover_scale);  // Scaled width
+                    const int badge_h = (int)(25 * card_scale * hover_scale);
 
                     for (size_t t = 0; t < tags->count; t++) {
                         CardTag_t* tag = (CardTag_t*)d_ArrayGet((dArray_t*)tags, t);
                         if (!tag) continue;
 
                         // Position from top-right, offset by 12px right and 24px down (scaled)
-                        int badge_x = scaled_x + scaled_width - badge_w - (int)(3 * scale) + (int)(12 * scale);
-                        int badge_y = scaled_y - badge_h - (int)(3 * scale) + (int)(24 * scale) + ((int)t * (badge_h + (int)(2 * scale)));
+                        int badge_x = scaled_x + scaled_width - badge_w - (int)(3 * card_scale * hover_scale) + (int)(12 * card_scale * hover_scale);
+                        int badge_y = scaled_y - badge_h - (int)(3 * card_scale * hover_scale) + (int)(24 * card_scale * hover_scale) + ((int)t * (badge_h + (int)(2 * card_scale * hover_scale)));
 
                         // Get tag color
                         int r, g, b;
@@ -493,9 +501,9 @@ void RenderDealerSection(DealerSection_t* section, Player_t* dealer, Enemy_t* en
                             .type = FONT_ENTER_COMMAND,
                             .fg = {0, 0, 0, 255},
                             .align = TEXT_ALIGN_CENTER,
-                            .scale = 0.7f * scale
+                            .scale = 0.7f * card_scale * hover_scale
                         };
-                        a_DrawText(truncated, badge_x + badge_w / 2, badge_y + (int)(3 * scale), tag_config);
+                        a_DrawText(truncated, badge_x + badge_w / 2, badge_y + (int)(3 * card_scale * hover_scale), tag_config);
                     }
                 }
             }

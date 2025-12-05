@@ -126,6 +126,14 @@ Terminal_t* InitTerminal(void) {
         return NULL;
     }
 
+    // Initialize backspace hold-to-delete state (Problem 4)
+    terminal->backspace_hold_timer = 0.0f;
+    terminal->backspace_repeat_delay = 0.5f;  // 500ms initial delay
+    terminal->backspace_repeat_rate = 0.05f;  // 50ms between repeats (20/sec)
+
+    // Initialize scroll state (Problem 5)
+    terminal->user_has_scrolled = false;
+
     // Register built-in commands
     RegisterBuiltinCommands(terminal);
 
@@ -333,7 +341,7 @@ void UpdateAutocompleteSuggestion(Terminal_t* terminal) {
         if (match_ptr && *match_ptr) {
             const char* match = *match_ptr;
             const char* remaining = match + input_len;  // Skip the part already typed
-            d_StringSet(terminal->autocomplete_suggestion, remaining, strlen(remaining));
+            d_StringSet(terminal->autocomplete_suggestion, remaining);
         }
     } else if (terminal->autocomplete_matches->count > 1) {
         // Multiple matches - find common prefix
@@ -361,7 +369,7 @@ void UpdateAutocompleteSuggestion(Terminal_t* terminal) {
             if (common_len > input_len) {
                 const char* remaining = first + input_len;
                 size_t remaining_len = common_len - input_len;
-                d_StringSet(terminal->autocomplete_suggestion, remaining, remaining_len);
+                d_StringSet(terminal->autocomplete_suggestion, remaining);
             }
         }
     }
@@ -439,6 +447,9 @@ void CycleAutocompleteSuggestion(Terminal_t* terminal) {
 
         terminal->cursor_position = (int)d_StringGetLength(terminal->input_buffer);
     }
+
+    // Clear ghost text when cycling (Problem 1: prevent ghost text after completion)
+    d_StringClear(terminal->autocomplete_suggestion);
 
     // Clean up command prefix
     if (cmd_prefix) d_StringDestroy(cmd_prefix);
@@ -546,7 +557,7 @@ static void UpdateHighlightedText(Terminal_t* terminal) {
     int len = end - start;
 
     if (len > 0) {
-        d_StringSet(terminal->highlighted_text, buffer + start, len);
+        d_StringSet(terminal->highlighted_text, buffer + start);
     } else {
         d_StringClear(terminal->highlighted_text);
     }
@@ -554,11 +565,17 @@ static void UpdateHighlightedText(Terminal_t* terminal) {
 
 /**
  * FindWordStart - Find start of word at position (move left until whitespace)
+ * Problem 3 fix: Skip trailing spaces before finding word boundary
  */
 static int FindWordStart(const char* text, int pos) {
     if (!text || pos <= 0) return 0;
 
-    // Move left until whitespace or start
+    // Skip trailing spaces first (Problem 3: handle "wordhere |" case)
+    while (pos > 0 && isspace((unsigned char)text[pos - 1])) {
+        pos--;
+    }
+
+    // Then move left until whitespace or start
     while (pos > 0 && !isspace((unsigned char)text[pos - 1])) {
         pos--;
     }
@@ -593,6 +610,7 @@ void ToggleTerminal(Terminal_t* terminal) {
 
     if (terminal->is_visible) {
         SDL_StartTextInput();  // Enable SDL text input for proper character handling
+        terminal->user_has_scrolled = false;  // Reset scroll on open (Problem 5)
         d_LogInfo("Terminal opened");
     } else {
         SDL_StopTextInput();   // Disable SDL text input
@@ -608,6 +626,56 @@ bool IsTerminalVisible(const Terminal_t* terminal) {
 // TERMINAL UPDATE & RENDER
 // ============================================================================
 
+/**
+ * PerformBackspaceDeletion - Helper to delete characters at cursor (Problem 4)
+ * @param ctrl_held - If true, delete whole word; if false, delete one char
+ */
+static void PerformBackspaceDeletion(Terminal_t* terminal, bool ctrl_held) {
+    if (!terminal || terminal->cursor_position <= 0) return;
+
+    const char* current_text = d_StringPeek(terminal->input_buffer);
+    int current_len = (int)d_StringGetLength(terminal->input_buffer);
+
+    int delete_start_pos = terminal->cursor_position;
+
+    if (ctrl_held) {
+        // Ctrl+Backspace - delete entire word before cursor
+        delete_start_pos = FindWordStart(current_text, terminal->cursor_position);
+    } else {
+        // Normal backspace - delete one character
+        delete_start_pos = terminal->cursor_position - 1;
+    }
+
+    // Build new string: [before delete_start] + [after cursor]
+    dString_t* new_buffer = d_StringInit();
+
+    // Part 1: Text before deletion point
+    if (delete_start_pos > 0) {
+        d_StringAppend(new_buffer, current_text, delete_start_pos);
+    }
+
+    // Part 2: Text after cursor (skip the deleted portion)
+    if (terminal->cursor_position < current_len) {
+        d_StringAppend(new_buffer, current_text + terminal->cursor_position,
+                       current_len - terminal->cursor_position);
+    }
+
+    // Replace buffer with new string
+    d_StringClear(terminal->input_buffer);
+    const char* new_text = d_StringPeek(new_buffer);
+    if (new_text && strlen(new_text) > 0) {
+        d_StringAppend(terminal->input_buffer, new_text, strlen(new_text));
+    }
+    d_StringDestroy(new_buffer);
+
+    // Move cursor to deletion start point
+    terminal->cursor_position = delete_start_pos;
+
+    // Update autocomplete suggestions (reset cycling)
+    terminal->autocomplete_index = -1;
+    UpdateAutocompleteSuggestion(terminal);
+}
+
 void UpdateTerminal(Terminal_t* terminal, float dt) {
     if (!terminal || !terminal->is_visible) return;
 
@@ -616,6 +684,36 @@ void UpdateTerminal(Terminal_t* terminal, float dt) {
     if (terminal->cursor_blink_timer >= 0.5f) {
         terminal->cursor_blink_timer = 0.0f;
         terminal->cursor_visible = !terminal->cursor_visible;
+    }
+
+    // Backspace hold-to-delete (Problem 4)
+    // Check if backspace is held (SDL_GetKeyboardState bypasses Archimedes' repeat blocking)
+    const Uint8* keyboard_state = SDL_GetKeyboardState(NULL);
+    bool backspace_held = keyboard_state[SDL_SCANCODE_BACKSPACE];
+    SDL_Keymod mods = SDL_GetModState();
+    bool ctrl_held = (mods & KMOD_CTRL) != 0;
+
+    if (backspace_held) {
+        terminal->backspace_hold_timer += dt;
+
+        // After initial delay, repeat at configured rate
+        if (terminal->backspace_hold_timer >= terminal->backspace_repeat_delay) {
+            // Calculate how many repeats should have fired
+            float time_since_delay = terminal->backspace_hold_timer - terminal->backspace_repeat_delay;
+            int repeats_to_fire = (int)(time_since_delay / terminal->backspace_repeat_rate) + 1;
+
+            // Fire deletions
+            for (int i = 0; i < repeats_to_fire && terminal->cursor_position > 0; i++) {
+                PerformBackspaceDeletion(terminal, ctrl_held);
+            }
+
+            // Reset timer to prevent firing again until next interval
+            terminal->backspace_hold_timer = terminal->backspace_repeat_delay +
+                                              (repeats_to_fire * terminal->backspace_repeat_rate);
+        }
+    } else {
+        // Reset timer when backspace is released
+        terminal->backspace_hold_timer = 0.0f;
     }
 }
 
@@ -630,14 +728,33 @@ void HandleTerminalInput(Terminal_t* terminal) {
     int max_scroll_offset = (total_content_height - visible_height) / line_height;
     if (max_scroll_offset < 0) max_scroll_offset = 0;
 
-    // Mouse wheel scrolling
+    // Mouse wheel scrolling (Problem 5: smooth incremental scrolling)
+    // Process wheel value incrementally (±1 at a time) for smooth scrolling
     if (app.mouse.wheel != 0) {
-        int scroll_delta = -app.mouse.wheel * 3;  // Scroll 3 lines per wheel tick (negative because wheel up = scroll up)
-        terminal->scroll_offset += scroll_delta;
+        // DEBUG: Log raw wheel value
+        d_LogInfoF("[TERMINAL SCROLL] Raw wheel value: %d, current offset: %d, max: %d",
+                   app.mouse.wheel, terminal->scroll_offset, max_scroll_offset);
 
-        // Clamp to valid range
-        if (terminal->scroll_offset < 0) terminal->scroll_offset = 0;
-        if (terminal->scroll_offset > max_scroll_offset) terminal->scroll_offset = max_scroll_offset;
+        // Determine direction and process one line at a time
+        int wheel_direction = (app.mouse.wheel > 0) ? 1 : -1;
+        int lines_to_scroll = abs(app.mouse.wheel);
+
+        // Cap to reasonable maximum to prevent huge jumps from exotic hardware
+        if (lines_to_scroll > 3) lines_to_scroll = 3;
+
+        // Scroll one line at a time for smooth movement
+        for (int i = 0; i < lines_to_scroll; i++) {
+            terminal->scroll_offset -= wheel_direction;  // Negative because wheel up = scroll up
+
+            // Clamp to valid range
+            if (terminal->scroll_offset < 0) terminal->scroll_offset = 0;
+            if (terminal->scroll_offset > max_scroll_offset) terminal->scroll_offset = max_scroll_offset;
+        }
+
+        d_LogInfoF("[TERMINAL SCROLL] After scroll: offset=%d", terminal->scroll_offset);
+
+        // Mark that user has manually scrolled (Problem 5: disable auto-scroll)
+        terminal->user_has_scrolled = true;
     }
 
     // Scrollbar thumb dragging
@@ -670,21 +787,31 @@ void HandleTerminalInput(Terminal_t* terminal) {
             terminal->scrollbar_dragging = true;
             terminal->drag_start_y = app.mouse.y;
             terminal->drag_start_scroll = terminal->scroll_offset;
+            d_LogInfoF("[SCROLLBAR] Start drag at y=%d, scroll=%d", app.mouse.y, terminal->scroll_offset);
         }
 
         // During drag
         if (terminal->scrollbar_dragging && app.mouse.pressed) {
             int mouse_delta = app.mouse.y - terminal->drag_start_y;
             float scroll_delta = ((float)mouse_delta / (float)scrollbar_height) * (float)max_scroll_offset;
-            terminal->scroll_offset = terminal->drag_start_scroll + (int)scroll_delta;
+            int new_offset = terminal->drag_start_scroll + (int)scroll_delta;
+
+            d_LogInfoF("[SCROLLBAR] Dragging: mouse_delta=%d, scroll_delta=%.2f, new_offset=%d (was %d)",
+                       mouse_delta, scroll_delta, new_offset, terminal->scroll_offset);
+
+            terminal->scroll_offset = new_offset;
 
             // Clamp to valid range
             if (terminal->scroll_offset < 0) terminal->scroll_offset = 0;
             if (terminal->scroll_offset > max_scroll_offset) terminal->scroll_offset = max_scroll_offset;
+
+            // Mark that user has manually scrolled (Problem 5: disable auto-scroll)
+            terminal->user_has_scrolled = true;
         }
 
-        // Stop dragging
-        if (!app.mouse.pressed) {
+        // Stop dragging (Problem 5: removed snap-to-bottom on release)
+        if (!app.mouse.pressed && terminal->scrollbar_dragging) {
+            d_LogInfoF("[SCROLLBAR] Stop drag at offset=%d", terminal->scroll_offset);
             terminal->scrollbar_dragging = false;
         }
     }
@@ -716,7 +843,7 @@ void HandleTerminalInput(Terminal_t* terminal) {
 
             // Add to history
             dString_t* history_entry = d_StringInit();
-            d_StringSet(history_entry, command, strlen(command));
+            d_StringSet(history_entry, command);
             d_ArrayAppend(terminal->command_history, &history_entry);
 
             // Echo command (use TerminalPrint to add FlexBox item too)
@@ -729,6 +856,25 @@ void HandleTerminalInput(Terminal_t* terminal) {
             d_StringClear(terminal->input_buffer);
             terminal->cursor_position = 0;
             terminal->history_index = -1;
+
+            // Clear autocomplete state (Problem 2: prevent stale menu after command)
+            d_ArrayClear(terminal->autocomplete_matches);
+            d_StringClear(terminal->autocomplete_suggestion);
+            terminal->autocomplete_index = -1;
+
+            // Smart scroll reset (Problem 5: only auto-scroll if already at bottom)
+            // If user was viewing old output, keep them there after command
+            if (total_content_height > visible_height) {
+                int current_max_offset = (total_content_height - visible_height) / line_height;
+                if (terminal->scroll_offset >= current_max_offset) {
+                    // User is at bottom - keep auto-scrolling enabled
+                    terminal->user_has_scrolled = false;
+                }
+                // else: user scrolled up - keep them there
+            } else {
+                // Content fits on screen - reset to enable auto-scroll
+                terminal->user_has_scrolled = false;
+            }
         }
         return;
     }
@@ -751,7 +897,8 @@ void HandleTerminalInput(Terminal_t* terminal) {
         // Otherwise, let space be typed normally (handled in SDL_TEXTINPUT below)
     }
 
-    // Backspace - Delete character or word at cursor position
+    // Backspace - Delete character or word at cursor position (Problem 4)
+    // Note: Hold-to-delete is handled in UpdateTerminal(), this handles initial press only
     if (app.keyboard[SDL_SCANCODE_BACKSPACE]) {
         app.keyboard[SDL_SCANCODE_BACKSPACE] = 0;
 
@@ -761,49 +908,8 @@ void HandleTerminalInput(Terminal_t* terminal) {
         SDL_Keymod mods = SDL_GetModState();
         bool ctrl_held = (mods & KMOD_CTRL) != 0;
 
-        if (terminal->cursor_position > 0) {
-            const char* current_text = d_StringPeek(terminal->input_buffer);
-            int current_len = (int)d_StringGetLength(terminal->input_buffer);
-
-            int delete_start_pos = terminal->cursor_position;
-
-            if (ctrl_held) {
-                // Ctrl+Backspace - delete entire word before cursor
-                delete_start_pos = FindWordStart(current_text, terminal->cursor_position);
-            } else {
-                // Normal backspace - delete one character
-                delete_start_pos = terminal->cursor_position - 1;
-            }
-
-            // Build new string: [before delete_start] + [after cursor]
-            dString_t* new_buffer = d_StringInit();
-
-            // Part 1: Text before deletion point
-            if (delete_start_pos > 0) {
-                d_StringAppend(new_buffer, current_text, delete_start_pos);
-            }
-
-            // Part 2: Text after cursor (skip the deleted portion)
-            if (terminal->cursor_position < current_len) {
-                d_StringAppend(new_buffer, current_text + terminal->cursor_position,
-                               current_len - terminal->cursor_position);
-            }
-
-            // Replace buffer with new string
-            d_StringClear(terminal->input_buffer);
-            const char* new_text = d_StringPeek(new_buffer);
-            if (new_text && strlen(new_text) > 0) {
-                d_StringAppend(terminal->input_buffer, new_text, strlen(new_text));
-            }
-            d_StringDestroy(new_buffer);
-
-            // Move cursor to deletion start point
-            terminal->cursor_position = delete_start_pos;
-
-            // Update autocomplete suggestions (reset cycling)
-            terminal->autocomplete_index = -1;
-            UpdateAutocompleteSuggestion(terminal);
-        }
+        // Use helper function for deletion (same logic as hold-to-delete)
+        PerformBackspaceDeletion(terminal, ctrl_held);
         return;
     }
 
@@ -916,12 +1022,52 @@ void HandleTerminalInput(Terminal_t* terminal) {
         return;
     }
 
-    // Up arrow - Previous command
+    // Up arrow - Navigate autocomplete menu or previous command (Problem 2)
     if (app.keyboard[SDL_SCANCODE_UP]) {
         app.keyboard[SDL_SCANCODE_UP] = 0;
 
-        ClearSelection(terminal);  // Clear selection when navigating history
+        ClearSelection(terminal);  // Clear selection when navigating
 
+        // If autocomplete menu is open, navigate it instead of history
+        if (terminal->autocomplete_matches->count > 0) {
+            // Cycle backwards through autocomplete menu
+            if (terminal->autocomplete_index <= 0) {
+                // Wrap to last item
+                terminal->autocomplete_index = (int)terminal->autocomplete_matches->count - 1;
+            } else {
+                terminal->autocomplete_index--;
+            }
+
+            // Update input buffer to show current selection
+            const char* input = d_StringPeek(terminal->input_buffer);
+            const char* space_pos = strchr(input, ' ');
+            bool is_argument_mode = (space_pos != NULL);
+
+            dString_t* cmd_prefix = NULL;
+            if (is_argument_mode) {
+                cmd_prefix = d_StringInit();
+                size_t prefix_len = (space_pos - input) + 1;
+                d_StringAppend(cmd_prefix, input, prefix_len);
+            }
+
+            char** match_ptr = (char**)d_ArrayGet(terminal->autocomplete_matches, terminal->autocomplete_index);
+            if (match_ptr && *match_ptr) {
+                d_StringClear(terminal->input_buffer);
+                if (is_argument_mode) {
+                    d_StringAppend(terminal->input_buffer, d_StringPeek(cmd_prefix), d_StringGetLength(cmd_prefix));
+                    d_StringAppend(terminal->input_buffer, *match_ptr, strlen(*match_ptr));
+                } else {
+                    d_StringAppend(terminal->input_buffer, *match_ptr, strlen(*match_ptr));
+                }
+                terminal->cursor_position = (int)d_StringGetLength(terminal->input_buffer);
+            }
+
+            if (cmd_prefix) d_StringDestroy(cmd_prefix);
+            d_StringClear(terminal->autocomplete_suggestion);
+            return;
+        }
+
+        // No autocomplete menu - navigate command history
         if (terminal->command_history->count > 0) {
             if (terminal->history_index == -1) {
                 terminal->history_index = terminal->command_history->count - 1;
@@ -933,7 +1079,7 @@ void HandleTerminalInput(Terminal_t* terminal) {
             if (cmd_ptr && *cmd_ptr) {
                 d_StringClear(terminal->input_buffer);
                 const char* cmd = d_StringPeek(*cmd_ptr);
-                d_StringSet(terminal->input_buffer, cmd, strlen(cmd));
+                d_StringSet(terminal->input_buffer, cmd);
 
                 // Move cursor to end of loaded command
                 terminal->cursor_position = (int)d_StringGetLength(terminal->input_buffer);
@@ -942,12 +1088,51 @@ void HandleTerminalInput(Terminal_t* terminal) {
         return;
     }
 
-    // Down arrow - Next command
+    // Down arrow - Navigate autocomplete menu or next command (Problem 2)
     if (app.keyboard[SDL_SCANCODE_DOWN]) {
         app.keyboard[SDL_SCANCODE_DOWN] = 0;
 
-        ClearSelection(terminal);  // Clear selection when navigating history
+        ClearSelection(terminal);  // Clear selection when navigating
 
+        // If autocomplete menu is open, navigate it instead of history
+        if (terminal->autocomplete_matches->count > 0) {
+            // Cycle forwards through autocomplete menu
+            terminal->autocomplete_index++;
+            if (terminal->autocomplete_index >= (int)terminal->autocomplete_matches->count) {
+                // Wrap to first item
+                terminal->autocomplete_index = 0;
+            }
+
+            // Update input buffer to show current selection
+            const char* input = d_StringPeek(terminal->input_buffer);
+            const char* space_pos = strchr(input, ' ');
+            bool is_argument_mode = (space_pos != NULL);
+
+            dString_t* cmd_prefix = NULL;
+            if (is_argument_mode) {
+                cmd_prefix = d_StringInit();
+                size_t prefix_len = (space_pos - input) + 1;
+                d_StringAppend(cmd_prefix, input, prefix_len);
+            }
+
+            char** match_ptr = (char**)d_ArrayGet(terminal->autocomplete_matches, terminal->autocomplete_index);
+            if (match_ptr && *match_ptr) {
+                d_StringClear(terminal->input_buffer);
+                if (is_argument_mode) {
+                    d_StringAppend(terminal->input_buffer, d_StringPeek(cmd_prefix), d_StringGetLength(cmd_prefix));
+                    d_StringAppend(terminal->input_buffer, *match_ptr, strlen(*match_ptr));
+                } else {
+                    d_StringAppend(terminal->input_buffer, *match_ptr, strlen(*match_ptr));
+                }
+                terminal->cursor_position = (int)d_StringGetLength(terminal->input_buffer);
+            }
+
+            if (cmd_prefix) d_StringDestroy(cmd_prefix);
+            d_StringClear(terminal->autocomplete_suggestion);
+            return;
+        }
+
+        // No autocomplete menu - navigate command history
         if (terminal->history_index != -1) {
             if (terminal->history_index < (int)terminal->command_history->count - 1) {
                 terminal->history_index++;
@@ -955,7 +1140,7 @@ void HandleTerminalInput(Terminal_t* terminal) {
                 if (cmd_ptr && *cmd_ptr) {
                     d_StringClear(terminal->input_buffer);
                     const char* cmd = d_StringPeek(*cmd_ptr);
-                    d_StringSet(terminal->input_buffer, cmd, strlen(cmd));
+                    d_StringSet(terminal->input_buffer, cmd);
 
                     // Move cursor to end of loaded command
                     terminal->cursor_position = (int)d_StringGetLength(terminal->input_buffer);
@@ -1102,7 +1287,7 @@ void RenderTerminal(Terminal_t* terminal) {
 
                 // Build display string
                 dString_t* display_text = d_StringInit();
-                d_StringSet(display_text, *match_ptr, strlen(*match_ptr));
+                d_StringSet(display_text, *match_ptr);
 
                 if (handler_ptr && *handler_ptr && (*handler_ptr)->help_text) {
                     const char* help = d_StringPeek((*handler_ptr)->help_text);
@@ -1150,7 +1335,7 @@ void RenderTerminal(Terminal_t* terminal) {
 
                 // Build display string: "command_name - help text"
                 dString_t* display_text = d_StringInit();
-                d_StringSet(display_text, *match_ptr, strlen(*match_ptr));
+                d_StringSet(display_text, *match_ptr);
 
                 if (handler_ptr && *handler_ptr && (*handler_ptr)->help_text) {
                     const char* help = d_StringPeek((*handler_ptr)->help_text);
@@ -1251,7 +1436,7 @@ void TerminalPrint(Terminal_t* terminal, const char* format, ...) {
 
     // Create dString_t for output
     dString_t* line = d_StringInit();
-    d_StringSet(line, buffer, strlen(buffer));
+    d_StringSet(line, buffer);
 
     // Add to output log
     d_ArrayAppend(terminal->output_log, &line);
@@ -1262,18 +1447,20 @@ void TerminalPrint(Terminal_t* terminal, const char* format, ...) {
         a_FlexLayout(terminal->output_layout);  // Recalculate positions
     }
 
-    // Auto-scroll to bottom (keep terminal "sticky" to latest output)
-    int term_height = (int)(GetWindowHeight() * TERMINAL_HEIGHT_RATIO);
-    int visible_height = term_height - 60;  // Leave room for input line
-    int line_height = 24 + 8;  // Item height + gap
-    int total_content_height = (int)(terminal->output_log->count * line_height);
+    // Auto-scroll to bottom (Problem 5: only if user hasn't manually scrolled)
+    if (!terminal->user_has_scrolled) {
+        int term_height = (int)(GetWindowHeight() * TERMINAL_HEIGHT_RATIO);
+        int visible_height = term_height - 60;  // Leave room for input line
+        int line_height = 24 + 8;  // Item height + gap
+        int total_content_height = (int)(terminal->output_log->count * line_height);
 
-    if (total_content_height > visible_height) {
-        // Content exceeds visible area - scroll to show bottom
-        terminal->scroll_offset = (total_content_height - visible_height) / line_height;
-    } else {
-        // Content fits - no scrolling needed
-        terminal->scroll_offset = 0;
+        if (total_content_height > visible_height) {
+            // Content exceeds visible area - scroll to show bottom
+            terminal->scroll_offset = (total_content_height - visible_height) / line_height;
+        } else {
+            // Content fits - no scrolling needed
+            terminal->scroll_offset = 0;
+        }
     }
 
     // Trim old lines if exceeding max
@@ -1354,12 +1541,12 @@ void RegisterCommand(Terminal_t* terminal, const char* name, CommandFunc_t execu
     }
 
     handler->name = d_StringInit();
-    d_StringSet(handler->name, name, strlen(name));
+    d_StringSet(handler->name, name);
 
     handler->execute = execute;
 
     handler->help_text = d_StringInit();
-    d_StringSet(handler->help_text, help_text, strlen(help_text));
+    d_StringSet(handler->help_text, help_text);
 
     handler->suggest_args = suggest_args;  // Optional: NULL if no argument autocomplete
 

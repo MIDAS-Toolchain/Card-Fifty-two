@@ -132,9 +132,20 @@ static inline void CalculateCardFanPosition(size_t card_index, size_t hand_size,
 #define ENEMY_PORTRAIT_Y_OFFSET -94     // Offset portrait from vertical center (negative = up)
 
 // Combat UI positioning (enemy HP bar and damage numbers)
-#define ENEMY_HP_BAR_X_OFFSET   -300    // Offset from center (0 = centered, + = right, - = left)
-#define ENEMY_HP_BAR_Y          45   // Y position (below top bar which ends at 45)
-#define DAMAGE_NUMBER_Y_OFFSET  10   // Spawn Y offset above HP bar
+#define ENEMY_HP_BAR_Y_POSITION  156     // Y position above enemy portrait (centered horizontally) - moved up 24px
+#define DAMAGE_NUMBER_Y_OFFSET   10      // Spawn Y offset above HP bar
+
+// Helper function to get dynamic health bar Y position based on screen height
+static inline int GetEnemyHealthBarY(void) {
+    int window_height = GetWindowHeight();
+    if (window_height <= 768) {
+        return 80;  // 1366x768: move way up to avoid overlap
+    } else if (window_height <= 800) {
+        return 100;  // 1200x800: move up significantly
+    } else {
+        return ENEMY_HP_BAR_Y_POSITION;  // Default 156 for 1600x900+
+    }
+}
 
 // Colors (palette-based)
 #define TABLE_FELT_GREEN        ((aColor_t){37, 86, 46, 255})   // #25562e - dark green
@@ -261,5 +272,23 @@ void TriggerSidebarBetAnimation(int bet_amount);
  * @return true if card can be targeted by this trinket
  */
 bool IsCardValidTarget(const struct Card* card, int trinket_slot);
+
+/**
+ * CleanupBlackjackScene - Cleanup blackjack scene resources
+ *
+ * Frees all scene components and resets state.
+ * Called when exiting the blackjack scene.
+ */
+void CleanupBlackjackScene(void);
+
+/**
+ * ResumeBlackjackScene - Resume blackjack scene without re-initializing
+ *
+ * Restores scene delegates after pausing for settings.
+ * Preserves all game state (HP, cards, trinkets, enemy, act progress)
+ *
+ * Use this instead of InitBlackjackScene() when returning from settings.
+ */
+void ResumeBlackjackScene(void);
 
 #endif // SCENE_BLACKJACK_H

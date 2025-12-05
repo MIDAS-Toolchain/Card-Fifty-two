@@ -88,8 +88,8 @@ void DegenerateGambitPassive(Player_t* player, GameContext_t* game, Trinket_t* s
         VisualEffects_t* vfx = GetVisualEffects();
         if (vfx) {
             VFX_SpawnDamageNumber(vfx, damage,
-                                 SCREEN_WIDTH / 2 + ENEMY_HP_BAR_X_OFFSET,
-                                 ENEMY_HP_BAR_Y - DAMAGE_NUMBER_Y_OFFSET,
+                                 GetGameAreaX() + (GetGameAreaWidth() / 2) + ENEMY_PORTRAIT_X_OFFSET,
+                                 GetEnemyHealthBarY() - DAMAGE_NUMBER_Y_OFFSET,
                                  false, is_crit, false);  // Pass crit flag, not rake
         }
 
@@ -172,7 +172,7 @@ Trinket_t* CreateDegenerateGambitTrinket(void) {
     trinket->passive_trigger = GAME_EVENT_CARD_DRAWN;  // Fires when player HITs
     trinket->passive_effect = DegenerateGambitPassive;
     d_StringSet(trinket->passive_description,
-                "When you HIT on 15+: Deal 10 damage (+5 per active use)", 0);
+                "When you HIT on 15+: Deal 10 damage (+5 per active use)");
 
     // Active setup
     trinket->active_target_type = TRINKET_TARGET_CARD;
@@ -180,7 +180,7 @@ Trinket_t* CreateDegenerateGambitTrinket(void) {
     trinket->active_cooldown_max = 3;
     trinket->active_cooldown_current = 0;  // Ready on start
     d_StringSet(trinket->active_description,
-                "Target a card rank 2-9, double its value (max 10) for this hand. Cooldown: 3 turns", 0);
+                "Target a card rank 2-9, double its value (max 10) for this hand. Cooldown: 3 turns");
 
     // State initialization
     trinket->passive_damage_bonus = 0;  // Starts at 10, scales to 15, 20, etc.

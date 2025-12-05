@@ -10,6 +10,7 @@
 #include "trinket.h"  // For old trinket system (deprecated)
 #include "loaders/trinketLoader.h"  // For new DUF trinket system
 #include "trinketDrop.h"  // For RollAffixes()
+#include "trinketEffects.h"  // For ExecuteTrinketEffect()
 #include <string.h>
 
 // ============================================================================
@@ -131,8 +132,8 @@ EventEncounter_t* CreateEvent(const char* title, const char* description, EventT
         return NULL;
     }
 
-    d_StringSet(event->title, title, 0);
-    d_StringSet(event->description, description, 0);
+    d_StringSet(event->title, title);
+    d_StringSet(event->description, description);
 
     d_LogInfoF("Created event: %s", title);
     return event;
@@ -213,8 +214,8 @@ void AddEventChoice(EventEncounter_t* event, const char* text, const char* resul
         return;
     }
 
-    d_StringSet(choice.text, text, 0);
-    d_StringSet(choice.result_text, result_text, 0);
+    d_StringSet(choice.text, text);
+    d_StringSet(choice.result_text, result_text);
 
     // Copy choice into array (value type, per ADR-006)
     d_ArrayAppend(event->choices, &choice);
@@ -550,7 +551,7 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
 
             // Deep-copy base_trinket_key
             if (!dest->base_trinket_key) dest->base_trinket_key = d_StringInit();
-            d_StringSet(dest->base_trinket_key, d_StringPeek(src->base_trinket_key), 0);
+            d_StringSet(dest->base_trinket_key, d_StringPeek(src->base_trinket_key));
 
             // Copy basic fields
             dest->rarity = src->rarity;
@@ -561,7 +562,7 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
             // Deep-copy affixes (pre-rolled!)
             for (int i = 0; i < src->affix_count; i++) {
                 if (!dest->affixes[i].stat_key) dest->affixes[i].stat_key = d_StringInit();
-                d_StringSet(dest->affixes[i].stat_key, d_StringPeek(src->affixes[i].stat_key), 0);
+                d_StringSet(dest->affixes[i].stat_key, d_StringPeek(src->affixes[i].stat_key));
                 dest->affixes[i].rolled_value = src->affixes[i].rolled_value;
             }
 
@@ -570,7 +571,7 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
             dest->trinket_stack_value = src->trinket_stack_value;
             if (src->trinket_stack_stat) {
                 if (!dest->trinket_stack_stat) dest->trinket_stack_stat = d_StringInit();
-                d_StringSet(dest->trinket_stack_stat, d_StringPeek(src->trinket_stack_stat), 0);
+                d_StringSet(dest->trinket_stack_stat, d_StringPeek(src->trinket_stack_stat));
             }
 
             // Initialize runtime state
@@ -590,6 +591,14 @@ void ApplyEventConsequences(EventEncounter_t* event, Player_t* player, Deck_t* d
 
             d_LogInfoF("Granted pre-rolled trinket '%s' to slot %d (%d affix(es))",
                        choice->trinket_reward_key, empty_slot, dest->affix_count);
+
+            // Trigger ON_EQUIP effects (special trigger value 999)
+            extern GameContext_t g_game;  // From sceneBlackjack.c
+            const TrinketTemplate_t* template = GetTrinketTemplate(choice->trinket_reward_key);
+            if (template && (int)template->passive_trigger == 999) {
+                d_LogInfoF("Triggering ON_EQUIP effect for %s", choice->trinket_reward_key);
+                ExecuteTrinketEffect(template, dest, player, &g_game, empty_slot, false);
+            }
         } else {
             d_LogWarning("No empty trinket slot - trinket reward lost!");
             // TODO: Show modal to player: "Inventory full - trinket lost"
@@ -690,7 +699,7 @@ void GetRequirementTooltip(const ChoiceRequirement_t* req, dString_t* out) {
     switch (req->type) {
         case REQUIREMENT_NONE:
             // No requirement, no tooltip needed
-            d_StringSet(out, "", 0);
+            d_StringSet(out, "");
             break;
 
         case REQUIREMENT_TAG_COUNT: {
